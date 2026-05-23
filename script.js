@@ -1,6 +1,7 @@
 // =============================================================
 // POKÉMON FICHÁRIO - SCRIPT.JS COMPLETO
 // Apps Script fixo do Milton
+// Com opção de apagar carta
 // =============================================================
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
@@ -189,7 +190,6 @@ document.addEventListener("submit", function (event) {
 
 // =============================================================
 // COMUNICAÇÃO COM APPS SCRIPT VIA JSONP
-// Evita erro de CORS do Google Apps Script no Vercel
 // =============================================================
 
 function jsonpRequest(action, params) {
@@ -266,6 +266,16 @@ async function apiSaveCard(card) {
 
   const data = await jsonpRequest("saveCard", {
     payload: payload
+  });
+
+  await apiGetCards();
+
+  return data;
+}
+
+async function apiDeleteCard(internalId) {
+  const data = await jsonpRequest("deleteCard", {
+    internalId: internalId
   });
 
   await apiGetCards();
@@ -374,6 +384,7 @@ function renderBinder() {
       const priceMax = card.priceMax || card.precoMaximo || 0;
       const priceSource = card.priceSource || card.fontePreco || "Sem preço";
       const image = getCardImage(card);
+      const internalId = card.internalId || card.idInterno || "";
 
       slot.innerHTML =
         '<span class="qty-badge">x' + safeText(quantity) + '</span>' +
@@ -383,10 +394,57 @@ function renderBinder() {
         '<div class="card-title">' + safeText(name) + '</div>' +
         '<div class="card-meta">' + safeText(setName) + '<br>' + safeText(number) + ' • ' + safeText(language) + '</div>' +
         '<div class="price-pill">' + money(priceMin, "BRL") + " - " + money(priceMax, "BRL") + '</div>' +
-        '<div class="source-line">Fonte: ' + safeText(priceSource) + '</div>';
+        '<div class="source-line">Fonte: ' + safeText(priceSource) + '</div>' +
+        '<button type="button" class="delete-card-btn" data-card-id="' + safeText(internalId) + '">Apagar</button>';
     }
 
     grid.appendChild(slot);
+  }
+
+  attachDeleteButtons();
+}
+
+function attachDeleteButtons() {
+  const buttons = document.querySelectorAll(".delete-card-btn");
+
+  buttons.forEach(function (button) {
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const internalId = button.getAttribute("data-card-id");
+
+      if (!internalId) {
+        toast("Não encontrei o ID dessa carta para apagar.");
+        return;
+      }
+
+      deleteCardById(internalId);
+    });
+  });
+}
+
+async function deleteCardById(internalId) {
+  const card = collection.find(function (item) {
+    return String(item.internalId || item.idInterno || "") === String(internalId);
+  });
+
+  const name = card ? card.name || card.nome || "essa carta" : "essa carta";
+
+  const confirmDelete = confirm("Tem certeza que deseja apagar " + name + " do fichário?");
+
+  if (!confirmDelete) return;
+
+  try {
+    toast("Apagando carta...");
+
+    await apiDeleteCard(internalId);
+
+    toast("Carta apagada do fichário.");
+
+  } catch (err) {
+    console.error("Erro ao apagar carta:", err);
+    toast("Erro ao apagar carta. Verifique o Apps Script.");
   }
 }
 
@@ -857,7 +915,7 @@ function initEvents() {
 
   const saveByText = getButtonByText("salvar no fichário") || getButtonByText("salvar no fichario");
 
-  if (saveByText) {
+  if (saveByText && saveByText.id !== "btnSaveCard") {
     saveByText.setAttribute("type", "button");
     saveByText.addEventListener("click", saveSelectedCard);
   }
@@ -879,7 +937,10 @@ function initEvents() {
     $("prevPage").setAttribute("type", "button");
     $("prevPage").addEventListener("click", function (event) {
       event.preventDefault();
+
       currentPage--;
+      if (currentPage < 1) currentPage = 1;
+
       renderBinder();
     });
   }
@@ -888,7 +949,12 @@ function initEvents() {
     $("nextPage").setAttribute("type", "button");
     $("nextPage").addEventListener("click", function (event) {
       event.preventDefault();
+
+      const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
+
       currentPage++;
+      if (currentPage > totalPages) currentPage = totalPages;
+
       renderBinder();
     });
   }
@@ -898,7 +964,6 @@ function initEvents() {
   }
 }
 
-// Captura extra por segurança
 document.addEventListener("click", function (event) {
   const btn = event.target && event.target.closest
     ? event.target.closest("button")
@@ -908,7 +973,7 @@ document.addEventListener("click", function (event) {
 
   const text = String(btn.textContent || "").trim().toLowerCase();
 
-  if (text.includes("salvar no fichário") || text.includes("salvar no fichario")) {
+  if ((text.includes("salvar no fichário") || text.includes("salvar no fichario")) && btn.id !== "btnSaveCard") {
     saveSelectedCard(event);
   }
 }, true);
