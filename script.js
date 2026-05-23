@@ -3,7 +3,7 @@
 // 1) Depois que você implantar o Google Apps Script como Web App,
 //    cole a URL abaixo no lugar de COLE_AQUI_A_URL_DO_APPS_SCRIPT.
 // =============================================================
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/library/d/1cGYAeNZMEwh18r9z8KCpmfe2P8xHx5MoYOtsgiA8XhmwTvtNo5fcY0MU/2";
 
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2/cards";
@@ -50,6 +50,44 @@ function buildLigaSearchUrl(card) {
   return `https://www.ligapokemon.com.br/?view=cards/search&card=${encodeURIComponent(terms)}`;
 }
 
+function jsonpRequest(params) {
+  return new Promise((resolve, reject) => {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes("COLE_AQUI")) {
+      reject(new Error("URL do Apps Script não configurada."));
+      return;
+    }
+
+    const callbackName = `pokemonBinderCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const query = new URLSearchParams({ ...params, callback: callbackName, cacheBust: Date.now() });
+    const script = document.createElement("script");
+    const separator = APPS_SCRIPT_URL.includes("?") ? "&" : "?";
+    script.src = `${APPS_SCRIPT_URL}${separator}${query.toString()}`;
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Tempo esgotado ao falar com o Apps Script."));
+    }, 25000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Falha ao carregar resposta do Apps Script."));
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
 async function apiGetCards() {
   if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes("COLE_AQUI")) {
     toast("Configure a URL do Apps Script no script.js para carregar a planilha.");
@@ -58,10 +96,8 @@ async function apiGetCards() {
     return;
   }
 
-  const url = `${APPS_SCRIPT_URL}?action=getCards&cacheBust=${Date.now()}`;
-  const res = await fetch(url, { method: "GET", redirect: "follow" });
-  if (!res.ok) throw new Error("Falha ao buscar dados da planilha");
-  const data = await res.json();
+  const data = await jsonpRequest({ action: "getCards" });
+  if (!data.ok) throw new Error(data.error || "Falha ao buscar dados da planilha");
   collection = Array.isArray(data.cards) ? data.cards : [];
   applyFilters();
 }
@@ -77,13 +113,11 @@ async function apiSaveCard(card) {
     return;
   }
 
-  const payload = { action: "saveCard", card };
-  const res = await fetch(APPS_SCRIPT_URL, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    redirect: "follow",
+  const data = await jsonpRequest({
+    action: "saveCard",
+    payload: JSON.stringify(card),
   });
-  const data = await res.json();
+
   if (!data.ok) throw new Error(data.error || "Erro ao salvar carta");
   await apiGetCards();
 }
