@@ -1,6 +1,6 @@
 // =============================================================
 // POKÉMON FICHÁRIO - SCRIPT.JS
-// Busca inteligente PT-BR/EN/JA + filtro por nome/número/coleção
+// Busca melhorada PT-BR + preço BR automático ao escolher carta
 // Apps Script fixo do Milton
 // =============================================================
 
@@ -22,10 +22,6 @@ let filteredCollection = [];
 let currentPage = 1;
 let selectedCard = null;
 let appReady = false;
-
-// =============================================================
-// BASE
-// =============================================================
 
 function $(id) {
   return document.getElementById(id);
@@ -55,7 +51,7 @@ function toast(message) {
 
   setTimeout(function () {
     el.classList.remove("show");
-  }, 2200);
+  }, 2300);
 }
 
 function money(value, currency) {
@@ -286,6 +282,21 @@ async function apiDeleteCard(internalId) {
   });
 }
 
+async function apiGetBrazilPrice(card) {
+  const payload = JSON.stringify({
+    name: card.name || "",
+    number: card.number || "",
+    setName: card.setName || "",
+    setId: card.setId || "",
+    language: card.language || "",
+    apiId: card.apiId || ""
+  });
+
+  return await jsonpRequest("getBrazilPrice", {
+    payload: payload
+  });
+}
+
 // =============================================================
 // FICHÁRIO
 // =============================================================
@@ -501,7 +512,7 @@ function parseCardSearch(rawName, rawNumber, rawSet) {
   const fullPattern = combined.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
 
   if (fullPattern) {
-    if (!number) number = fullPattern[1];
+    if (!number || number.includes("/")) number = fullPattern[1];
     printedTotal = fullPattern[2];
     if (!setHint) setHint = fullPattern[2];
   }
@@ -518,7 +529,6 @@ function parseCardSearch(rawName, rawNumber, rawSet) {
     setHint = printedTotal;
   }
 
-  // Se o usuário colocou tudo no campo nome, limpa o nome.
   if (name) {
     name = name.replace(/(\d{1,4})\s*\/\s*(\d{1,4})/g, " ");
     name = name.replace(/\b\d{1,4}\b/g, function (match) {
@@ -531,7 +541,6 @@ function parseCardSearch(rawName, rawNumber, rawSet) {
     name = name.replace(/\s+/g, " ").trim();
   }
 
-  // Se o nome ficou vazio, tenta pegar a primeira palavra textual do combinado.
   if (!name) {
     const textOnly = combined
       .replace(/(\d{1,4})\s*\/\s*(\d{1,4})/g, " ")
@@ -577,26 +586,15 @@ async function searchCards() {
     const languages = lang === "all" ? ["pt-br", "en", "ja"] : [lang];
     let results = [];
 
-    // 1) Busca principal: nome + número.
     for (const language of languages) {
       const found = await searchTCGdexSmart(language, parsed);
       results = results.concat(found);
     }
 
-    // 2) Se a busca veio em "Todos", reforça português por número.
-    if (lang === "all" && parsed.number) {
-      const ptByNumber = await searchTCGdexSmart("pt-br", {
-        name: "",
-        number: parsed.number,
-        printedTotal: parsed.printedTotal,
-        setHint: parsed.setHint,
-        normalizedName: ""
-      });
+    // Se achou cartas em inglês/japonês, tenta abrir o mesmo ID em português.
+    const ptVersions = await hydratePortugueseVersions(results);
+    results = results.concat(ptVersions);
 
-      results = results.concat(ptByNumber);
-    }
-
-    // 3) Fallback Pokémon TCG API só se fizer sentido.
     if (results.length < 3 && parsed.name) {
       const fallback = await searchPokemonTCG(parsed);
       results = results.concat(fallback);
@@ -612,7 +610,7 @@ async function searchCards() {
     if ($("searchStatus")) {
       $("searchStatus").textContent = finalResults.length
         ? finalResults.length + " resultado(s) encontrados."
-        : "Não encontrei essa carta. Tente só o nome + número, exemplo: Omanyte 180/151.";
+        : "Não encontrei essa carta. Tente nome + número, exemplo: Omanyte 180/151.";
     }
 
   } catch (err) {
@@ -716,6 +714,32 @@ async function searchTCGdexAttempt(language, attempt) {
   return detailed;
 }
 
+async function hydratePortugueseVersions(results) {
+  const uniqueIds = Array.from(new Set(
+    results
+      .map(function (card) { return card.apiId; })
+      .filter(Boolean)
+  )).slice(0, 20);
+
+  const hydrated = [];
+
+  for (const id of uniqueIds) {
+    try {
+      const full = await fetch(TCGDEX_BASE + "/pt-br/cards/" + id).then(function (r) {
+        return r.ok ? r.json() : null;
+      });
+
+      if (full && full.id) {
+        hydrated.push(mapTCGdexCard(full, "pt-br"));
+      }
+    } catch (e) {
+      // silencioso
+    }
+  }
+
+  return hydrated;
+}
+
 function mapTCGdexCard(card, language) {
   const setObj = card.set || {};
 
@@ -813,53 +837,37 @@ function filterRelevantResults(results, parsed) {
   const hasName = !!parsed.normalizedName;
   const hasNumber = !!parsed.number;
 
-  // Se digitou nome e número, primeiro tenta nome + número juntos.
   if (hasName && hasNumber) {
     const strict = results.filter(function (card) {
       return isNameMatch(card, parsed) && isNumberMatch(card, parsed);
     });
 
     if (strict.length) {
-      return filterBySetIfPossible(strict, parsed);
+      return strict;
     }
   }
 
-  // Se digitou nome, não deixa aparecer outro Pokémon aleatório.
   if (hasName) {
     const byName = results.filter(function (card) {
       return isNameMatch(card, parsed);
     });
 
     if (byName.length) {
-      return filterBySetIfPossible(byName, parsed);
+      return byName;
     }
   }
 
-  // Se digitou só número, permite resultados por número.
   if (!hasName && hasNumber) {
     const byNumber = results.filter(function (card) {
       return isNumberMatch(card, parsed);
     });
 
     if (byNumber.length) {
-      return filterBySetIfPossible(byNumber, parsed);
+      return byNumber;
     }
   }
 
-  // Último recurso: retorna pouco, ordenado depois.
   return results.slice(0, 12);
-}
-
-function filterBySetIfPossible(results, parsed) {
-  if (!parsed.setHint && !parsed.printedTotal) {
-    return results;
-  }
-
-  const setFiltered = results.filter(function (card) {
-    return isSetMatch(card, parsed);
-  });
-
-  return setFiltered.length ? setFiltered : results;
 }
 
 function isNameMatch(card, parsed) {
@@ -913,13 +921,13 @@ function sortSearchResults(results, parsed) {
 function scoreCard(card, parsed) {
   let score = 0;
 
-  if (card.languageCode === "pt-br") score += 200;
+  if (card.languageCode === "pt-br") score += 250;
   if (card.languageCode === "en") score += 80;
   if (card.languageCode === "ja") score += 50;
 
   if (isNameMatch(card, parsed)) score += 120;
   if (isNumberMatch(card, parsed)) score += 150;
-  if (isSetMatch(card, parsed)) score += 80;
+  if (isSetMatch(card, parsed)) score += 60;
 
   if (card.imageUrl) score += 10;
   if (card.setName) score += 5;
@@ -1002,7 +1010,7 @@ function openPriceDialog(card) {
       '</div>';
   }
 
-  if ($("priceSource")) $("priceSource").value = "Liga Pokémon";
+  if ($("priceSource")) $("priceSource").value = "Buscando preço BR...";
   if ($("priceCurrency")) $("priceCurrency").value = "BRL";
   if ($("priceMin")) $("priceMin").value = "";
   if ($("priceAvg")) $("priceAvg").value = "";
@@ -1020,6 +1028,39 @@ function openPriceDialog(card) {
   }
 
   openModal("priceDialog");
+
+  autoFillBrazilPrice(card);
+}
+
+async function autoFillBrazilPrice(card) {
+  try {
+    const result = await apiGetBrazilPrice(card);
+
+    if (result && result.ok && result.found) {
+      if ($("priceMin")) $("priceMin").value = result.min || "";
+      if ($("priceAvg")) $("priceAvg").value = result.avg || "";
+      if ($("priceMax")) $("priceMax").value = result.max || "";
+      if ($("priceCurrency")) $("priceCurrency").value = "BRL";
+      if ($("priceSource")) $("priceSource").value = result.source || "Preço BR automático";
+      if ($("priceLink")) $("priceLink").value = result.link || "";
+
+      toast("Preço BR encontrado: " + (result.source || "fonte automática"));
+      return;
+    }
+
+    if ($("priceSource")) $("priceSource").value = "Liga Pokémon";
+    if ($("priceCurrency")) $("priceCurrency").value = "BRL";
+
+    toast("Preço automático não encontrado. Link manual disponível.");
+
+  } catch (err) {
+    console.error("Erro ao buscar preço BR:", err);
+
+    if ($("priceSource")) $("priceSource").value = "Liga Pokémon";
+    if ($("priceCurrency")) $("priceCurrency").value = "BRL";
+
+    toast("Não consegui puxar preço automático.");
+  }
 }
 
 async function saveSelectedCard(event) {
