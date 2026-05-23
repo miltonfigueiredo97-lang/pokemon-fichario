@@ -1,6 +1,6 @@
 // =============================================================
 // POKÉMON FICHÁRIO - SCRIPT.JS
-// Busca PT-BR melhorada + exclusão instantânea
+// Busca inteligente PT-BR/EN/JA + filtro por nome/número/coleção
 // Apps Script fixo do Milton
 // =============================================================
 
@@ -22,6 +22,10 @@ let filteredCollection = [];
 let currentPage = 1;
 let selectedCard = null;
 let appReady = false;
+
+// =============================================================
+// BASE
+// =============================================================
 
 function $(id) {
   return document.getElementById(id);
@@ -479,15 +483,84 @@ function suggestFieldsFromOCR(text) {
 }
 
 // =============================================================
-// BUSCA DE CARTAS - PT-BR MELHORADA
+// BUSCA INTELIGENTE
 // =============================================================
 
+function parseCardSearch(rawName, rawNumber, rawSet) {
+  const combined = [rawName, rawNumber, rawSet]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  let name = String(rawName || "").trim();
+  let number = String(rawNumber || "").trim();
+  let setHint = String(rawSet || "").trim();
+  let printedTotal = "";
+
+  const fullPattern = combined.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
+
+  if (fullPattern) {
+    if (!number) number = fullPattern[1];
+    printedTotal = fullPattern[2];
+    if (!setHint) setHint = fullPattern[2];
+  }
+
+  if (!number) {
+    const looseNumber = combined.match(/\b(\d{1,4})\b/);
+
+    if (looseNumber) {
+      number = looseNumber[1];
+    }
+  }
+
+  if (!setHint && printedTotal) {
+    setHint = printedTotal;
+  }
+
+  // Se o usuário colocou tudo no campo nome, limpa o nome.
+  if (name) {
+    name = name.replace(/(\d{1,4})\s*\/\s*(\d{1,4})/g, " ");
+    name = name.replace(/\b\d{1,4}\b/g, function (match) {
+      if (match === number || match === printedTotal || match === setHint) {
+        return " ";
+      }
+
+      return match;
+    });
+    name = name.replace(/\s+/g, " ").trim();
+  }
+
+  // Se o nome ficou vazio, tenta pegar a primeira palavra textual do combinado.
+  if (!name) {
+    const textOnly = combined
+      .replace(/(\d{1,4})\s*\/\s*(\d{1,4})/g, " ")
+      .replace(/\b\d{1,4}\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    name = textOnly;
+  }
+
+  return {
+    raw: combined,
+    name: name,
+    number: normalizeNumber(number),
+    printedTotal: normalizeNumber(printedTotal),
+    setHint: String(setHint || "").trim(),
+    normalizedName: normalizeText(name)
+  };
+}
+
 async function searchCards() {
-  const name = $("searchName") ? $("searchName").value.trim() : "";
-  const number = $("searchNumber") ? $("searchNumber").value.trim() : "";
+  const rawName = $("searchName") ? $("searchName").value.trim() : "";
+  const rawNumber = $("searchNumber") ? $("searchNumber").value.trim() : "";
+  const rawSet = $("searchSet") ? $("searchSet").value.trim() : "";
   const lang = $("searchLanguage") ? $("searchLanguage").value : "all";
 
-  if (!name && !number) {
+  const parsed = parseCardSearch(rawName, rawNumber, rawSet);
+
+  if (!parsed.name && !parsed.number) {
     toast("Digite o nome ou o número/código da carta.");
     return;
   }
@@ -504,38 +577,34 @@ async function searchCards() {
     const languages = lang === "all" ? ["pt-br", "en", "ja"] : [lang];
     let results = [];
 
-    // Estratégia 1: busca normal por nome + número no idioma escolhido.
+    // 1) Busca principal: nome + número.
     for (const language of languages) {
-      const found = await searchTCGdexSmart(language, name, number);
+      const found = await searchTCGdexSmart(language, parsed);
       results = results.concat(found);
     }
 
-    // Estratégia 2: se tiver número, busca só pelo número em todos os idiomas.
-    // Isso ajuda quando o nome em português é diferente ou a API não acha pelo nome.
-    if (number) {
-      for (const language of ["pt-br", "en", "ja"]) {
-        const foundByNumber = await searchTCGdexSmart(language, "", number);
-        results = results.concat(foundByNumber);
-      }
+    // 2) Se a busca veio em "Todos", reforça português por número.
+    if (lang === "all" && parsed.number) {
+      const ptByNumber = await searchTCGdexSmart("pt-br", {
+        name: "",
+        number: parsed.number,
+        printedTotal: parsed.printedTotal,
+        setHint: parsed.setHint,
+        normalizedName: ""
+      });
+
+      results = results.concat(ptByNumber);
     }
 
-    // Estratégia 3: se o nome tiver mais de uma palavra, tenta primeira palavra.
-    // Ajuda em nomes compostos e cartas com tradução diferente.
-    if (name && firstWord(name) && firstWord(name) !== name) {
-      for (const language of languages) {
-        const foundByFirstWord = await searchTCGdexSmart(language, firstWord(name), number);
-        results = results.concat(foundByFirstWord);
-      }
-    }
-
-    // Estratégia 4: fallback inglês da Pokémon TCG API.
-    if (results.length < 3 && name) {
-      const fallback = await searchPokemonTCG(name, number);
+    // 3) Fallback Pokémon TCG API só se fizer sentido.
+    if (results.length < 3 && parsed.name) {
+      const fallback = await searchPokemonTCG(parsed);
       results = results.concat(fallback);
     }
 
     const unique = dedupeResults(results);
-    const sorted = sortSearchResults(unique, name, number);
+    const relevant = filterRelevantResults(unique, parsed);
+    const sorted = sortSearchResults(relevant, parsed);
     const finalResults = sorted.slice(0, 30);
 
     renderSearchResults(finalResults);
@@ -543,7 +612,7 @@ async function searchCards() {
     if ($("searchStatus")) {
       $("searchStatus").textContent = finalResults.length
         ? finalResults.length + " resultado(s) encontrados."
-        : "Não encontrei resultados. Tente buscar pelo número impresso na carta.";
+        : "Não encontrei essa carta. Tente só o nome + número, exemplo: Omanyte 180/151.";
     }
 
   } catch (err) {
@@ -557,34 +626,39 @@ async function searchCards() {
   }
 }
 
-async function searchTCGdexSmart(language, name, number) {
+async function searchTCGdexSmart(language, parsed) {
   const attempts = [];
 
-  const cleanName = String(name || "").trim();
-  const cleanNumber = normalizeNumber(String(number || "").split("/")[0] || number);
+  const name = String(parsed.name || "").trim();
+  const number = normalizeNumber(parsed.number || "");
 
-  if (cleanName && cleanNumber) {
+  if (name && number) {
     attempts.push({
-      name: cleanName,
-      localId: cleanNumber
+      name: name,
+      localId: number
     });
   }
 
-  if (cleanName) {
+  if (number) {
     attempts.push({
-      name: cleanName
+      localId: number
     });
   }
 
-  if (cleanNumber) {
+  if (name) {
     attempts.push({
-      localId: cleanNumber
+      name: name
     });
   }
 
-  if (cleanName && firstWord(cleanName) && firstWord(cleanName) !== cleanName) {
+  if (name && firstWord(name) && firstWord(name) !== name) {
     attempts.push({
-      name: firstWord(cleanName)
+      name: firstWord(name),
+      localId: number
+    });
+
+    attempts.push({
+      name: firstWord(name)
     });
   }
 
@@ -643,6 +717,8 @@ async function searchTCGdexAttempt(language, attempt) {
 }
 
 function mapTCGdexCard(card, language) {
+  const setObj = card.set || {};
+
   return {
     source: "TCGdex",
     apiId: card.id || "",
@@ -650,8 +726,10 @@ function mapTCGdexCard(card, language) {
     languageCode: language,
     language: LANGUAGE_LABEL[language] || language,
     number: card.localId || "",
-    setName: card.set && card.set.name ? card.set.name : card.set && card.set.id ? card.set.id : "",
-    setId: card.set && card.set.id ? card.set.id : "",
+    setName: setObj.name || setObj.id || "",
+    setId: setObj.id || "",
+    setCardCountOfficial: setObj.cardCount && setObj.cardCount.official ? setObj.cardCount.official : "",
+    setCardCountTotal: setObj.cardCount && setObj.cardCount.total ? setObj.cardCount.total : "",
     rarity: card.rarity || "",
     type: card.category || "",
     imageUrl: card.image || "",
@@ -659,19 +737,23 @@ function mapTCGdexCard(card, language) {
   };
 }
 
-async function searchPokemonTCG(name, number) {
+async function searchPokemonTCG(parsed) {
   const clauses = [];
 
-  if (name) {
-    clauses.push("name:*" + name.replace(/\s+/g, "*") + "*");
+  if (parsed.name) {
+    clauses.push("name:*" + parsed.name.replace(/\s+/g, "*") + "*");
   }
 
-  if (number) {
-    clauses.push("number:" + normalizeNumber(number.split("/")[0] || number));
+  if (parsed.number) {
+    clauses.push("number:" + parsed.number);
+  }
+
+  if (parsed.setHint && normalizeText(parsed.setHint).includes("151")) {
+    clauses.push("set.name:*151*");
   }
 
   const q = clauses.join(" ");
-  const url = POKEMON_TCG_BASE + "?q=" + encodeURIComponent(q) + "&pageSize=12";
+  const url = POKEMON_TCG_BASE + "?q=" + encodeURIComponent(q) + "&pageSize=20";
 
   const data = await fetch(url).then(function (r) {
     return r.ok ? r.json() : { data: [] };
@@ -687,6 +769,8 @@ async function searchPokemonTCG(name, number) {
       number: card.number || "",
       setName: card.set && card.set.name ? card.set.name : "",
       setId: card.set && card.set.id ? card.set.id : "",
+      setCardCountOfficial: card.set && card.set.printedTotal ? card.set.printedTotal : "",
+      setCardCountTotal: card.set && card.set.total ? card.set.total : "",
       rarity: card.rarity || "",
       type: card.supertype || "",
       imageUrl: card.images && card.images.large ? card.images.large : card.images && card.images.small ? card.images.small : "",
@@ -723,30 +807,119 @@ function dedupeResults(results) {
   });
 }
 
-function sortSearchResults(results, searchedName, searchedNumber) {
-  const cleanSearchName = normalizeText(searchedName);
-  const cleanSearchNumber = normalizeNumber(String(searchedNumber || "").split("/")[0] || searchedNumber);
+function filterRelevantResults(results, parsed) {
+  if (!results.length) return [];
 
+  const hasName = !!parsed.normalizedName;
+  const hasNumber = !!parsed.number;
+
+  // Se digitou nome e número, primeiro tenta nome + número juntos.
+  if (hasName && hasNumber) {
+    const strict = results.filter(function (card) {
+      return isNameMatch(card, parsed) && isNumberMatch(card, parsed);
+    });
+
+    if (strict.length) {
+      return filterBySetIfPossible(strict, parsed);
+    }
+  }
+
+  // Se digitou nome, não deixa aparecer outro Pokémon aleatório.
+  if (hasName) {
+    const byName = results.filter(function (card) {
+      return isNameMatch(card, parsed);
+    });
+
+    if (byName.length) {
+      return filterBySetIfPossible(byName, parsed);
+    }
+  }
+
+  // Se digitou só número, permite resultados por número.
+  if (!hasName && hasNumber) {
+    const byNumber = results.filter(function (card) {
+      return isNumberMatch(card, parsed);
+    });
+
+    if (byNumber.length) {
+      return filterBySetIfPossible(byNumber, parsed);
+    }
+  }
+
+  // Último recurso: retorna pouco, ordenado depois.
+  return results.slice(0, 12);
+}
+
+function filterBySetIfPossible(results, parsed) {
+  if (!parsed.setHint && !parsed.printedTotal) {
+    return results;
+  }
+
+  const setFiltered = results.filter(function (card) {
+    return isSetMatch(card, parsed);
+  });
+
+  return setFiltered.length ? setFiltered : results;
+}
+
+function isNameMatch(card, parsed) {
+  if (!parsed.normalizedName) return true;
+
+  const cardName = normalizeText(card.name);
+
+  if (!cardName) return false;
+
+  return cardName === parsed.normalizedName ||
+    cardName.includes(parsed.normalizedName) ||
+    parsed.normalizedName.includes(cardName);
+}
+
+function isNumberMatch(card, parsed) {
+  if (!parsed.number) return true;
+
+  const cardNumber = normalizeNumber(card.number);
+
+  return cardNumber === parsed.number;
+}
+
+function isSetMatch(card, parsed) {
+  const hint = normalizeText(parsed.setHint || parsed.printedTotal || "");
+
+  if (!hint) return true;
+
+  const setName = normalizeText(card.setName);
+  const setId = normalizeText(card.setId);
+  const official = normalizeNumber(card.setCardCountOfficial);
+  const total = normalizeNumber(card.setCardCountTotal);
+  const printedTotal = normalizeNumber(parsed.printedTotal);
+
+  if (setName.includes(hint)) return true;
+  if (setId.includes(hint)) return true;
+
+  if (printedTotal && official && official === printedTotal) return true;
+  if (printedTotal && total && total === printedTotal) return true;
+
+  if (hint === "151" && (setName.includes("151") || setId.includes("151"))) return true;
+
+  return false;
+}
+
+function sortSearchResults(results, parsed) {
   return results.sort(function (a, b) {
-    return scoreCard(b, cleanSearchName, cleanSearchNumber) - scoreCard(a, cleanSearchName, cleanSearchNumber);
+    return scoreCard(b, parsed) - scoreCard(a, parsed);
   });
 }
 
-function scoreCard(card, cleanSearchName, cleanSearchNumber) {
+function scoreCard(card, parsed) {
   let score = 0;
 
-  const cardName = normalizeText(card.name);
-  const cardNumber = normalizeNumber(card.number);
+  if (card.languageCode === "pt-br") score += 200;
+  if (card.languageCode === "en") score += 80;
+  if (card.languageCode === "ja") score += 50;
 
-  if (card.languageCode === "pt-br") score += 100;
-  if (card.languageCode === "en") score += 50;
-  if (card.languageCode === "ja") score += 30;
-
-  if (cleanSearchNumber && cardNumber === cleanSearchNumber) score += 120;
-  if (cleanSearchNumber && cardNumber.includes(cleanSearchNumber)) score += 60;
-
-  if (cleanSearchName && cardName === cleanSearchName) score += 80;
-  if (cleanSearchName && cardName.includes(cleanSearchName)) score += 45;
+  if (isNameMatch(card, parsed)) score += 120;
+  if (isNumberMatch(card, parsed)) score += 150;
+  if (isSetMatch(card, parsed)) score += 80;
 
   if (card.imageUrl) score += 10;
   if (card.setName) score += 5;
@@ -962,7 +1135,7 @@ function clearSearch() {
 }
 
 // =============================================================
-// EVENTOS ROBUSTOS
+// EVENTOS
 // =============================================================
 
 function initEvents() {
