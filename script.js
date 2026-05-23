@@ -1,6 +1,7 @@
 // =============================================================
 // POKÉMON FICHÁRIO - SCRIPT.JS RECUPERAÇÃO ESTÁVEL
 // Apps Script fixo do Milton
+// Exclusão instantânea no fichário
 // =============================================================
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
@@ -50,7 +51,7 @@ function toast(message) {
 
   setTimeout(function () {
     el.classList.remove("show");
-  }, 2800);
+  }, 2200);
 }
 
 function money(value, currency) {
@@ -228,16 +229,20 @@ function jsonpRequest(action, params) {
   });
 }
 
-async function apiGetCards() {
+async function apiGetCards(showMessage) {
   try {
-    toast("Carregando fichário...");
+    if (showMessage) {
+      toast("Carregando fichário...");
+    }
 
     const data = await jsonpRequest("getCards");
 
     collection = Array.isArray(data.cards) ? data.cards : [];
     applyFilters();
 
-    toast("Fichário carregado.");
+    if (showMessage) {
+      toast("Fichário carregado.");
+    }
 
   } catch (err) {
     console.error("Erro ao carregar planilha:", err);
@@ -786,7 +791,7 @@ async function saveSelectedCard(event) {
     closeModal("priceDialog");
     closeModal("addDialog");
 
-    await apiGetCards();
+    await apiGetCards(false);
 
     toast("Carta salva no fichário!");
 
@@ -807,17 +812,32 @@ async function deleteCardById(internalId) {
 
   if (!confirmDelete) return;
 
-  try {
-    toast("Apagando carta...");
+  const backupCollection = collection.slice();
 
+  // Remove da tela imediatamente
+  collection = collection.filter(function (item) {
+    return String(item.internalId || item.idInterno || "") !== String(internalId);
+  });
+
+  applyFilters();
+  toast("Carta removida da tela. Apagando na planilha...");
+
+  try {
     await apiDeleteCard(internalId);
-    await apiGetCards();
 
     toast("Carta apagada.");
 
+    // Sincroniza em segundo plano, sem travar a tela
+    apiGetCards(false);
+
   } catch (err) {
     console.error("Erro ao apagar carta:", err);
-    toast("Erro ao apagar. Verifique o Apps Script.");
+
+    // Se der erro, volta a carta para a tela
+    collection = backupCollection;
+    applyFilters();
+
+    toast("Erro ao apagar. A carta foi restaurada.");
   }
 }
 
@@ -883,7 +903,7 @@ function initEvents() {
 
     if (id === "btnRefresh" || text.includes("atualizar")) {
       event.preventDefault();
-      apiGetCards();
+      apiGetCards(true);
       return;
     }
 
@@ -943,5 +963,5 @@ function initEvents() {
 
 document.addEventListener("DOMContentLoaded", function () {
   initEvents();
-  apiGetCards();
+  apiGetCards(true);
 });
