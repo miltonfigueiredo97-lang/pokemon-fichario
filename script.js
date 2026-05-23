@@ -1,984 +1,379 @@
 // =============================================================
-// POKÉMON FICHÁRIO - SCRIPT.JS COMPLETO
-// Apps Script fixo do Milton
-// Com opção de apagar carta
+// POKÉMON FICHÁRIO - CODE.GS COMPLETO CORRIGIDO
+// Com função de apagar carta
 // =============================================================
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
+const SHEET_NAME = "Cartas";
 
-const TCGDEX_BASE = "https://api.tcgdex.net/v2";
-const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2/cards";
+const HEADERS = [
+  "ID Interno",
+  "ID API",
+  "Nome",
+  "Idioma",
+  "Código Idioma",
+  "Coleção",
+  "ID Coleção",
+  "Número",
+  "Raridade",
+  "Tipo",
+  "Imagem URL",
+  "Quantidade",
+  "Condição",
+  "Acabamento",
+  "Preço Mínimo",
+  "Preço Médio",
+  "Preço Máximo",
+  "Moeda",
+  "Fonte Preço",
+  "Link Fonte",
+  "Data Preço",
+  "Data Cadastro",
+  "Observações",
+  "Texto OCR",
+  "Status Verificação"
+];
 
-const PAGE_SIZE = 9;
-
-const LANGUAGE_LABEL = {
-  "pt-br": "Português",
-  "en": "Inglês",
-  "ja": "Japonês"
-};
-
-let collection = [];
-let filteredCollection = [];
-let currentPage = 1;
-let selectedCard = null;
-
-// =============================================================
-// FUNÇÕES BÁSICAS
-// =============================================================
-
-function $(id) {
-  return document.getElementById(id);
-}
-
-function safeText(value) {
-  return String(value || "").replace(/[<>&"]/g, function (c) {
-    return {
-      "<": "&lt;",
-      ">": "&gt;",
-      "&": "&amp;",
-      '"': "&quot;"
-    }[c];
-  });
-}
-
-function toast(message) {
-  const el = $("toast");
-
-  if (!el) {
-    alert(message);
-    return;
-  }
-
-  el.textContent = message;
-  el.classList.add("show");
-
-  setTimeout(function () {
-    el.classList.remove("show");
-  }, 3000);
-}
-
-function money(value, currency) {
-  const n = Number(value || 0);
-
+function doGet(e) {
   try {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: currency || "BRL"
-    }).format(n);
-  } catch (e) {
-    return "R$ " + n.toFixed(2).replace(".", ",");
-  }
-}
+    setupSheets_();
 
-function normalizeNumber(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/^0+(?=\d)/, "");
-}
+    const action = e.parameter.action || "";
+    const callback = e.parameter.callback || "";
 
-function getButtonByText(text) {
-  const buttons = Array.from(document.querySelectorAll("button"));
+    let response;
 
-  return buttons.find(function (btn) {
-    return String(btn.textContent || "")
-      .trim()
-      .toLowerCase()
-      .includes(text.toLowerCase());
-  });
-}
+    if (action === "ping") {
+      response = {
+        ok: true,
+        message: "Apps Script conectado com sucesso.",
+        date: new Date().toISOString()
+      };
 
-function openModal(id) {
-  const modal = $(id);
-
-  if (!modal) {
-    toast("Não encontrei a janela: " + id);
-    return;
-  }
-
-  try {
-    if (typeof modal.showModal === "function" && !modal.open) {
-      modal.showModal();
-    } else {
-      modal.setAttribute("open", "open");
-      modal.classList.add("modal-open");
-    }
-  } catch (e) {
-    modal.setAttribute("open", "open");
-    modal.classList.add("modal-open");
-  }
-}
-
-function closeModal(id) {
-  const modal = $(id);
-
-  if (!modal) return;
-
-  try {
-    if (typeof modal.close === "function") {
-      modal.close();
-    } else {
-      modal.removeAttribute("open");
-      modal.classList.remove("modal-open");
-    }
-  } catch (e) {
-    modal.removeAttribute("open");
-    modal.classList.remove("modal-open");
-  }
-}
-
-function buildLigaSearchUrl(card) {
-  const terms = [
-    card.name,
-    card.number,
-    card.setName,
-    "pokemon"
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return "https://www.ligapokemon.com.br/?view=cards/search&card=" + encodeURIComponent(terms);
-}
-
-function getCardImage(card) {
-  const image = card.imageUrl || card.imagemUrl || "";
-
-  if (!image) return "";
-
-  if (image.includes("tcgdex") && !image.endsWith(".webp")) {
-    return image + "/high.webp";
-  }
-
-  return image;
-}
-
-// =============================================================
-// ENTER NÃO FECHA MODAL
-// =============================================================
-
-document.addEventListener("keydown", function (event) {
-  if (event.key !== "Enter") return;
-
-  const tag = event.target && event.target.tagName
-    ? event.target.tagName.toLowerCase()
-    : "";
-
-  const type = event.target && event.target.type
-    ? String(event.target.type).toLowerCase()
-    : "";
-
-  const isTextarea = tag === "textarea";
-  const isButton = tag === "button" || type === "button" || type === "submit";
-
-  if (!isTextarea && !isButton) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-}, true);
-
-document.addEventListener("submit", function (event) {
-  const insideDialog = event.target && event.target.closest
-    ? event.target.closest("dialog")
-    : null;
-
-  if (insideDialog) {
-    event.preventDefault();
-    event.stopPropagation();
-    return false;
-  }
-}, true);
-
-// =============================================================
-// COMUNICAÇÃO COM APPS SCRIPT VIA JSONP
-// =============================================================
-
-function jsonpRequest(action, params) {
-  return new Promise(function (resolve, reject) {
-    const callbackName = "pokemonBinderCallback_" + Date.now() + "_" + Math.floor(Math.random() * 999999);
-
-    const query = new URLSearchParams();
-    query.set("action", action);
-    query.set("callback", callbackName);
-    query.set("cacheBust", Date.now());
-
-    if (params) {
-      Object.keys(params).forEach(function (key) {
-        query.set(key, params[key]);
-      });
+      return output_(response, callback);
     }
 
-    const script = document.createElement("script");
+    if (action === "saveCard") {
+      const payload = JSON.parse(e.parameter.payload || "{}");
+      response = saveCard_(payload);
 
-    window[callbackName] = function (data) {
-      cleanup();
+      return output_(response, callback);
+    }
 
-      if (!data || data.ok === false) {
-        reject(new Error(data && data.error ? data.error : "Erro desconhecido no Apps Script."));
-        return;
-      }
+    if (action === "deleteCard") {
+      const internalId = e.parameter.internalId || "";
+      response = deleteCard_(internalId);
 
-      resolve(data);
+      return output_(response, callback);
+    }
+
+    if (action === "getCards" || action === "listCards") {
+      response = {
+        ok: true,
+        cards: listCards_()
+      };
+
+      return output_(response, callback);
+    }
+
+    response = {
+      ok: false,
+      error: "Ação inválida.",
+      action: action
     };
 
-    function cleanup() {
-      try {
-        delete window[callbackName];
-      } catch (e) {
-        window[callbackName] = undefined;
-      }
-
-      if (script && script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    }
-
-    script.onerror = function () {
-      cleanup();
-      reject(new Error("Falha ao conectar com o Apps Script."));
-    };
-
-    script.src = APPS_SCRIPT_URL + "?" + query.toString();
-
-    document.body.appendChild(script);
-  });
-}
-
-async function apiGetCards() {
-  try {
-    const data = await jsonpRequest("getCards");
-
-    collection = Array.isArray(data.cards) ? data.cards : [];
-    applyFilters();
+    return output_(response, callback);
 
   } catch (err) {
-    console.error("Erro ao carregar planilha:", err);
+    const callback = e && e.parameter ? e.parameter.callback || "" : "";
 
-    const local = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
-    collection = local;
-    applyFilters();
-
-    toast("Não consegui carregar a planilha. Usando modo local temporário.");
+    return output_({
+      ok: false,
+      error: String(err),
+      stack: err && err.stack ? err.stack : ""
+    }, callback);
   }
 }
 
-async function apiSaveCard(card) {
-  const payload = JSON.stringify(card);
+function doPost(e) {
+  try {
+    setupSheets_();
 
-  const data = await jsonpRequest("saveCard", {
-    payload: payload
-  });
+    const body = e.postData && e.postData.contents
+      ? JSON.parse(e.postData.contents)
+      : {};
 
-  await apiGetCards();
+    const action = body.action || "";
 
-  return data;
-}
-
-async function apiDeleteCard(internalId) {
-  const data = await jsonpRequest("deleteCard", {
-    internalId: internalId
-  });
-
-  await apiGetCards();
-
-  return data;
-}
-
-// =============================================================
-// FICHÁRIO
-// =============================================================
-
-function applyFilters() {
-  const filterTextEl = $("filterText");
-  const filterLanguageEl = $("filterLanguage");
-
-  const text = filterTextEl ? filterTextEl.value.toLowerCase().trim() : "";
-  const lang = filterLanguageEl ? filterLanguageEl.value : "all";
-
-  filteredCollection = collection.filter(function (card) {
-    const haystack = [
-      card.name,
-      card.nome,
-      card.setName,
-      card.colecao,
-      card.number,
-      card.numero,
-      card.language,
-      card.idioma,
-      card.rarity,
-      card.raridade
-    ]
-      .join(" ")
-      .toLowerCase();
-
-    const cardLang = card.languageCode || card.codigoIdioma || "";
-
-    const matchText = !text || haystack.includes(text);
-    const matchLang = lang === "all" || cardLang === lang;
-
-    return matchText && matchLang;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-
-  currentPage = Math.min(currentPage, totalPages);
-  currentPage = Math.max(currentPage, 1);
-
-  renderBinder();
-  renderStats();
-}
-
-function renderStats() {
-  const totals = collection.reduce(function (acc, card) {
-    const qty = Number(card.quantity || card.quantidade || 1);
-
-    acc.qty += qty;
-    acc.min += Number(card.priceMin || card.precoMinimo || 0) * qty;
-    acc.avg += Number(card.priceAvg || card.precoMedio || 0) * qty;
-    acc.max += Number(card.priceMax || card.precoMaximo || 0) * qty;
-
-    return acc;
-  }, {
-    qty: 0,
-    min: 0,
-    avg: 0,
-    max: 0
-  });
-
-  if ($("totalCards")) $("totalCards").textContent = totals.qty;
-  if ($("totalMin")) $("totalMin").textContent = money(totals.min, "BRL");
-  if ($("totalAvg")) $("totalAvg").textContent = money(totals.avg, "BRL");
-  if ($("totalMax")) $("totalMax").textContent = money(totals.max, "BRL");
-}
-
-function renderBinder() {
-  const grid = $("binderGrid");
-
-  if (!grid) return;
-
-  grid.innerHTML = "";
-
-  const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-
-  if ($("pageInfo")) {
-    $("pageInfo").textContent = "Página " + currentPage + " de " + totalPages;
-  }
-
-  const start = (currentPage - 1) * PAGE_SIZE;
-  const cards = filteredCollection.slice(start, start + PAGE_SIZE);
-
-  for (let i = 0; i < PAGE_SIZE; i++) {
-    const card = cards[i];
-    const slot = document.createElement("article");
-
-    slot.className = "card-slot" + (card ? "" : " empty");
-
-    if (!card) {
-      slot.textContent = "Espaço vazio";
-    } else {
-      const name = card.name || card.nome || "Sem nome";
-      const setName = card.setName || card.colecao || "Coleção não informada";
-      const number = card.number || card.numero || "-";
-      const language = card.language || card.idioma || "-";
-      const quantity = card.quantity || card.quantidade || 1;
-      const priceMin = card.priceMin || card.precoMinimo || 0;
-      const priceMax = card.priceMax || card.precoMaximo || 0;
-      const priceSource = card.priceSource || card.fontePreco || "Sem preço";
-      const image = getCardImage(card);
-      const internalId = card.internalId || card.idInterno || "";
-
-      slot.innerHTML =
-        '<span class="qty-badge">x' + safeText(quantity) + '</span>' +
-        '<div class="card-img-wrap">' +
-          (image ? '<img src="' + safeText(image) + '" alt="' + safeText(name) + '" loading="lazy">' : "") +
-        '</div>' +
-        '<div class="card-title">' + safeText(name) + '</div>' +
-        '<div class="card-meta">' + safeText(setName) + '<br>' + safeText(number) + ' • ' + safeText(language) + '</div>' +
-        '<div class="price-pill">' + money(priceMin, "BRL") + " - " + money(priceMax, "BRL") + '</div>' +
-        '<div class="source-line">Fonte: ' + safeText(priceSource) + '</div>' +
-        '<button type="button" class="delete-card-btn" data-card-id="' + safeText(internalId) + '">Apagar</button>';
+    if (action === "saveCard") {
+      return output_(saveCard_(body.card || {}), "");
     }
 
-    grid.appendChild(slot);
-  }
+    if (action === "deleteCard") {
+      return output_(deleteCard_(body.internalId || ""), "");
+    }
 
-  attachDeleteButtons();
-}
+    if (action === "getCards" || action === "listCards") {
+      return output_({
+        ok: true,
+        cards: listCards_()
+      }, "");
+    }
 
-function attachDeleteButtons() {
-  const buttons = document.querySelectorAll(".delete-card-btn");
-
-  buttons.forEach(function (button) {
-    button.addEventListener("click", function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const internalId = button.getAttribute("data-card-id");
-
-      if (!internalId) {
-        toast("Não encontrei o ID dessa carta para apagar.");
-        return;
-      }
-
-      deleteCardById(internalId);
-    });
-  });
-}
-
-async function deleteCardById(internalId) {
-  const card = collection.find(function (item) {
-    return String(item.internalId || item.idInterno || "") === String(internalId);
-  });
-
-  const name = card ? card.name || card.nome || "essa carta" : "essa carta";
-
-  const confirmDelete = confirm("Tem certeza que deseja apagar " + name + " do fichário?");
-
-  if (!confirmDelete) return;
-
-  try {
-    toast("Apagando carta...");
-
-    await apiDeleteCard(internalId);
-
-    toast("Carta apagada do fichário.");
+    return output_({
+      ok: false,
+      error: "Ação POST inválida.",
+      action: action
+    }, "");
 
   } catch (err) {
-    console.error("Erro ao apagar carta:", err);
-    toast("Erro ao apagar carta. Verifique o Apps Script.");
+    return output_({
+      ok: false,
+      error: String(err),
+      stack: err && err.stack ? err.stack : ""
+    }, "");
   }
 }
 
-// =============================================================
-// OCR
-// =============================================================
+function setupSheets_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAME);
 
-async function runOCR() {
-  const fileInput = $("cardPhoto");
-
-  if (!fileInput || !fileInput.files || !fileInput.files[0]) {
-    toast("Escolha ou tire uma foto da carta primeiro.");
-    return;
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
   }
 
-  if (typeof Tesseract === "undefined") {
-    toast("OCR não carregou. Digite nome e número manualmente.");
-    return;
+  if (sheet.getMaxColumns() < HEADERS.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), HEADERS.length - sheet.getMaxColumns());
   }
 
-  const file = fileInput.files[0];
-
-  if ($("ocrStatus")) {
-    $("ocrStatus").textContent = "Lendo imagem... isso pode demorar alguns segundos.";
-  }
-
-  try {
-    const result = await Tesseract.recognize(file, "por+eng+jpn", {
-      logger: function (m) {
-        if ($("ocrStatus") && m.status) {
-          const progress = m.progress ? " " + Math.round(m.progress * 100) + "%" : "";
-          $("ocrStatus").textContent = "OCR: " + m.status + progress;
-        }
-      }
-    });
-
-    const text = result && result.data && result.data.text ? result.data.text : "";
-
-    if ($("ocrText")) $("ocrText").value = text.trim();
-
-    suggestFieldsFromOCR(text);
-
-    if ($("ocrStatus")) {
-      $("ocrStatus").textContent = "OCR concluído. Confira/corrija os campos antes de buscar.";
-    }
-
-  } catch (err) {
-    console.error("Erro no OCR:", err);
-
-    if ($("ocrStatus")) {
-      $("ocrStatus").textContent = "Não consegui ler a imagem. Digite nome e número manualmente.";
-    }
-
-    toast("OCR falhou. Digite nome e número manualmente.");
-  }
+  sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  sheet.setFrozenRows(1);
 }
 
-function suggestFieldsFromOCR(text) {
-  const lines = String(text || "")
-    .split(/\n+/)
-    .map(function (l) {
-      return l.trim();
-    })
-    .filter(Boolean);
+function saveCard_(card) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
 
-  const numberMatch = String(text || "").match(/([A-Z]{0,4}\s?\d{1,3}\s?\/\s?\d{1,3}|[A-Z]{1,5}\s?\d{1,3})/i);
+  const idInterno = card.internalId || card.idInterno || "card_" + new Date().getTime();
 
-  if ($("searchName") && !$("searchName").value && lines[0]) {
-    const cleaned = lines[0]
-      .replace(/[^\p{L}\p{N}\s.'-]/gu, "")
-      .trim();
+  const imageUrl = cleanImageUrl_(card.imageUrl || card.imagemUrl || "");
 
-    $("searchName").value = cleaned;
-  }
+  const row = [
+    idInterno,
+    card.apiId || card.idApi || "",
+    card.name || card.nome || "",
+    card.language || card.idioma || "",
+    card.languageCode || card.codigoIdioma || "",
+    card.setName || card.colecao || "",
+    card.setId || card.idColecao || "",
+    card.number || card.numero || "",
+    card.rarity || card.raridade || "",
+    card.type || card.tipo || "",
+    imageUrl,
+    numberOrBlank_(card.quantity || card.quantidade || 1),
+    card.condition || card.condicao || "",
+    card.finish || card.acabamento || "",
+    numberOrBlank_(card.priceMin || card.precoMinimo || ""),
+    numberOrBlank_(card.priceAvg || card.precoMedio || ""),
+    numberOrBlank_(card.priceMax || card.precoMaximo || ""),
+    "BRL",
+    card.priceSource || card.fontePreco || "Liga Pokémon",
+    card.priceLink || card.linkFonte || "",
+    card.priceDate || card.dataPreco || "",
+    card.createdAt || card.dataCadastro || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm:ss"),
+    card.notes || card.observacoes || "",
+    card.ocrText || card.textoOcr || "",
+    card.verificationStatus || card.statusVerificacao || "Confirmada manualmente"
+  ];
 
-  if ($("searchNumber") && !$("searchNumber").value && numberMatch) {
-    $("searchNumber").value = numberMatch[1].replace(/\s+/g, "");
-  }
-}
+  sheet.appendRow(row);
 
-// =============================================================
-// BUSCA DE CARTAS
-// =============================================================
-
-async function searchCards() {
-  const name = $("searchName") ? $("searchName").value.trim() : "";
-  const number = $("searchNumber") ? $("searchNumber").value.trim() : "";
-  const lang = $("searchLanguage") ? $("searchLanguage").value : "all";
-
-  if (!name && !number) {
-    toast("Digite o nome ou o número/código da carta.");
-    return;
-  }
-
-  if ($("searchStatus")) {
-    $("searchStatus").textContent = "Buscando nas bases de cartas...";
-  }
-
-  if ($("resultsList")) {
-    $("resultsList").innerHTML = "";
-  }
-
-  try {
-    const languages = lang === "all" ? ["pt-br", "ja", "en"] : [lang];
-    const results = [];
-
-    for (const language of languages) {
-      const tcgResults = await searchTCGdex(language, name, number);
-      results.push.apply(results, tcgResults);
-    }
-
-    if (results.length < 3 && name) {
-      const fallback = await searchPokemonTCG(name, number);
-      results.push.apply(results, fallback);
-    }
-
-    const unique = dedupeResults(results).slice(0, 24);
-
-    renderSearchResults(unique);
-
-    if ($("searchStatus")) {
-      $("searchStatus").textContent = unique.length
-        ? unique.length + " resultado(s) encontrados. Escolha a carta correta."
-        : "Não encontrei resultados. Tente digitar só o nome, ou só o número.";
-    }
-
-  } catch (err) {
-    console.error("Erro ao buscar cartas:", err);
-
-    if ($("searchStatus")) {
-      $("searchStatus").textContent = "Erro ao buscar cartas. Veja se a internet está funcionando e tente de novo.";
-    }
-
-    toast("Erro ao buscar cartas.");
-  }
-}
-
-async function searchTCGdex(language, name, number) {
-  const params = new URLSearchParams();
-
-  if (name) params.set("name", name);
-
-  if (number) {
-    params.set("localId", normalizeNumber(number.split("/")[0] || number));
-  }
-
-  params.set("pagination:itemsPerPage", "40");
-
-  let url = TCGDEX_BASE + "/" + language + "/cards?" + params.toString();
-
-  let brief = await fetch(url).then(function (r) {
-    return r.ok ? r.json() : [];
-  });
-
-  if (!Array.isArray(brief) || brief.length === 0) {
-    const loose = new URLSearchParams();
-
-    if (name) loose.set("name", name.split(" ")[0]);
-
-    loose.set("pagination:itemsPerPage", "40");
-
-    url = TCGDEX_BASE + "/" + language + "/cards?" + loose.toString();
-
-    brief = await fetch(url).then(function (r) {
-      return r.ok ? r.json() : [];
-    });
-  }
-
-  const limited = Array.isArray(brief) ? brief.slice(0, 16) : [];
-
-  const detailed = await Promise.all(limited.map(async function (card) {
-    try {
-      const full = await fetch(TCGDEX_BASE + "/" + language + "/cards/" + card.id).then(function (r) {
-        return r.ok ? r.json() : card;
-      });
-
-      return mapTCGdexCard(full, language);
-
-    } catch (e) {
-      return mapTCGdexCard(card, language);
-    }
-  }));
-
-  return detailed;
-}
-
-function mapTCGdexCard(card, language) {
   return {
-    source: "TCGdex",
-    apiId: card.id || "",
-    name: card.name || "Sem nome",
-    languageCode: language,
-    language: LANGUAGE_LABEL[language] || language,
-    number: card.localId || "",
-    setName: card.set && card.set.name ? card.set.name : card.set && card.set.id ? card.set.id : "",
-    setId: card.set && card.set.id ? card.set.id : "",
-    rarity: card.rarity || "",
-    type: card.category || "",
-    imageUrl: card.image || "",
-    raw: card
+    ok: true,
+    message: "Carta salva com sucesso.",
+    idInterno: idInterno
   };
 }
 
-async function searchPokemonTCG(name, number) {
-  const clauses = [];
-
-  if (name) {
-    clauses.push("name:*" + name.replace(/\s+/g, "*") + "*");
-  }
-
-  if (number) {
-    clauses.push("number:" + normalizeNumber(number.split("/")[0] || number));
-  }
-
-  const q = clauses.join(" ");
-  const url = POKEMON_TCG_BASE + "?q=" + encodeURIComponent(q) + "&pageSize=12";
-
-  const data = await fetch(url).then(function (r) {
-    return r.ok ? r.json() : { data: [] };
-  });
-
-  return (data.data || []).map(function (card) {
+function deleteCard_(internalId) {
+  if (!internalId) {
     return {
-      source: "Pokémon TCG API",
-      apiId: card.id || "",
-      name: card.name || "Sem nome",
-      languageCode: "en",
-      language: "Inglês",
-      number: card.number || "",
-      setName: card.set && card.set.name ? card.set.name : "",
-      setId: card.set && card.set.id ? card.set.id : "",
-      rarity: card.rarity || "",
-      type: card.supertype || "",
-      imageUrl: card.images && card.images.large ? card.images.large : card.images && card.images.small ? card.images.small : "",
-      priceSourceSuggested: card.cardmarket ? "Cardmarket via Pokémon TCG API" : card.tcgplayer ? "TCGPlayer via Pokémon TCG API" : "Sem preço",
-      suggestedPrices: {
-        currency: "BRL",
-        min: 0,
-        avg: 0,
-        max: 0
-      },
-      raw: card
+      ok: false,
+      error: "ID da carta não informado."
     };
-  });
-}
+  }
 
-function dedupeResults(results) {
-  const seen = new Set();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
 
-  return results.filter(function (card) {
-    const key = card.source + "-" + card.apiId + "-" + card.languageCode;
+  const lastRow = sheet.getLastRow();
 
-    if (seen.has(key)) return false;
+  if (lastRow <= 1) {
+    return {
+      ok: false,
+      error: "Não há cartas para apagar."
+    };
+  }
 
-    seen.add(key);
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
 
-    return true;
-  });
-}
+  for (let i = ids.length - 1; i >= 0; i--) {
+    const rowId = String(ids[i][0] || "");
 
-function renderSearchResults(results) {
-  const list = $("resultsList");
+    if (rowId === String(internalId)) {
+      const sheetRow = i + 2;
+      sheet.deleteRow(sheetRow);
 
-  if (!list) return;
-
-  list.innerHTML = "";
-
-  if (!results.length) return;
-
-  results.forEach(function (card) {
-    const el = document.createElement("article");
-    el.className = "result-card";
-
-    let imgSrc = "";
-
-    if (card.imageUrl) {
-      imgSrc = card.imageUrl.includes("tcgdex") ? card.imageUrl + "/high.webp" : card.imageUrl;
+      return {
+        ok: true,
+        message: "Carta apagada com sucesso.",
+        idInterno: internalId
+      };
     }
+  }
 
-    el.innerHTML =
-      '<img src="' + safeText(imgSrc) + '" alt="' + safeText(card.name) + '" loading="lazy">' +
-      '<div class="result-info">' +
-        '<h3>' + safeText(card.name) + '</h3>' +
-        '<p>' +
-          'Coleção: ' + safeText(card.setName || "-") + '<br>' +
-          'Número: ' + safeText(card.number || "-") + ' • Idioma: ' + safeText(card.language) + '<br>' +
-          'Raridade: ' + safeText(card.rarity || "-") + '<br>' +
-          'Identificação: ' + safeText(card.source) +
-        '</p>' +
-      '</div>' +
-      '<button type="button" class="primary-btn">Escolher</button>';
+  return {
+    ok: false,
+    error: "Carta não encontrada na planilha.",
+    idInterno: internalId
+  };
+}
 
-    const button = el.querySelector("button");
+function listCards_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
 
-    button.addEventListener("click", function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      openPriceDialog(card);
+  const data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) {
+    return [];
+  }
+
+  const rows = data.slice(1);
+
+  return rows
+    .filter(function (row) {
+      return row.join("").trim() !== "";
+    })
+    .map(function (row) {
+      return rowToCard_(row);
     });
-
-    list.appendChild(el);
-  });
 }
 
-// =============================================================
-// PREÇO E SALVAR NO FICHÁRIO
-// =============================================================
-
-function openPriceDialog(card) {
-  selectedCard = card;
-
-  if ($("selectedTitle")) {
-    $("selectedTitle").textContent = card.name;
-  }
-
-  let imgSrc = "";
-
-  if (card.imageUrl) {
-    imgSrc = card.imageUrl.includes("tcgdex") ? card.imageUrl + "/high.webp" : card.imageUrl;
-  }
-
-  if ($("selectedPreview")) {
-    $("selectedPreview").innerHTML =
-      '<img src="' + safeText(imgSrc) + '" alt="' + safeText(card.name) + '">' +
-      '<div>' +
-        '<h3>' + safeText(card.name) + '</h3>' +
-        '<p class="card-meta">' +
-          safeText(card.setName || "-") + '<br>' +
-          safeText(card.number || "-") + ' • ' + safeText(card.language) + '<br>' +
-          safeText(card.rarity || "-") +
-        '</p>' +
-      '</div>';
-  }
-
-  if ($("priceSource")) $("priceSource").value = "Liga Pokémon";
-  if ($("priceCurrency")) $("priceCurrency").value = "BRL";
-  if ($("priceMin")) $("priceMin").value = "";
-  if ($("priceAvg")) $("priceAvg").value = "";
-  if ($("priceMax")) $("priceMax").value = "";
-  if ($("priceLink")) $("priceLink").value = "";
-
-  const ligaUrl = buildLigaSearchUrl(card);
-
-  if ($("ligaSearchLink")) {
-    $("ligaSearchLink").href = ligaUrl;
-  }
-
-  if ($("priceLink")) {
-    $("priceLink").placeholder = ligaUrl;
-  }
-
-  openModal("priceDialog");
-}
-
-async function saveSelectedCard(event) {
-  if (event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  if (!selectedCard) {
-    toast("Nenhuma carta selecionada.");
-    return;
-  }
-
-  if ($("priceCurrency")) {
-    $("priceCurrency").value = "BRL";
-  }
-
-  const now = new Date().toISOString();
-  const ligaUrl = $("ligaSearchLink") ? $("ligaSearchLink").href : "";
-
-  let imageUrl = selectedCard.imageUrl || "";
-  imageUrl = imageUrl.replace(/\/high\.webp$/g, "").replace(/\.webp$/g, "");
-
+function rowToCard_(row) {
   const card = {
-    internalId: "card_" + Date.now(),
-    apiId: selectedCard.apiId || "",
-    name: selectedCard.name || "",
-    languageCode: selectedCard.languageCode || "",
-    language: selectedCard.language || "",
-    setName: selectedCard.setName || "",
-    setId: selectedCard.setId || "",
-    number: selectedCard.number || "",
-    rarity: selectedCard.rarity || "",
-    type: selectedCard.type || "",
-    imageUrl: imageUrl,
-    quantity: Number($("cardQuantity") ? $("cardQuantity").value || 1 : 1),
-    condition: $("cardCondition") ? $("cardCondition").value : "",
-    finish: $("cardFinish") ? $("cardFinish").value : "",
-    priceMin: Number($("priceMin") ? $("priceMin").value || 0 : 0),
-    priceAvg: Number($("priceAvg") ? $("priceAvg").value || 0 : 0),
-    priceMax: Number($("priceMax") ? $("priceMax").value || 0 : 0),
-    currency: "BRL",
-    priceSource: $("priceSource") ? $("priceSource").value || "Liga Pokémon" : "Liga Pokémon",
-    priceLink: $("priceLink") && $("priceLink").value ? $("priceLink").value : ligaUrl,
-    priceDate: now,
-    createdAt: now,
-    notes: $("cardNotes") ? $("cardNotes").value : "",
-    ocrText: $("ocrText") ? $("ocrText").value : "",
-    verificationStatus: "Confirmada manualmente"
+    internalId: row[0] || "",
+    apiId: row[1] || "",
+    name: row[2] || "",
+    language: row[3] || "",
+    languageCode: row[4] || "",
+    setName: row[5] || "",
+    setId: row[6] || "",
+    number: row[7] || "",
+    rarity: row[8] || "",
+    type: row[9] || "",
+    imageUrl: cleanImageUrl_(row[10] || ""),
+    quantity: numberOrDefault_(row[11], 1),
+    condition: row[12] || "",
+    finish: row[13] || "",
+    priceMin: numberOrDefault_(row[14], 0),
+    priceAvg: numberOrDefault_(row[15], 0),
+    priceMax: numberOrDefault_(row[16], 0),
+    currency: row[17] || "BRL",
+    priceSource: row[18] || "Liga Pokémon",
+    priceLink: row[19] || "",
+    priceDate: row[20] || "",
+    createdAt: row[21] || "",
+    notes: row[22] || "",
+    ocrText: row[23] || "",
+    verificationStatus: row[24] || ""
   };
 
-  try {
-    toast("Salvando carta...");
-
-    await apiSaveCard(card);
-
-    closeModal("priceDialog");
-    closeModal("addDialog");
-
-    toast("Carta salva no fichário!");
-
-  } catch (err) {
-    console.error("Erro ao salvar carta:", err);
-    toast("Erro ao salvar na planilha. Verifique se o Apps Script foi implantado como nova versão.");
+  if (card.priceSource === "BRL") {
+    card.priceSource = "Liga Pokémon";
   }
+
+  if (!card.currency || card.currency === "Liga Pokémon") {
+    card.currency = "BRL";
+  }
+
+  if (!card.quantity || isNaN(Number(card.quantity))) {
+    card.quantity = 1;
+  }
+
+  if (isNaN(Number(card.priceMin))) {
+    card.priceMin = 0;
+  }
+
+  if (isNaN(Number(card.priceAvg))) {
+    card.priceAvg = 0;
+  }
+
+  if (isNaN(Number(card.priceMax))) {
+    card.priceMax = 0;
+  }
+
+  return card;
 }
 
-function clearSearch() {
-  const fields = ["searchName", "searchNumber", "searchSet", "ocrText"];
+function cleanImageUrl_(url) {
+  url = String(url || "").trim();
 
-  fields.forEach(function (id) {
-    if ($(id)) $(id).value = "";
-  });
+  if (!url) return "";
 
-  if ($("resultsList")) $("resultsList").innerHTML = "";
-  if ($("searchStatus")) $("searchStatus").textContent = "";
-  if ($("ocrStatus")) $("ocrStatus").textContent = "OCR opcional. Se falhar, digite nome e número manualmente.";
+  if (url.indexOf("://") === 1) {
+    url = "http" + url;
+  }
+
+  if (url.startsWith("//")) {
+    url = "https:" + url;
+  }
+
+  url = url.replace(/\/high\.webp\/high\.webp$/g, "/high.webp");
+
+  return url;
 }
 
-// =============================================================
-// EVENTOS
-// =============================================================
-
-function initEvents() {
-  const btnOpenAdd = $("btnOpenAdd") || getButtonByText("adicionar carta");
-
-  if (btnOpenAdd) {
-    btnOpenAdd.setAttribute("type", "button");
-
-    btnOpenAdd.addEventListener("click", function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      openModal("addDialog");
-    });
+function numberOrBlank_(value) {
+  if (value === "" || value === null || value === undefined) {
+    return "";
   }
 
-  if ($("btnRunOCR")) {
-    $("btnRunOCR").setAttribute("type", "button");
-    $("btnRunOCR").addEventListener("click", runOCR);
+  const text = String(value).replace(",", ".").trim();
+  const n = Number(text);
+
+  if (isNaN(n)) {
+    return "";
   }
 
-  if ($("btnSearchCards")) {
-    $("btnSearchCards").setAttribute("type", "button");
-    $("btnSearchCards").addEventListener("click", searchCards);
-  }
-
-  if ($("btnClearSearch")) {
-    $("btnClearSearch").setAttribute("type", "button");
-    $("btnClearSearch").addEventListener("click", clearSearch);
-  }
-
-  if ($("btnSaveCard")) {
-    $("btnSaveCard").setAttribute("type", "button");
-    $("btnSaveCard").addEventListener("click", saveSelectedCard);
-  }
-
-  const saveByText = getButtonByText("salvar no fichário") || getButtonByText("salvar no fichario");
-
-  if (saveByText && saveByText.id !== "btnSaveCard") {
-    saveByText.setAttribute("type", "button");
-    saveByText.addEventListener("click", saveSelectedCard);
-  }
-
-  if ($("btnRefresh")) {
-    $("btnRefresh").setAttribute("type", "button");
-    $("btnRefresh").addEventListener("click", apiGetCards);
-  }
-
-  if ($("filterText")) {
-    $("filterText").addEventListener("input", applyFilters);
-  }
-
-  if ($("filterLanguage")) {
-    $("filterLanguage").addEventListener("change", applyFilters);
-  }
-
-  if ($("prevPage")) {
-    $("prevPage").setAttribute("type", "button");
-    $("prevPage").addEventListener("click", function (event) {
-      event.preventDefault();
-
-      currentPage--;
-      if (currentPage < 1) currentPage = 1;
-
-      renderBinder();
-    });
-  }
-
-  if ($("nextPage")) {
-    $("nextPage").setAttribute("type", "button");
-    $("nextPage").addEventListener("click", function (event) {
-      event.preventDefault();
-
-      const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-
-      currentPage++;
-      if (currentPage > totalPages) currentPage = totalPages;
-
-      renderBinder();
-    });
-  }
-
-  if ($("priceCurrency")) {
-    $("priceCurrency").value = "BRL";
-  }
+  return n;
 }
 
-document.addEventListener("click", function (event) {
-  const btn = event.target && event.target.closest
-    ? event.target.closest("button")
-    : null;
-
-  if (!btn) return;
-
-  const text = String(btn.textContent || "").trim().toLowerCase();
-
-  if ((text.includes("salvar no fichário") || text.includes("salvar no fichario")) && btn.id !== "btnSaveCard") {
-    saveSelectedCard(event);
+function numberOrDefault_(value, defaultValue) {
+  if (value === "" || value === null || value === undefined) {
+    return defaultValue;
   }
-}, true);
 
-document.addEventListener("DOMContentLoaded", function () {
-  initEvents();
-  apiGetCards();
-});
+  const text = String(value).replace(",", ".").trim();
+  const n = Number(text);
+
+  if (isNaN(n)) {
+    return defaultValue;
+  }
+
+  return n;
+}
+
+function output_(obj, callback) {
+  const json = JSON.stringify(obj);
+
+  if (callback) {
+    return ContentService
+      .createTextOutput(callback + "(" + json + ");")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  return ContentService
+    .createTextOutput(json)
+    .setMimeType(ContentService.MimeType.JSON);
+}
