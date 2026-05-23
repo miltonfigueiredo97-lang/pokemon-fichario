@@ -3,7 +3,7 @@
 // 1) Depois que você implantar o Google Apps Script como Web App,
 //    cole a URL abaixo no lugar de COLE_AQUI_A_URL_DO_APPS_SCRIPT.
 // =============================================================
-const APPS_SCRIPT_URL = "https://script.google.com/macros/library/d/1cGYAeNZMEwh18r9z8KCpmfe2P8xHx5MoYOtsgiA8XhmwTvtNo5fcY0MU/2";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec;
 
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2/cards";
