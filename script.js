@@ -1,7 +1,7 @@
 // =============================================================
-// POKÉMON FICHÁRIO - SCRIPT.JS RECUPERAÇÃO ESTÁVEL
+// POKÉMON FICHÁRIO - SCRIPT.JS
+// Busca PT-BR melhorada + exclusão instantânea
 // Apps Script fixo do Milton
-// Exclusão instantânea no fichário
 // =============================================================
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
@@ -72,6 +72,20 @@ function normalizeNumber(value) {
     .trim()
     .replace(/\s+/g, "")
     .replace(/^0+(?=\d)/, "");
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstWord(value) {
+  return String(value || "").trim().split(/\s+/)[0] || "";
 }
 
 function getCardImage(card) {
@@ -465,7 +479,7 @@ function suggestFieldsFromOCR(text) {
 }
 
 // =============================================================
-// BUSCA DE CARTAS
+// BUSCA DE CARTAS - PT-BR MELHORADA
 // =============================================================
 
 async function searchCards() {
@@ -479,7 +493,7 @@ async function searchCards() {
   }
 
   if ($("searchStatus")) {
-    $("searchStatus").textContent = "Buscando nas bases de cartas...";
+    $("searchStatus").textContent = "Buscando cartas...";
   }
 
   if ($("resultsList")) {
@@ -487,72 +501,130 @@ async function searchCards() {
   }
 
   try {
-    const languages = lang === "all" ? ["pt-br", "ja", "en"] : [lang];
-    const results = [];
+    const languages = lang === "all" ? ["pt-br", "en", "ja"] : [lang];
+    let results = [];
 
+    // Estratégia 1: busca normal por nome + número no idioma escolhido.
     for (const language of languages) {
-      const tcgResults = await searchTCGdex(language, name, number);
-      results.push.apply(results, tcgResults);
+      const found = await searchTCGdexSmart(language, name, number);
+      results = results.concat(found);
     }
 
+    // Estratégia 2: se tiver número, busca só pelo número em todos os idiomas.
+    // Isso ajuda quando o nome em português é diferente ou a API não acha pelo nome.
+    if (number) {
+      for (const language of ["pt-br", "en", "ja"]) {
+        const foundByNumber = await searchTCGdexSmart(language, "", number);
+        results = results.concat(foundByNumber);
+      }
+    }
+
+    // Estratégia 3: se o nome tiver mais de uma palavra, tenta primeira palavra.
+    // Ajuda em nomes compostos e cartas com tradução diferente.
+    if (name && firstWord(name) && firstWord(name) !== name) {
+      for (const language of languages) {
+        const foundByFirstWord = await searchTCGdexSmart(language, firstWord(name), number);
+        results = results.concat(foundByFirstWord);
+      }
+    }
+
+    // Estratégia 4: fallback inglês da Pokémon TCG API.
     if (results.length < 3 && name) {
       const fallback = await searchPokemonTCG(name, number);
-      results.push.apply(results, fallback);
+      results = results.concat(fallback);
     }
 
-    const unique = dedupeResults(results).slice(0, 24);
+    const unique = dedupeResults(results);
+    const sorted = sortSearchResults(unique, name, number);
+    const finalResults = sorted.slice(0, 30);
 
-    renderSearchResults(unique);
+    renderSearchResults(finalResults);
 
     if ($("searchStatus")) {
-      $("searchStatus").textContent = unique.length
-        ? unique.length + " resultado(s) encontrados. Escolha a carta correta."
-        : "Não encontrei resultados. Tente digitar só o nome, ou só o número.";
+      $("searchStatus").textContent = finalResults.length
+        ? finalResults.length + " resultado(s) encontrados."
+        : "Não encontrei resultados. Tente buscar pelo número impresso na carta.";
     }
 
   } catch (err) {
     console.error("Erro ao buscar cartas:", err);
 
     if ($("searchStatus")) {
-      $("searchStatus").textContent = "Erro ao buscar cartas. Veja se a internet está funcionando e tente de novo.";
+      $("searchStatus").textContent = "Erro ao buscar cartas.";
     }
 
     toast("Erro ao buscar cartas.");
   }
 }
 
-async function searchTCGdex(language, name, number) {
+async function searchTCGdexSmart(language, name, number) {
+  const attempts = [];
+
+  const cleanName = String(name || "").trim();
+  const cleanNumber = normalizeNumber(String(number || "").split("/")[0] || number);
+
+  if (cleanName && cleanNumber) {
+    attempts.push({
+      name: cleanName,
+      localId: cleanNumber
+    });
+  }
+
+  if (cleanName) {
+    attempts.push({
+      name: cleanName
+    });
+  }
+
+  if (cleanNumber) {
+    attempts.push({
+      localId: cleanNumber
+    });
+  }
+
+  if (cleanName && firstWord(cleanName) && firstWord(cleanName) !== cleanName) {
+    attempts.push({
+      name: firstWord(cleanName)
+    });
+  }
+
+  const all = [];
+
+  for (const attempt of attempts) {
+    const found = await searchTCGdexAttempt(language, attempt);
+    all.push.apply(all, found);
+  }
+
+  return all;
+}
+
+async function searchTCGdexAttempt(language, attempt) {
   const params = new URLSearchParams();
 
-  if (name) params.set("name", name);
+  if (attempt.name) {
+    params.set("name", attempt.name);
+  }
 
-  if (number) {
-    params.set("localId", normalizeNumber(number.split("/")[0] || number));
+  if (attempt.localId) {
+    params.set("localId", attempt.localId);
   }
 
   params.set("pagination:itemsPerPage", "40");
 
-  let url = TCGDEX_BASE + "/" + language + "/cards?" + params.toString();
+  const url = TCGDEX_BASE + "/" + language + "/cards?" + params.toString();
 
-  let brief = await fetch(url).then(function (r) {
-    return r.ok ? r.json() : [];
-  });
+  let brief = [];
 
-  if (!Array.isArray(brief) || brief.length === 0) {
-    const loose = new URLSearchParams();
-
-    if (name) loose.set("name", name.split(" ")[0]);
-
-    loose.set("pagination:itemsPerPage", "40");
-
-    url = TCGDEX_BASE + "/" + language + "/cards?" + loose.toString();
-
+  try {
     brief = await fetch(url).then(function (r) {
       return r.ok ? r.json() : [];
     });
+  } catch (err) {
+    console.warn("Falha TCGdex", language, attempt, err);
+    brief = [];
   }
 
-  const limited = Array.isArray(brief) ? brief.slice(0, 16) : [];
+  const limited = Array.isArray(brief) ? brief.slice(0, 18) : [];
 
   const detailed = await Promise.all(limited.map(async function (card) {
     try {
@@ -634,7 +706,14 @@ function dedupeResults(results) {
   const seen = new Set();
 
   return results.filter(function (card) {
-    const key = card.source + "-" + card.apiId + "-" + card.languageCode;
+    const key = [
+      card.source,
+      card.apiId,
+      card.languageCode,
+      card.name,
+      card.number,
+      card.setName
+    ].join("-");
 
     if (seen.has(key)) return false;
 
@@ -642,6 +721,38 @@ function dedupeResults(results) {
 
     return true;
   });
+}
+
+function sortSearchResults(results, searchedName, searchedNumber) {
+  const cleanSearchName = normalizeText(searchedName);
+  const cleanSearchNumber = normalizeNumber(String(searchedNumber || "").split("/")[0] || searchedNumber);
+
+  return results.sort(function (a, b) {
+    return scoreCard(b, cleanSearchName, cleanSearchNumber) - scoreCard(a, cleanSearchName, cleanSearchNumber);
+  });
+}
+
+function scoreCard(card, cleanSearchName, cleanSearchNumber) {
+  let score = 0;
+
+  const cardName = normalizeText(card.name);
+  const cardNumber = normalizeNumber(card.number);
+
+  if (card.languageCode === "pt-br") score += 100;
+  if (card.languageCode === "en") score += 50;
+  if (card.languageCode === "ja") score += 30;
+
+  if (cleanSearchNumber && cardNumber === cleanSearchNumber) score += 120;
+  if (cleanSearchNumber && cardNumber.includes(cleanSearchNumber)) score += 60;
+
+  if (cleanSearchName && cardName === cleanSearchName) score += 80;
+  if (cleanSearchName && cardName.includes(cleanSearchName)) score += 45;
+
+  if (card.imageUrl) score += 10;
+  if (card.setName) score += 5;
+  if (card.rarity) score += 5;
+
+  return score;
 }
 
 function renderSearchResults(results) {
@@ -814,26 +925,23 @@ async function deleteCardById(internalId) {
 
   const backupCollection = collection.slice();
 
-  // Remove da tela imediatamente
   collection = collection.filter(function (item) {
     return String(item.internalId || item.idInterno || "") !== String(internalId);
   });
 
   applyFilters();
-  toast("Carta removida da tela. Apagando na planilha...");
+  toast("Carta removida da tela.");
 
   try {
     await apiDeleteCard(internalId);
 
     toast("Carta apagada.");
 
-    // Sincroniza em segundo plano, sem travar a tela
     apiGetCards(false);
 
   } catch (err) {
     console.error("Erro ao apagar carta:", err);
 
-    // Se der erro, volta a carta para a tela
     collection = backupCollection;
     applyFilters();
 
