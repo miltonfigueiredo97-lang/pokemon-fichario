@@ -1,13 +1,19 @@
 // =============================================================
-// POKÉMON BINDER BR - CONFIGURAÇÃO PRINCIPAL
-// 1) Depois que você implantar o Google Apps Script como Web App,
-//    cole a URL abaixo no lugar de COLE_AQUI_A_URL_DO_APPS_SCRIPT.
+// POKÉMON BINDER BR - SCRIPT PRINCIPAL
+// URL DO APPS SCRIPT JÁ FIXA
 // =============================================================
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec;
+
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
 
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2/cards";
-const LANGUAGE_LABEL = { "pt-br": "Português", ja: "Japonês", en: "Inglês" };
+
+const LANGUAGE_LABEL = {
+  "pt-br": "Português",
+  "ja": "Japonês",
+  "en": "Inglês"
+};
+
 const PAGE_SIZE = 9;
 
 let collection = [];
@@ -15,25 +21,48 @@ let filteredCollection = [];
 let currentPage = 1;
 let selectedCard = null;
 
-const $ = (id) => document.getElementById(id);
-const money = (value, currency = "BRL") => {
-  const n = Number(value || 0);
-  try {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(n);
-  } catch {
-    return `R$ ${n.toFixed(2).replace(".", ",")}`;
-  }
-};
-
-function toast(message) {
-  const el = $("toast");
-  el.textContent = message;
-  el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 2800);
+function $(id) {
+  return document.getElementById(id);
 }
 
 function safeText(value) {
-  return String(value || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+  return String(value || "").replace(/[<>&"]/g, function (c) {
+    return {
+      "<": "&lt;",
+      ">": "&gt;",
+      "&": "&amp;",
+      '"': "&quot;"
+    }[c];
+  });
+}
+
+function money(value, currency = "BRL") {
+  const n = Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency || "BRL"
+    }).format(n);
+  } catch (e) {
+    return "R$ " + n.toFixed(2).replace(".", ",");
+  }
+}
+
+function toast(message) {
+  const el = $("toast");
+
+  if (!el) {
+    alert(message);
+    return;
+  }
+
+  el.textContent = message;
+  el.classList.add("show");
+
+  setTimeout(function () {
+    el.classList.remove("show");
+  }, 3000);
 }
 
 function normalizeNumber(value) {
@@ -43,126 +72,205 @@ function normalizeNumber(value) {
     .replace(/^0+(?=\d)/, "");
 }
 
-function buildLigaSearchUrl(card) {
-  const terms = [card.name, card.localId || card.number, card.setName || card.set, "pokemon"]
-    .filter(Boolean)
-    .join(" ");
-  return `https://www.ligapokemon.com.br/?view=cards/search&card=${encodeURIComponent(terms)}`;
-}
+function openModal(id) {
+  const modal = $(id);
 
-function jsonpRequest(params) {
-  return new Promise((resolve, reject) => {
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes("COLE_AQUI")) {
-      reject(new Error("URL do Apps Script não configurada."));
-      return;
-    }
-
-    const callbackName = `pokemonBinderCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const query = new URLSearchParams({ ...params, callback: callbackName, cacheBust: Date.now() });
-    const script = document.createElement("script");
-    const separator = APPS_SCRIPT_URL.includes("?") ? "&" : "?";
-    script.src = `${APPS_SCRIPT_URL}${separator}${query.toString()}`;
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("Tempo esgotado ao falar com o Apps Script."));
-    }, 25000);
-
-    function cleanup() {
-      clearTimeout(timer);
-      delete window[callbackName];
-      script.remove();
-    }
-
-    window[callbackName] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("Falha ao carregar resposta do Apps Script."));
-    };
-
-    document.head.appendChild(script);
-  });
-}
-
-async function apiGetCards() {
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes("COLE_AQUI")) {
-    toast("Configure a URL do Apps Script no script.js para carregar a planilha.");
-    collection = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
-    applyFilters();
+  if (!modal) {
+    toast("Modal não encontrado: " + id);
     return;
   }
 
-  const data = await jsonpRequest({ action: "getCards" });
-  if (!data.ok) throw new Error(data.error || "Falha ao buscar dados da planilha");
-  collection = Array.isArray(data.cards) ? data.cards : [];
-  applyFilters();
+  if (typeof modal.showModal === "function") {
+    modal.showModal();
+  } else {
+    modal.setAttribute("open", "open");
+    modal.classList.add("modal-open");
+  }
+}
+
+function closeModal(id) {
+  const modal = $(id);
+
+  if (!modal) return;
+
+  if (typeof modal.close === "function") {
+    modal.close();
+  } else {
+    modal.removeAttribute("open");
+    modal.classList.remove("modal-open");
+  }
+}
+
+function buildLigaSearchUrl(card) {
+  const terms = [
+    card.name,
+    card.localId || card.number,
+    card.setName || card.set,
+    "pokemon"
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return "https://www.ligapokemon.com.br/?view=cards/search&card=" + encodeURIComponent(terms);
+}
+
+// =============================================================
+// GOOGLE SHEETS / APPS SCRIPT
+// =============================================================
+
+async function apiGetCards() {
+  try {
+    const url = APPS_SCRIPT_URL + "?action=getCards&cacheBust=" + Date.now();
+
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow"
+    });
+
+    const data = await res.json();
+
+    if (!data.ok && data.error) {
+      throw new Error(data.error);
+    }
+
+    collection = Array.isArray(data.cards) ? data.cards : [];
+    applyFilters();
+
+  } catch (err) {
+    console.error("Erro ao carregar planilha:", err);
+
+    const local = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
+    collection = local;
+    applyFilters();
+
+    toast("Não consegui carregar a planilha. Usando modo local temporário.");
+  }
 }
 
 async function apiSaveCard(card) {
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes("COLE_AQUI")) {
+  try {
+    const payload = encodeURIComponent(JSON.stringify(card));
+    const url = APPS_SCRIPT_URL + "?action=saveCard&payload=" + payload + "&cacheBust=" + Date.now();
+
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow"
+    });
+
+    const data = await res.json();
+
+    if (!data.ok) {
+      throw new Error(data.error || "Erro ao salvar carta.");
+    }
+
+    await apiGetCards();
+
+    return data;
+
+  } catch (err) {
+    console.error("Erro ao salvar na planilha:", err);
+
     const local = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
     local.push(card);
     localStorage.setItem("pokemonBinderLocal", JSON.stringify(local));
+
     collection = local;
     applyFilters();
-    toast("Carta salva localmente. Depois configure o Apps Script para salvar na planilha.");
-    return;
+
+    throw err;
   }
-
-  const data = await jsonpRequest({
-    action: "saveCard",
-    payload: JSON.stringify(card),
-  });
-
-  if (!data.ok) throw new Error(data.error || "Erro ao salvar carta");
-  await apiGetCards();
 }
 
-function applyFilters() {
-  const text = $("filterText").value.toLowerCase().trim();
-  const lang = $("filterLanguage").value;
+// =============================================================
+// FILTROS / FICHÁRIO
+// =============================================================
 
-  filteredCollection = collection.filter((card) => {
-    const haystack = [card.name, card.setName, card.number, card.language, card.rarity]
+function applyFilters() {
+  const filterTextEl = $("filterText");
+  const filterLanguageEl = $("filterLanguage");
+
+  const text = filterTextEl ? filterTextEl.value.toLowerCase().trim() : "";
+  const lang = filterLanguageEl ? filterLanguageEl.value : "all";
+
+  filteredCollection = collection.filter(function (card) {
+    const haystack = [
+      card.name,
+      card.nome,
+      card.setName,
+      card.colecao,
+      card.number,
+      card.numero,
+      card.language,
+      card.idioma,
+      card.rarity,
+      card.raridade
+    ]
       .join(" ")
       .toLowerCase();
+
+    const cardLang = card.languageCode || card.codigoIdioma || "";
+
     const matchText = !text || haystack.includes(text);
-    const matchLang = lang === "all" || card.languageCode === lang;
+    const matchLang = lang === "all" || cardLang === lang;
+
     return matchText && matchLang;
   });
 
-  currentPage = Math.min(currentPage, Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE)));
+  const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
+  currentPage = Math.min(currentPage, totalPages);
+  currentPage = Math.max(currentPage, 1);
+
   renderBinder();
   renderStats();
 }
 
 function renderStats() {
-  const totals = collection.reduce((acc, card) => {
-    const qty = Number(card.quantity || 1);
-    acc.qty += qty;
-    acc.min += Number(card.priceMin || 0) * qty;
-    acc.avg += Number(card.priceAvg || 0) * qty;
-    acc.max += Number(card.priceMax || 0) * qty;
-    return acc;
-  }, { qty: 0, min: 0, avg: 0, max: 0 });
+  const totals = collection.reduce(function (acc, card) {
+    const qty = Number(card.quantity || card.quantidade || 1);
 
-  $("totalCards").textContent = totals.qty;
-  $("totalMin").textContent = money(totals.min, "BRL");
-  $("totalAvg").textContent = money(totals.avg, "BRL");
-  $("totalMax").textContent = money(totals.max, "BRL");
+    acc.qty += qty;
+    acc.min += Number(card.priceMin || card.precoMinimo || 0) * qty;
+    acc.avg += Number(card.priceAvg || card.precoMedio || 0) * qty;
+    acc.max += Number(card.priceMax || card.precoMaximo || 0) * qty;
+
+    return acc;
+  }, {
+    qty: 0,
+    min: 0,
+    avg: 0,
+    max: 0
+  });
+
+  if ($("totalCards")) $("totalCards").textContent = totals.qty;
+  if ($("totalMin")) $("totalMin").textContent = money(totals.min, "BRL");
+  if ($("totalAvg")) $("totalAvg").textContent = money(totals.avg, "BRL");
+  if ($("totalMax")) $("totalMax").textContent = money(totals.max, "BRL");
+}
+
+function getCardImage(card) {
+  const image = card.imageUrl || card.imagemUrl || "";
+
+  if (!image) return "";
+
+  if (image.includes("tcgdex") && !image.endsWith(".webp")) {
+    return image + "/high.webp";
+  }
+
+  return image;
 }
 
 function renderBinder() {
   const grid = $("binderGrid");
+
+  if (!grid) return;
+
   grid.innerHTML = "";
 
   const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-  currentPage = Math.min(Math.max(1, currentPage), totalPages);
-  $("pageInfo").textContent = `Página ${currentPage} de ${totalPages}`;
+
+  if ($("pageInfo")) {
+    $("pageInfo").textContent = "Página " + currentPage + " de " + totalPages;
+  }
 
   const start = (currentPage - 1) * PAGE_SIZE;
   const cards = filteredCollection.slice(start, start + PAGE_SIZE);
@@ -170,74 +278,135 @@ function renderBinder() {
   for (let i = 0; i < PAGE_SIZE; i++) {
     const card = cards[i];
     const slot = document.createElement("article");
-    slot.className = `card-slot ${card ? "" : "empty"}`;
+
+    slot.className = "card-slot" + (card ? "" : " empty");
 
     if (!card) {
       slot.textContent = "Espaço vazio";
     } else {
-      const img = card.imageUrl ? `${card.imageUrl}/high.webp` : "";
-      slot.innerHTML = `
-        <span class="qty-badge">x${safeText(card.quantity || 1)}</span>
-        <div class="card-img-wrap">${img ? `<img src="${img}" alt="${safeText(card.name)}" loading="lazy" onerror="this.src='${safeText(card.imageUrl)}.webp'" />` : ""}</div>
-        <div class="card-title">${safeText(card.name)}</div>
-        <div class="card-meta">${safeText(card.setName || "Coleção não informada")}<br>${safeText(card.number || "-")} • ${safeText(card.language || "-")}</div>
-        <div class="price-pill">${money(card.priceMin, "BRL")} - ${money(card.priceMax, "BRL")}</div>
-        <div class="source-line">Fonte: ${safeText(card.priceSource || "Sem preço")}</div>
-      `;
+      const name = card.name || card.nome || "Sem nome";
+      const setName = card.setName || card.colecao || "Coleção não informada";
+      const number = card.number || card.numero || "-";
+      const language = card.language || card.idioma || "-";
+      const quantity = card.quantity || card.quantidade || 1;
+      const priceMin = card.priceMin || card.precoMinimo || 0;
+      const priceMax = card.priceMax || card.precoMaximo || 0;
+      const priceSource = card.priceSource || card.fontePreco || "Sem preço";
+      const image = getCardImage(card);
+
+      slot.innerHTML =
+        '<span class="qty-badge">x' + safeText(quantity) + '</span>' +
+        '<div class="card-img-wrap">' +
+          (image ? '<img src="' + safeText(image) + '" alt="' + safeText(name) + '" loading="lazy">' : "") +
+        '</div>' +
+        '<div class="card-title">' + safeText(name) + '</div>' +
+        '<div class="card-meta">' + safeText(setName) + '<br>' + safeText(number) + ' • ' + safeText(language) + '</div>' +
+        '<div class="price-pill">' + money(priceMin, "BRL") + " - " + money(priceMax, "BRL") + '</div>' +
+        '<div class="source-line">Fonte: ' + safeText(priceSource) + '</div>';
     }
+
     grid.appendChild(slot);
   }
 }
 
+// =============================================================
+// OCR
+// =============================================================
+
 async function runOCR() {
-  const file = $("cardPhoto").files[0];
-  if (!file) {
+  const fileInput = $("cardPhoto");
+
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) {
     toast("Escolha ou tire uma foto da carta primeiro.");
     return;
   }
 
-  $("ocrStatus").textContent = "Lendo imagem... isso pode demorar alguns segundos.";
+  if (typeof Tesseract === "undefined") {
+    toast("OCR não carregou. Digite o nome e número manualmente.");
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  if ($("ocrStatus")) {
+    $("ocrStatus").textContent = "Lendo imagem... isso pode demorar alguns segundos.";
+  }
+
   try {
     const result = await Tesseract.recognize(file, "por+eng+jpn", {
-      logger: (m) => {
-        if (m.status) $("ocrStatus").textContent = `OCR: ${m.status} ${m.progress ? Math.round(m.progress * 100) + "%" : ""}`;
+      logger: function (m) {
+        if ($("ocrStatus") && m.status) {
+          const progress = m.progress ? " " + Math.round(m.progress * 100) + "%" : "";
+          $("ocrStatus").textContent = "OCR: " + m.status + progress;
+        }
       }
     });
-    const text = result?.data?.text || "";
-    $("ocrText").value = text.trim();
+
+    const text = result && result.data && result.data.text ? result.data.text : "";
+
+    if ($("ocrText")) $("ocrText").value = text.trim();
+
     suggestFieldsFromOCR(text);
-    $("ocrStatus").textContent = "OCR concluído. Confira/corrija os campos antes de buscar.";
+
+    if ($("ocrStatus")) {
+      $("ocrStatus").textContent = "OCR concluído. Confira/corrija os campos antes de buscar.";
+    }
+
   } catch (err) {
-    console.error(err);
-    $("ocrStatus").textContent = "Não consegui ler a imagem. Digite nome e número manualmente.";
+    console.error("Erro no OCR:", err);
+
+    if ($("ocrStatus")) {
+      $("ocrStatus").textContent = "Não consegui ler a imagem. Digite nome e número manualmente.";
+    }
+
+    toast("OCR falhou. Digite nome e número manualmente.");
   }
 }
 
 function suggestFieldsFromOCR(text) {
-  const lines = String(text || "").split(/\n+/).map(l => l.trim()).filter(Boolean);
-  const numberMatch = text.match(/([A-Z]{0,4}\s?\d{1,3}\s?\/\s?\d{1,3}|[A-Z]{1,5}\s?\d{1,3})/i);
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map(function (l) {
+      return l.trim();
+    })
+    .filter(Boolean);
 
-  if (!$("searchName").value && lines[0]) {
-    const cleaned = lines[0].replace(/[^\p{L}\p{N}\s.'-]/gu, "").trim();
+  const numberMatch = String(text || "").match(/([A-Z]{0,4}\s?\d{1,3}\s?\/\s?\d{1,3}|[A-Z]{1,5}\s?\d{1,3})/i);
+
+  if ($("searchName") && !$("searchName").value && lines[0]) {
+    const cleaned = lines[0]
+      .replace(/[^\p{L}\p{N}\s.'-]/gu, "")
+      .trim();
+
     $("searchName").value = cleaned;
   }
-  if (!$("searchNumber").value && numberMatch) {
+
+  if ($("searchNumber") && !$("searchNumber").value && numberMatch) {
     $("searchNumber").value = numberMatch[1].replace(/\s+/g, "");
   }
 }
 
+// =============================================================
+// BUSCA DE CARTAS
+// =============================================================
+
 async function searchCards() {
-  const name = $("searchName").value.trim();
-  const number = $("searchNumber").value.trim();
-  const lang = $("searchLanguage").value;
+  const name = $("searchName") ? $("searchName").value.trim() : "";
+  const number = $("searchNumber") ? $("searchNumber").value.trim() : "";
+  const lang = $("searchLanguage") ? $("searchLanguage").value : "all";
 
   if (!name && !number) {
     toast("Digite o nome ou o número/código da carta.");
     return;
   }
 
-  $("searchStatus").textContent = "Buscando nas bases de cartas...";
-  $("resultsList").innerHTML = "";
+  if ($("searchStatus")) {
+    $("searchStatus").textContent = "Buscando nas bases de cartas...";
+  }
+
+  if ($("resultsList")) {
+    $("resultsList").innerHTML = "";
+  }
 
   try {
     const languages = lang === "all" ? ["pt-br", "ja", "en"] : [lang];
@@ -245,48 +414,77 @@ async function searchCards() {
 
     for (const language of languages) {
       const tcgResults = await searchTCGdex(language, name, number);
-      results.push(...tcgResults);
+      results.push.apply(results, tcgResults);
     }
 
     if (results.length < 3 && name) {
       const fallback = await searchPokemonTCG(name, number);
-      results.push(...fallback);
+      results.push.apply(results, fallback);
     }
 
     const unique = dedupeResults(results).slice(0, 24);
+
     renderSearchResults(unique);
-    $("searchStatus").textContent = unique.length
-      ? `${unique.length} resultado(s) encontrados. Escolha a carta correta.`
-      : "Não encontrei resultados. Tente digitar só o nome, ou só o número.";
+
+    if ($("searchStatus")) {
+      $("searchStatus").textContent = unique.length
+        ? unique.length + " resultado(s) encontrados. Escolha a carta correta."
+        : "Não encontrei resultados. Tente digitar só o nome, ou só o número.";
+    }
+
   } catch (err) {
-    console.error(err);
-    $("searchStatus").textContent = "Erro ao buscar cartas. Veja se a internet está funcionando e tente de novo.";
+    console.error("Erro ao buscar cartas:", err);
+
+    if ($("searchStatus")) {
+      $("searchStatus").textContent = "Erro ao buscar cartas. Veja se a internet está funcionando e tente de novo.";
+    }
+
+    toast("Erro ao buscar cartas.");
   }
 }
 
 async function searchTCGdex(language, name, number) {
   const params = new URLSearchParams();
+
   if (name) params.set("name", name);
-  if (number) params.set("localId", normalizeNumber(number.split("/")[0] || number));
+
+  if (number) {
+    params.set("localId", normalizeNumber(number.split("/")[0] || number));
+  }
+
   params.set("pagination:itemsPerPage", "40");
 
-  let url = `${TCGDEX_BASE}/${language}/cards?${params.toString()}`;
-  let brief = await fetch(url).then(r => r.ok ? r.json() : []);
+  let url = TCGDEX_BASE + "/" + language + "/cards?" + params.toString();
+
+  let brief = await fetch(url).then(function (r) {
+    return r.ok ? r.json() : [];
+  });
 
   if (!Array.isArray(brief) || brief.length === 0) {
     const loose = new URLSearchParams();
+
     if (name) loose.set("name", name.split(" ")[0]);
+
     loose.set("pagination:itemsPerPage", "40");
-    url = `${TCGDEX_BASE}/${language}/cards?${loose.toString()}`;
-    brief = await fetch(url).then(r => r.ok ? r.json() : []);
+
+    url = TCGDEX_BASE + "/" + language + "/cards?" + loose.toString();
+
+    brief = await fetch(url).then(function (r) {
+      return r.ok ? r.json() : [];
+    });
   }
 
-  const limited = (Array.isArray(brief) ? brief : []).slice(0, 16);
-  const detailed = await Promise.all(limited.map(async (card) => {
+  const limited = Array.isArray(brief) ? brief.slice(0, 16) : [];
+
+  const detailed = await Promise.all(limited.map(async function (card) {
     try {
-      const full = await fetch(`${TCGDEX_BASE}/${language}/cards/${card.id}`).then(r => r.ok ? r.json() : card);
+      const full = await fetch(TCGDEX_BASE + "/" + language + "/cards/" + card.id).then(function (r) {
+        return r.ok ? r.json() : card;
+      });
+
       return mapTCGdexCard(full, language);
-    } catch {
+
+    } catch (e) {
       return mapTCGdexCard(card, language);
     }
   }));
@@ -297,131 +495,218 @@ async function searchTCGdex(language, name, number) {
 function mapTCGdexCard(card, language) {
   return {
     source: "TCGdex",
-    apiId: card.id,
+    apiId: card.id || "",
     name: card.name || "Sem nome",
     languageCode: language,
     language: LANGUAGE_LABEL[language] || language,
     localId: card.localId || "",
     number: card.localId || "",
-    setName: card.set?.name || card.set?.id || "",
-    setId: card.set?.id || "",
+    setName: card.set && card.set.name ? card.set.name : card.set && card.set.id ? card.set.id : "",
+    setId: card.set && card.set.id ? card.set.id : "",
     rarity: card.rarity || "",
     imageUrl: card.image || "",
-    raw: card,
+    raw: card
   };
 }
 
 async function searchPokemonTCG(name, number) {
   const clauses = [];
-  if (name) clauses.push(`name:*${name.replace(/\s+/g, "*")}*`);
-  if (number) clauses.push(`number:${normalizeNumber(number.split("/")[0] || number)}`);
+
+  if (name) {
+    clauses.push("name:*" + name.replace(/\s+/g, "*") + "*");
+  }
+
+  if (number) {
+    clauses.push("number:" + normalizeNumber(number.split("/")[0] || number));
+  }
+
   const q = clauses.join(" ");
-  const url = `${POKEMON_TCG_BASE}?q=${encodeURIComponent(q)}&pageSize=12`;
-  const data = await fetch(url).then(r => r.ok ? r.json() : { data: [] });
-  return (data.data || []).map((card) => ({
-    source: "Pokémon TCG API",
-    apiId: card.id,
-    name: card.name || "Sem nome",
-    languageCode: "en",
-    language: "Inglês",
-    localId: card.number || "",
-    number: card.number || "",
-    setName: card.set?.name || "",
-    setId: card.set?.id || "",
-    rarity: card.rarity || "",
-    imageUrl: card.images?.large || card.images?.small || "",
-    priceSourceSuggested: card.cardmarket ? "Cardmarket via Pokémon TCG API" : (card.tcgplayer ? "TCGPlayer via Pokémon TCG API" : "Sem preço"),
-    suggestedPrices: extractPokemonTcgPrices(card),
-    raw: card,
-  }));
+  const url = POKEMON_TCG_BASE + "?q=" + encodeURIComponent(q) + "&pageSize=12";
+
+  const data = await fetch(url).then(function (r) {
+    return r.ok ? r.json() : { data: [] };
+  });
+
+  return (data.data || []).map(function (card) {
+    return {
+      source: "Pokémon TCG API",
+      apiId: card.id || "",
+      name: card.name || "Sem nome",
+      languageCode: "en",
+      language: "Inglês",
+      localId: card.number || "",
+      number: card.number || "",
+      setName: card.set && card.set.name ? card.set.name : "",
+      setId: card.set && card.set.id ? card.set.id : "",
+      rarity: card.rarity || "",
+      imageUrl: card.images && card.images.large ? card.images.large : card.images && card.images.small ? card.images.small : "",
+      priceSourceSuggested: card.cardmarket ? "Cardmarket via Pokémon TCG API" : card.tcgplayer ? "TCGPlayer via Pokémon TCG API" : "Sem preço",
+      suggestedPrices: extractPokemonTcgPrices(card),
+      raw: card
+    };
+  });
 }
 
 function extractPokemonTcgPrices(card) {
-  if (card.cardmarket?.prices) {
+  if (card.cardmarket && card.cardmarket.prices) {
     const p = card.cardmarket.prices;
-    return { currency: "EUR", min: p.lowPrice || 0, avg: p.averageSellPrice || p.trendPrice || 0, max: p.avg1 || p.avg7 || p.avg30 || 0 };
+
+    return {
+      currency: "EUR",
+      min: p.lowPrice || 0,
+      avg: p.averageSellPrice || p.trendPrice || 0,
+      max: p.avg1 || p.avg7 || p.avg30 || 0
+    };
   }
-  if (card.tcgplayer?.prices) {
+
+  if (card.tcgplayer && card.tcgplayer.prices) {
     const buckets = Object.values(card.tcgplayer.prices);
     const market = buckets.find(Boolean) || {};
-    return { currency: "USD", min: market.low || 0, avg: market.market || market.mid || 0, max: market.high || 0 };
+
+    return {
+      currency: "USD",
+      min: market.low || 0,
+      avg: market.market || market.mid || 0,
+      max: market.high || 0
+    };
   }
-  return { currency: "BRL", min: 0, avg: 0, max: 0 };
+
+  return {
+    currency: "BRL",
+    min: 0,
+    avg: 0,
+    max: 0
+  };
 }
 
 function dedupeResults(results) {
   const seen = new Set();
-  return results.filter((card) => {
-    const key = `${card.source}-${card.apiId}-${card.languageCode}`;
+
+  return results.filter(function (card) {
+    const key = card.source + "-" + card.apiId + "-" + card.languageCode;
+
     if (seen.has(key)) return false;
+
     seen.add(key);
+
     return true;
   });
 }
 
 function renderSearchResults(results) {
   const list = $("resultsList");
+
+  if (!list) return;
+
   list.innerHTML = "";
+
   if (!results.length) return;
 
-  results.forEach((card) => {
+  results.forEach(function (card) {
     const el = document.createElement("article");
     el.className = "result-card";
-    const imgSrc = card.imageUrl ? (card.imageUrl.includes("tcgdex") ? `${card.imageUrl}/high.webp` : card.imageUrl) : "";
-    el.innerHTML = `
-      <img src="${safeText(imgSrc)}" alt="${safeText(card.name)}" loading="lazy" />
-      <div class="result-info">
-        <h3>${safeText(card.name)}</h3>
-        <p>
-          Coleção: ${safeText(card.setName || "-")}<br>
-          Número: ${safeText(card.number || "-")} • Idioma: ${safeText(card.language)}<br>
-          Raridade: ${safeText(card.rarity || "-")}<br>
-          Identificação: ${safeText(card.source)}
-        </p>
-      </div>
-      <button type="button" class="primary-btn">Escolher</button>
-    `;
-    el.querySelector("button").addEventListener("click", () => openPriceDialog(card));
+
+    let imgSrc = "";
+
+    if (card.imageUrl) {
+      imgSrc = card.imageUrl.includes("tcgdex") ? card.imageUrl + "/high.webp" : card.imageUrl;
+    }
+
+    el.innerHTML =
+      '<img src="' + safeText(imgSrc) + '" alt="' + safeText(card.name) + '" loading="lazy">' +
+      '<div class="result-info">' +
+        '<h3>' + safeText(card.name) + '</h3>' +
+        '<p>' +
+          'Coleção: ' + safeText(card.setName || "-") + '<br>' +
+          'Número: ' + safeText(card.number || "-") + ' • Idioma: ' + safeText(card.language) + '<br>' +
+          'Raridade: ' + safeText(card.rarity || "-") + '<br>' +
+          'Identificação: ' + safeText(card.source) +
+        '</p>' +
+      '</div>' +
+      '<button type="button" class="primary-btn">Escolher</button>';
+
+    const button = el.querySelector("button");
+
+    button.addEventListener("click", function () {
+      openPriceDialog(card);
+    });
+
     list.appendChild(el);
   });
 }
 
+// =============================================================
+// PREÇO / SALVAR CARTA
+// =============================================================
+
 function openPriceDialog(card) {
   selectedCard = card;
-  $("selectedTitle").textContent = card.name;
-  const imgSrc = card.imageUrl ? (card.imageUrl.includes("tcgdex") ? `${card.imageUrl}/high.webp` : card.imageUrl) : "";
-  $("selectedPreview").innerHTML = `
-    <img src="${safeText(imgSrc)}" alt="${safeText(card.name)}" />
-    <div>
-      <h3>${safeText(card.name)}</h3>
-      <p class="card-meta">${safeText(card.setName || "-")}<br>${safeText(card.number || "-")} • ${safeText(card.language)}<br>${safeText(card.rarity || "-")}</p>
-    </div>
-  `;
 
-  const suggested = card.suggestedPrices || { currency: "BRL", min: 0, avg: 0, max: 0 };
-  $("priceSource").value = card.priceSourceSuggested || "Liga Pokémon";
-  $("priceCurrency").value = suggested.currency || "BRL";
-  $("priceMin").value = suggested.min || "";
-  $("priceAvg").value = suggested.avg || "";
-  $("priceMax").value = suggested.max || "";
-  $("priceLink").value = "";
+  if ($("selectedTitle")) {
+    $("selectedTitle").textContent = card.name;
+  }
+
+  let imgSrc = "";
+
+  if (card.imageUrl) {
+    imgSrc = card.imageUrl.includes("tcgdex") ? card.imageUrl + "/high.webp" : card.imageUrl;
+  }
+
+  if ($("selectedPreview")) {
+    $("selectedPreview").innerHTML =
+      '<img src="' + safeText(imgSrc) + '" alt="' + safeText(card.name) + '">' +
+      '<div>' +
+        '<h3>' + safeText(card.name) + '</h3>' +
+        '<p class="card-meta">' +
+          safeText(card.setName || "-") + '<br>' +
+          safeText(card.number || "-") + ' • ' + safeText(card.language) + '<br>' +
+          safeText(card.rarity || "-") +
+        '</p>' +
+      '</div>';
+  }
+
+  const suggested = card.suggestedPrices || {
+    currency: "BRL",
+    min: 0,
+    avg: 0,
+    max: 0
+  };
+
+  if ($("priceSource")) $("priceSource").value = card.priceSourceSuggested || "Liga Pokémon";
+  if ($("priceCurrency")) $("priceCurrency").value = suggested.currency || "BRL";
+  if ($("priceMin")) $("priceMin").value = suggested.min || "";
+  if ($("priceAvg")) $("priceAvg").value = suggested.avg || "";
+  if ($("priceMax")) $("priceMax").value = suggested.max || "";
+  if ($("priceLink")) $("priceLink").value = "";
 
   const ligaUrl = buildLigaSearchUrl(card);
-  $("ligaSearchLink").href = ligaUrl;
-  $("priceLink").placeholder = ligaUrl;
 
-  $("priceDialog").showModal();
+  if ($("ligaSearchLink")) {
+    $("ligaSearchLink").href = ligaUrl;
+  }
+
+  if ($("priceLink")) {
+    $("priceLink").placeholder = ligaUrl;
+  }
+
+  openModal("priceDialog");
 }
 
 async function saveSelectedCard() {
-  if (!selectedCard) return;
+  if (!selectedCard) {
+    toast("Nenhuma carta selecionada.");
+    return;
+  }
 
   const now = new Date().toISOString();
-  const ligaUrl = $("ligaSearchLink").href;
-  const imageUrl = selectedCard.imageUrl?.replace(/\/high\.webp$|\.webp$/g, "") || selectedCard.imageUrl || "";
+  const ligaUrl = $("ligaSearchLink") ? $("ligaSearchLink").href : "";
+
+  let imageUrl = selectedCard.imageUrl || "";
+
+  imageUrl = imageUrl.replace(/\/high\.webp$/g, "").replace(/\.webp$/g, "");
 
   const card = {
-    internalId: `card_${Date.now()}`,
+    internalId: "card_" + Date.now(),
     apiId: selectedCard.apiId || "",
     name: selectedCard.name || "",
     languageCode: selectedCard.languageCode || "",
@@ -430,58 +715,118 @@ async function saveSelectedCard() {
     setId: selectedCard.setId || "",
     number: selectedCard.number || selectedCard.localId || "",
     rarity: selectedCard.rarity || "",
-    imageUrl,
-    quantity: Number($("cardQuantity").value || 1),
-    condition: $("cardCondition").value,
-    finish: $("cardFinish").value,
-    priceMin: Number($("priceMin").value || 0),
-    priceAvg: Number($("priceAvg").value || 0),
-    priceMax: Number($("priceMax").value || 0),
-    currency: $("priceCurrency").value,
-    priceSource: $("priceSource").value,
-    priceLink: $("priceLink").value || ligaUrl,
+    type: selectedCard.type || "",
+    imageUrl: imageUrl,
+    quantity: Number($("cardQuantity") ? $("cardQuantity").value || 1 : 1),
+    condition: $("cardCondition") ? $("cardCondition").value : "",
+    finish: $("cardFinish") ? $("cardFinish").value : "",
+    priceMin: Number($("priceMin") ? $("priceMin").value || 0 : 0),
+    priceAvg: Number($("priceAvg") ? $("priceAvg").value || 0 : 0),
+    priceMax: Number($("priceMax") ? $("priceMax").value || 0 : 0),
+    currency: $("priceCurrency") ? $("priceCurrency").value : "BRL",
+    priceSource: $("priceSource") ? $("priceSource").value : "Liga Pokémon",
+    priceLink: $("priceLink") && $("priceLink").value ? $("priceLink").value : ligaUrl,
     priceDate: now,
     createdAt: now,
-    notes: $("cardNotes").value,
-    ocrText: $("ocrText").value,
-    verificationStatus: "Confirmada manualmente",
+    notes: $("cardNotes") ? $("cardNotes").value : "",
+    ocrText: $("ocrText") ? $("ocrText").value : "",
+    verificationStatus: "Confirmada manualmente"
   };
 
   try {
+    toast("Salvando carta...");
+
     await apiSaveCard(card);
-    $("priceDialog").close();
-    $("addDialog").close();
+
+    closeModal("priceDialog");
+    closeModal("addDialog");
+
     toast("Carta salva no fichário!");
+
   } catch (err) {
     console.error(err);
-    toast("Erro ao salvar. Confira a URL do Apps Script e permissões.");
+    toast("Erro ao salvar. A carta pode ter ficado só no modo local.");
   }
 }
 
 function clearSearch() {
-  ["searchName", "searchNumber", "searchSet", "ocrText"].forEach(id => $(id).value = "");
-  $("resultsList").innerHTML = "";
-  $("searchStatus").textContent = "";
-  $("ocrStatus").textContent = "OCR opcional. Se falhar, digite nome e número manualmente.";
+  const fields = ["searchName", "searchNumber", "searchSet", "ocrText"];
+
+  fields.forEach(function (id) {
+    if ($(id)) $(id).value = "";
+  });
+
+  if ($("resultsList")) $("resultsList").innerHTML = "";
+  if ($("searchStatus")) $("searchStatus").textContent = "";
+  if ($("ocrStatus")) $("ocrStatus").textContent = "OCR opcional. Se falhar, digite nome e número manualmente.";
 }
+
+// =============================================================
+// EVENTOS
+// =============================================================
 
 function initEvents() {
-  $("btnOpenAdd").addEventListener("click", () => $("addDialog").showModal());
-  $("btnRunOCR").addEventListener("click", runOCR);
-  $("btnSearchCards").addEventListener("click", searchCards);
-  $("btnClearSearch").addEventListener("click", clearSearch);
-  $("btnSaveCard").addEventListener("click", saveSelectedCard);
-  $("btnRefresh").addEventListener("click", apiGetCards);
-  $("filterText").addEventListener("input", applyFilters);
-  $("filterLanguage").addEventListener("change", applyFilters);
-  $("prevPage").addEventListener("click", () => { currentPage--; renderBinder(); });
-  $("nextPage").addEventListener("click", () => { currentPage++; renderBinder(); });
+  const btnOpenAdd = $("btnOpenAdd");
+
+  if (btnOpenAdd) {
+    btnOpenAdd.addEventListener("click", function () {
+      openModal("addDialog");
+    });
+  }
+
+  if ($("btnRunOCR")) {
+    $("btnRunOCR").addEventListener("click", runOCR);
+  }
+
+  if ($("btnSearchCards")) {
+    $("btnSearchCards").addEventListener("click", searchCards);
+  }
+
+  if ($("btnClearSearch")) {
+    $("btnClearSearch").addEventListener("click", clearSearch);
+  }
+
+  if ($("btnSaveCard")) {
+    $("btnSaveCard").addEventListener("click", saveSelectedCard);
+  }
+
+  if ($("btnRefresh")) {
+    $("btnRefresh").addEventListener("click", apiGetCards);
+  }
+
+  if ($("filterText")) {
+    $("filterText").addEventListener("input", applyFilters);
+  }
+
+  if ($("filterLanguage")) {
+    $("filterLanguage").addEventListener("change", applyFilters);
+  }
+
+  if ($("prevPage")) {
+    $("prevPage").addEventListener("click", function () {
+      currentPage--;
+      renderBinder();
+    });
+  }
+
+  if ($("nextPage")) {
+    $("nextPage").addEventListener("click", function () {
+      currentPage++;
+      renderBinder();
+    });
+  }
 }
 
-initEvents();
-apiGetCards().catch((err) => {
-  console.error(err);
-  toast("Não consegui carregar a planilha. Usando modo local temporário.");
-  collection = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
-  applyFilters();
+document.addEventListener("DOMContentLoaded", function () {
+  initEvents();
+
+  apiGetCards().catch(function (err) {
+    console.error(err);
+
+    const local = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
+    collection = local;
+    applyFilters();
+
+    toast("Não consegui carregar a planilha. Usando modo local temporário.");
+  });
 });
