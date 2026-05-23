@@ -1,6 +1,6 @@
 // =============================================================
-// POKÉMON BINDER BR - SCRIPT PRINCIPAL
-// URL DO APPS SCRIPT JÁ FIXA
+// POKÉMON FICHÁRIO - SCRIPT.JS COMPLETO
+// Apps Script fixo do Milton
 // =============================================================
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQodij2OsOZsx_k_C1gbWaB1y4ieHdpHfFLN0NLlxAErXQxZg6cXVzBW0Q/exec";
@@ -8,18 +8,22 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys5J81vcGxNQod
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2/cards";
 
+const PAGE_SIZE = 9;
+
 const LANGUAGE_LABEL = {
   "pt-br": "Português",
-  "ja": "Japonês",
-  "en": "Inglês"
+  "en": "Inglês",
+  "ja": "Japonês"
 };
-
-const PAGE_SIZE = 9;
 
 let collection = [];
 let filteredCollection = [];
 let currentPage = 1;
 let selectedCard = null;
+
+// =============================================================
+// FUNÇÕES BÁSICAS
+// =============================================================
 
 function $(id) {
   return document.getElementById(id);
@@ -34,19 +38,6 @@ function safeText(value) {
       '"': "&quot;"
     }[c];
   });
-}
-
-function money(value, currency = "BRL") {
-  const n = Number(value || 0);
-
-  try {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: currency || "BRL"
-    }).format(n);
-  } catch (e) {
-    return "R$ " + n.toFixed(2).replace(".", ",");
-  }
 }
 
 function toast(message) {
@@ -65,6 +56,19 @@ function toast(message) {
   }, 3000);
 }
 
+function money(value, currency) {
+  const n = Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency || "BRL"
+    }).format(n);
+  } catch (e) {
+    return "R$ " + n.toFixed(2).replace(".", ",");
+  }
+}
+
 function normalizeNumber(value) {
   return String(value || "")
     .trim()
@@ -72,17 +76,33 @@ function normalizeNumber(value) {
     .replace(/^0+(?=\d)/, "");
 }
 
+function getButtonByText(text) {
+  const buttons = Array.from(document.querySelectorAll("button"));
+
+  return buttons.find(function (btn) {
+    return String(btn.textContent || "")
+      .trim()
+      .toLowerCase()
+      .includes(text.toLowerCase());
+  });
+}
+
 function openModal(id) {
   const modal = $(id);
 
   if (!modal) {
-    toast("Modal não encontrado: " + id);
+    toast("Não encontrei a janela: " + id);
     return;
   }
 
-  if (typeof modal.showModal === "function") {
-    modal.showModal();
-  } else {
+  try {
+    if (typeof modal.showModal === "function" && !modal.open) {
+      modal.showModal();
+    } else {
+      modal.setAttribute("open", "open");
+      modal.classList.add("modal-open");
+    }
+  } catch (e) {
     modal.setAttribute("open", "open");
     modal.classList.add("modal-open");
   }
@@ -93,9 +113,14 @@ function closeModal(id) {
 
   if (!modal) return;
 
-  if (typeof modal.close === "function") {
-    modal.close();
-  } else {
+  try {
+    if (typeof modal.close === "function") {
+      modal.close();
+    } else {
+      modal.removeAttribute("open");
+      modal.classList.remove("modal-open");
+    }
+  } catch (e) {
     modal.removeAttribute("open");
     modal.classList.remove("modal-open");
   }
@@ -104,8 +129,8 @@ function closeModal(id) {
 function buildLigaSearchUrl(card) {
   const terms = [
     card.name,
-    card.localId || card.number,
-    card.setName || card.set,
+    card.number,
+    card.setName,
     "pokemon"
   ]
     .filter(Boolean)
@@ -114,24 +139,113 @@ function buildLigaSearchUrl(card) {
   return "https://www.ligapokemon.com.br/?view=cards/search&card=" + encodeURIComponent(terms);
 }
 
+function getCardImage(card) {
+  const image = card.imageUrl || card.imagemUrl || "";
+
+  if (!image) return "";
+
+  if (image.includes("tcgdex") && !image.endsWith(".webp")) {
+    return image + "/high.webp";
+  }
+
+  return image;
+}
+
 // =============================================================
-// GOOGLE SHEETS / APPS SCRIPT
+// ENTER NÃO FECHA MODAL
 // =============================================================
+
+document.addEventListener("keydown", function (event) {
+  if (event.key !== "Enter") return;
+
+  const tag = event.target && event.target.tagName
+    ? event.target.tagName.toLowerCase()
+    : "";
+
+  const type = event.target && event.target.type
+    ? String(event.target.type).toLowerCase()
+    : "";
+
+  const isTextarea = tag === "textarea";
+  const isButton = tag === "button" || type === "button" || type === "submit";
+
+  if (!isTextarea && !isButton) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+}, true);
+
+document.addEventListener("submit", function (event) {
+  const insideDialog = event.target && event.target.closest
+    ? event.target.closest("dialog")
+    : null;
+
+  if (insideDialog) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+}, true);
+
+// =============================================================
+// COMUNICAÇÃO COM APPS SCRIPT VIA JSONP
+// Evita erro de CORS do Google Apps Script no Vercel
+// =============================================================
+
+function jsonpRequest(action, params) {
+  return new Promise(function (resolve, reject) {
+    const callbackName = "pokemonBinderCallback_" + Date.now() + "_" + Math.floor(Math.random() * 999999);
+
+    const query = new URLSearchParams();
+    query.set("action", action);
+    query.set("callback", callbackName);
+    query.set("cacheBust", Date.now());
+
+    if (params) {
+      Object.keys(params).forEach(function (key) {
+        query.set(key, params[key]);
+      });
+    }
+
+    const script = document.createElement("script");
+
+    window[callbackName] = function (data) {
+      cleanup();
+
+      if (!data || data.ok === false) {
+        reject(new Error(data && data.error ? data.error : "Erro desconhecido no Apps Script."));
+        return;
+      }
+
+      resolve(data);
+    };
+
+    function cleanup() {
+      try {
+        delete window[callbackName];
+      } catch (e) {
+        window[callbackName] = undefined;
+      }
+
+      if (script && script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    }
+
+    script.onerror = function () {
+      cleanup();
+      reject(new Error("Falha ao conectar com o Apps Script."));
+    };
+
+    script.src = APPS_SCRIPT_URL + "?" + query.toString();
+
+    document.body.appendChild(script);
+  });
+}
 
 async function apiGetCards() {
   try {
-    const url = APPS_SCRIPT_URL + "?action=getCards&cacheBust=" + Date.now();
-
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow"
-    });
-
-    const data = await res.json();
-
-    if (!data.ok && data.error) {
-      throw new Error(data.error);
-    }
+    const data = await jsonpRequest("getCards");
 
     collection = Array.isArray(data.cards) ? data.cards : [];
     applyFilters();
@@ -148,41 +262,19 @@ async function apiGetCards() {
 }
 
 async function apiSaveCard(card) {
-  try {
-    const payload = encodeURIComponent(JSON.stringify(card));
-    const url = APPS_SCRIPT_URL + "?action=saveCard&payload=" + payload + "&cacheBust=" + Date.now();
+  const payload = JSON.stringify(card);
 
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow"
-    });
+  const data = await jsonpRequest("saveCard", {
+    payload: payload
+  });
 
-    const data = await res.json();
+  await apiGetCards();
 
-    if (!data.ok) {
-      throw new Error(data.error || "Erro ao salvar carta.");
-    }
-
-    await apiGetCards();
-
-    return data;
-
-  } catch (err) {
-    console.error("Erro ao salvar na planilha:", err);
-
-    const local = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
-    local.push(card);
-    localStorage.setItem("pokemonBinderLocal", JSON.stringify(local));
-
-    collection = local;
-    applyFilters();
-
-    throw err;
-  }
+  return data;
 }
 
 // =============================================================
-// FILTROS / FICHÁRIO
+// FICHÁRIO
 // =============================================================
 
 function applyFilters() {
@@ -217,6 +309,7 @@ function applyFilters() {
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
+
   currentPage = Math.min(currentPage, totalPages);
   currentPage = Math.max(currentPage, 1);
 
@@ -245,18 +338,6 @@ function renderStats() {
   if ($("totalMin")) $("totalMin").textContent = money(totals.min, "BRL");
   if ($("totalAvg")) $("totalAvg").textContent = money(totals.avg, "BRL");
   if ($("totalMax")) $("totalMax").textContent = money(totals.max, "BRL");
-}
-
-function getCardImage(card) {
-  const image = card.imageUrl || card.imagemUrl || "";
-
-  if (!image) return "";
-
-  if (image.includes("tcgdex") && !image.endsWith(".webp")) {
-    return image + "/high.webp";
-  }
-
-  return image;
 }
 
 function renderBinder() {
@@ -322,7 +403,7 @@ async function runOCR() {
   }
 
   if (typeof Tesseract === "undefined") {
-    toast("OCR não carregou. Digite o nome e número manualmente.");
+    toast("OCR não carregou. Digite nome e número manualmente.");
     return;
   }
 
@@ -499,11 +580,11 @@ function mapTCGdexCard(card, language) {
     name: card.name || "Sem nome",
     languageCode: language,
     language: LANGUAGE_LABEL[language] || language,
-    localId: card.localId || "",
     number: card.localId || "",
     setName: card.set && card.set.name ? card.set.name : card.set && card.set.id ? card.set.id : "",
     setId: card.set && card.set.id ? card.set.id : "",
     rarity: card.rarity || "",
+    type: card.category || "",
     imageUrl: card.image || "",
     raw: card
   };
@@ -534,49 +615,22 @@ async function searchPokemonTCG(name, number) {
       name: card.name || "Sem nome",
       languageCode: "en",
       language: "Inglês",
-      localId: card.number || "",
       number: card.number || "",
       setName: card.set && card.set.name ? card.set.name : "",
       setId: card.set && card.set.id ? card.set.id : "",
       rarity: card.rarity || "",
+      type: card.supertype || "",
       imageUrl: card.images && card.images.large ? card.images.large : card.images && card.images.small ? card.images.small : "",
       priceSourceSuggested: card.cardmarket ? "Cardmarket via Pokémon TCG API" : card.tcgplayer ? "TCGPlayer via Pokémon TCG API" : "Sem preço",
-      suggestedPrices: extractPokemonTcgPrices(card),
+      suggestedPrices: {
+        currency: "BRL",
+        min: 0,
+        avg: 0,
+        max: 0
+      },
       raw: card
     };
   });
-}
-
-function extractPokemonTcgPrices(card) {
-  if (card.cardmarket && card.cardmarket.prices) {
-    const p = card.cardmarket.prices;
-
-    return {
-      currency: "EUR",
-      min: p.lowPrice || 0,
-      avg: p.averageSellPrice || p.trendPrice || 0,
-      max: p.avg1 || p.avg7 || p.avg30 || 0
-    };
-  }
-
-  if (card.tcgplayer && card.tcgplayer.prices) {
-    const buckets = Object.values(card.tcgplayer.prices);
-    const market = buckets.find(Boolean) || {};
-
-    return {
-      currency: "USD",
-      min: market.low || 0,
-      avg: market.market || market.mid || 0,
-      max: market.high || 0
-    };
-  }
-
-  return {
-    currency: "BRL",
-    min: 0,
-    avg: 0,
-    max: 0
-  };
 }
 
 function dedupeResults(results) {
@@ -627,7 +681,9 @@ function renderSearchResults(results) {
 
     const button = el.querySelector("button");
 
-    button.addEventListener("click", function () {
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
       openPriceDialog(card);
     });
 
@@ -636,7 +692,7 @@ function renderSearchResults(results) {
 }
 
 // =============================================================
-// PREÇO / SALVAR CARTA
+// PREÇO E SALVAR NO FICHÁRIO
 // =============================================================
 
 function openPriceDialog(card) {
@@ -665,18 +721,11 @@ function openPriceDialog(card) {
       '</div>';
   }
 
-  const suggested = card.suggestedPrices || {
-    currency: "BRL",
-    min: 0,
-    avg: 0,
-    max: 0
-  };
-
-  if ($("priceSource")) $("priceSource").value = card.priceSourceSuggested || "Liga Pokémon";
-  if ($("priceCurrency")) $("priceCurrency").value = suggested.currency || "BRL";
-  if ($("priceMin")) $("priceMin").value = suggested.min || "";
-  if ($("priceAvg")) $("priceAvg").value = suggested.avg || "";
-  if ($("priceMax")) $("priceMax").value = suggested.max || "";
+  if ($("priceSource")) $("priceSource").value = "Liga Pokémon";
+  if ($("priceCurrency")) $("priceCurrency").value = "BRL";
+  if ($("priceMin")) $("priceMin").value = "";
+  if ($("priceAvg")) $("priceAvg").value = "";
+  if ($("priceMax")) $("priceMax").value = "";
   if ($("priceLink")) $("priceLink").value = "";
 
   const ligaUrl = buildLigaSearchUrl(card);
@@ -692,17 +741,25 @@ function openPriceDialog(card) {
   openModal("priceDialog");
 }
 
-async function saveSelectedCard() {
+async function saveSelectedCard(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   if (!selectedCard) {
     toast("Nenhuma carta selecionada.");
     return;
+  }
+
+  if ($("priceCurrency")) {
+    $("priceCurrency").value = "BRL";
   }
 
   const now = new Date().toISOString();
   const ligaUrl = $("ligaSearchLink") ? $("ligaSearchLink").href : "";
 
   let imageUrl = selectedCard.imageUrl || "";
-
   imageUrl = imageUrl.replace(/\/high\.webp$/g, "").replace(/\.webp$/g, "");
 
   const card = {
@@ -713,7 +770,7 @@ async function saveSelectedCard() {
     language: selectedCard.language || "",
     setName: selectedCard.setName || "",
     setId: selectedCard.setId || "",
-    number: selectedCard.number || selectedCard.localId || "",
+    number: selectedCard.number || "",
     rarity: selectedCard.rarity || "",
     type: selectedCard.type || "",
     imageUrl: imageUrl,
@@ -723,8 +780,8 @@ async function saveSelectedCard() {
     priceMin: Number($("priceMin") ? $("priceMin").value || 0 : 0),
     priceAvg: Number($("priceAvg") ? $("priceAvg").value || 0 : 0),
     priceMax: Number($("priceMax") ? $("priceMax").value || 0 : 0),
-    currency: $("priceCurrency") ? $("priceCurrency").value : "BRL",
-    priceSource: $("priceSource") ? $("priceSource").value : "Liga Pokémon",
+    currency: "BRL",
+    priceSource: $("priceSource") ? $("priceSource").value || "Liga Pokémon" : "Liga Pokémon",
     priceLink: $("priceLink") && $("priceLink").value ? $("priceLink").value : ligaUrl,
     priceDate: now,
     createdAt: now,
@@ -744,8 +801,8 @@ async function saveSelectedCard() {
     toast("Carta salva no fichário!");
 
   } catch (err) {
-    console.error(err);
-    toast("Erro ao salvar. A carta pode ter ficado só no modo local.");
+    console.error("Erro ao salvar carta:", err);
+    toast("Erro ao salvar na planilha. Verifique se o Apps Script foi implantado como nova versão.");
   }
 }
 
@@ -766,31 +823,47 @@ function clearSearch() {
 // =============================================================
 
 function initEvents() {
-  const btnOpenAdd = $("btnOpenAdd");
+  const btnOpenAdd = $("btnOpenAdd") || getButtonByText("adicionar carta");
 
   if (btnOpenAdd) {
-    btnOpenAdd.addEventListener("click", function () {
+    btnOpenAdd.setAttribute("type", "button");
+
+    btnOpenAdd.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
       openModal("addDialog");
     });
   }
 
   if ($("btnRunOCR")) {
+    $("btnRunOCR").setAttribute("type", "button");
     $("btnRunOCR").addEventListener("click", runOCR);
   }
 
   if ($("btnSearchCards")) {
+    $("btnSearchCards").setAttribute("type", "button");
     $("btnSearchCards").addEventListener("click", searchCards);
   }
 
   if ($("btnClearSearch")) {
+    $("btnClearSearch").setAttribute("type", "button");
     $("btnClearSearch").addEventListener("click", clearSearch);
   }
 
   if ($("btnSaveCard")) {
+    $("btnSaveCard").setAttribute("type", "button");
     $("btnSaveCard").addEventListener("click", saveSelectedCard);
   }
 
+  const saveByText = getButtonByText("salvar no fichário") || getButtonByText("salvar no fichario");
+
+  if (saveByText) {
+    saveByText.setAttribute("type", "button");
+    saveByText.addEventListener("click", saveSelectedCard);
+  }
+
   if ($("btnRefresh")) {
+    $("btnRefresh").setAttribute("type", "button");
     $("btnRefresh").addEventListener("click", apiGetCards);
   }
 
@@ -803,30 +876,44 @@ function initEvents() {
   }
 
   if ($("prevPage")) {
-    $("prevPage").addEventListener("click", function () {
+    $("prevPage").setAttribute("type", "button");
+    $("prevPage").addEventListener("click", function (event) {
+      event.preventDefault();
       currentPage--;
       renderBinder();
     });
   }
 
   if ($("nextPage")) {
-    $("nextPage").addEventListener("click", function () {
+    $("nextPage").setAttribute("type", "button");
+    $("nextPage").addEventListener("click", function (event) {
+      event.preventDefault();
       currentPage++;
       renderBinder();
     });
   }
+
+  if ($("priceCurrency")) {
+    $("priceCurrency").value = "BRL";
+  }
 }
+
+// Captura extra por segurança
+document.addEventListener("click", function (event) {
+  const btn = event.target && event.target.closest
+    ? event.target.closest("button")
+    : null;
+
+  if (!btn) return;
+
+  const text = String(btn.textContent || "").trim().toLowerCase();
+
+  if (text.includes("salvar no fichário") || text.includes("salvar no fichario")) {
+    saveSelectedCard(event);
+  }
+}, true);
 
 document.addEventListener("DOMContentLoaded", function () {
   initEvents();
-
-  apiGetCards().catch(function (err) {
-    console.error(err);
-
-    const local = JSON.parse(localStorage.getItem("pokemonBinderLocal") || "[]");
-    collection = local;
-    applyFilters();
-
-    toast("Não consegui carregar a planilha. Usando modo local temporário.");
-  });
+  apiGetCards();
 });
