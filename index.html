@@ -2,9 +2,16 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#101010" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Pokémon Binder" />
   <title>Pokémon Binder BR</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -40,15 +47,16 @@
 
   <div id="app" class="hidden">
     <header class="topbar">
-      <div>
+      <div class="brand-block">
         <p class="eyebrow">Fichário digital</p>
         <h1>Pokémon Binder BR</h1>
         <p class="subtitle">Cadastre sua coleção, veja preços atuais e acompanhe os fichários dos amigos.</p>
       </div>
       <div class="topbar-actions">
         <span id="userHandle" class="user-email"></span>
+        <button id="btnInstallPWA" class="ghost-btn install-pwa-btn hidden" type="button">⬇ Instalar app</button>
         <button id="btnFriends" class="ghost-btn" type="button">👥 Amigos</button>
-        <button id="btnOpenAdd" class="primary-btn" type="button">+ Adicionar carta</button>
+        <button id="btnOpenAdd" class="primary-btn" type="button">📷 Escanear / adicionar</button>
         <button id="btnLogout" class="ghost-btn" type="button">Sair</button>
       </div>
     </header>
@@ -86,18 +94,18 @@
   <dialog id="addDialog" class="modal">
     <div class="modal-card">
       <div class="modal-head">
-        <div><p class="eyebrow">Nova carta</p><h2>Adicionar ao fichário</h2></div>
+        <div><p class="eyebrow">Nova carta</p><h2>Escanear ou adicionar carta</h2></div>
         <button class="icon-btn" type="button" data-close="addDialog" aria-label="Fechar">×</button>
       </div>
 
       <div class="ocr-box">
-        <label class="file-picker">
+        <label class="file-picker camera-picker">
           <input id="cardPhoto" type="file" accept="image/*" capture="environment" />
-          <span>📷 Tirar foto / escolher imagem para OCR</span>
+          <span>📷 Abrir câmera / escolher imagem</span>
         </label>
-        <button id="btnRunOCR" type="button" class="ghost-btn">Ler texto da imagem</button>
+        <button id="btnRunOCR" type="button" class="ghost-btn">Ler imagem com OCR atual</button>
         <textarea id="ocrText" placeholder="O texto lido pelo OCR aparecerá aqui. Você pode corrigir antes de buscar." rows="4"></textarea>
-        <p id="ocrStatus" class="hint">OCR opcional. Se falhar, digite nome e número manualmente.</p>
+        <p id="ocrStatus" class="hint">O leitor visual automático será a próxima etapa. Por enquanto o OCR serve como apoio.</p>
       </div>
 
       <div class="form-grid">
@@ -243,7 +251,66 @@
     </div>
   </dialog>
 
+  <nav id="mobileNav" class="mobile-nav" aria-label="Navegação do aplicativo">
+    <button type="button" data-mobile-action="home"><span>🏠</span><small>Fichário</small></button>
+    <button type="button" class="mobile-scan" data-mobile-action="scan"><span>📷</span><small>Escanear</small></button>
+    <button type="button" data-mobile-action="friends"><span>👥</span><small>Amigos</small></button>
+    <button id="mobileInstallPWA" type="button" class="hidden" data-mobile-action="install"><span>⬇</span><small>Instalar</small></button>
+  </nav>
+
   <div id="toast" class="toast"></div>
   <script src="script.js"></script>
+  <script>
+    (() => {
+      let deferredInstallPrompt = null;
+      const installButton = document.getElementById('btnInstallPWA');
+      const mobileInstall = document.getElementById('mobileInstallPWA');
+
+      function setInstallVisible(visible) {
+        installButton?.classList.toggle('hidden', !visible);
+        mobileInstall?.classList.toggle('hidden', !visible);
+      }
+
+      async function installApp() {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        try { await deferredInstallPrompt.userChoice; } catch (_) {}
+        deferredInstallPrompt = null;
+        setInstallVisible(false);
+      }
+
+      window.addEventListener('beforeinstallprompt', event => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        setInstallVisible(true);
+      });
+
+      window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        setInstallVisible(false);
+      });
+
+      installButton?.addEventListener('click', installApp);
+
+      document.addEventListener('click', event => {
+        const actionButton = event.target.closest('[data-mobile-action]');
+        if (!actionButton) return;
+        const action = actionButton.dataset.mobileAction;
+
+        if (action === 'home') window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (action === 'scan') document.getElementById('btnOpenAdd')?.click();
+        if (action === 'friends') document.getElementById('btnFriends')?.click();
+        if (action === 'install') installApp();
+      });
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(error => {
+            console.error('Service Worker:', error);
+          });
+        });
+      }
+    })();
+  </script>
 </body>
 </html>
