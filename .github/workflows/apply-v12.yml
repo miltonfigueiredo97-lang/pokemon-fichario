@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'tools/apply_v12.py'
+      - 'tools/patch_v122_import.py'
       - '.github/workflows/apply-v12.yml'
 
 permissions:
@@ -20,6 +21,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Apply V12.2 links and cache
         run: python tools/apply_v12.py
+      - name: Fix V12.2 Excel import positions
+        run: python tools/patch_v122_import.py
       - name: Commit generated changes
         run: |
           if git diff --quiet; then
@@ -28,6 +31,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html sw.js
-          git commit -m "Ativar V12.2: variantes, mercados e Excel"
+          git add index.html sw.js v122.js
+          git commit -m "Corrigir posições na importação Excel V12.2"
           git push
