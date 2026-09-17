@@ -3,73 +3,90 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101010" />
   <title>Pokémon Binder BR</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">Fichário digital</p>
-      <h1>Pokémon Binder BR</h1>
-      <p class="subtitle">Cartas em português, japonês e inglês com preço identificado por fonte.</p>
-    </div>
-    <button id="btnOpenAdd" class="primary-btn">+ Adicionar carta</button>
-  </header>
-
-  <main class="app-shell">
-    <section class="stats-grid">
-      <article class="stat-card">
-        <span>Cartas cadastradas</span>
-        <strong id="totalCards">0</strong>
-      </article>
-      <article class="stat-card">
-        <span>Valor mínimo</span>
-        <strong id="totalMin">R$ 0,00</strong>
-      </article>
-      <article class="stat-card">
-        <span>Valor médio</span>
-        <strong id="totalAvg">R$ 0,00</strong>
-      </article>
-      <article class="stat-card">
-        <span>Valor máximo</span>
-        <strong id="totalMax">R$ 0,00</strong>
-      </article>
-    </section>
-
-    <section class="toolbar">
-      <input id="filterText" type="search" placeholder="Filtrar por nome, coleção, número..." />
-      <select id="filterLanguage">
-        <option value="all">Todos os idiomas</option>
-        <option value="pt-br">Português</option>
-        <option value="ja">Japonês</option>
-        <option value="en">Inglês</option>
-      </select>
-      <button id="btnRefresh" class="ghost-btn">Atualizar planilha</button>
-    </section>
-
-    <section class="binder-panel">
-      <div class="binder-header">
-        <button id="prevPage" class="ghost-btn">← Página anterior</button>
-        <div>
-          <h2>Meu fichário</h2>
-          <p id="pageInfo">Página 1 de 1</p>
-        </div>
-        <button id="nextPage" class="ghost-btn">Próxima página →</button>
+  <section id="authScreen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div>
+        <p class="eyebrow">Pokémon TCG</p>
+        <h1>Pokémon Binder BR</h1>
+        <p class="subtitle">Seu fichário salvo no Supabase.</p>
       </div>
 
-      <div id="binderGrid" class="binder-grid"></div>
-    </section>
-  </main>
+      <div class="auth-tabs">
+        <button id="tabLogin" class="tab-btn active" type="button">Entrar</button>
+        <button id="tabSignup" class="tab-btn" type="button">Criar conta</button>
+      </div>
+
+      <form id="authForm" class="auth-form">
+        <label>
+          E-mail
+          <input id="authEmail" type="email" autocomplete="email" required placeholder="seu@email.com" />
+        </label>
+        <label>
+          Senha
+          <input id="authPassword" type="password" minlength="6" autocomplete="current-password" required placeholder="mínimo 6 caracteres" />
+        </label>
+        <button id="authSubmit" class="primary-btn" type="submit">Entrar</button>
+      </form>
+      <p id="authMessage" class="auth-message"></p>
+    </div>
+  </section>
+
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Fichário digital</p>
+        <h1>Pokémon Binder BR</h1>
+        <p class="subtitle">Cartas em português, japonês e inglês com preço identificado por fonte.</p>
+      </div>
+      <div class="topbar-actions">
+        <span id="userEmail" class="user-email"></span>
+        <button id="btnOpenAdd" class="primary-btn" type="button">+ Adicionar carta</button>
+        <button id="btnLogout" class="ghost-btn" type="button">Sair</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="stats-grid">
+        <article class="stat-card"><span>Cartas cadastradas</span><strong id="totalCards">0</strong></article>
+        <article class="stat-card"><span>Valor mínimo</span><strong id="totalMin">R$ 0,00</strong></article>
+        <article class="stat-card"><span>Valor médio</span><strong id="totalAvg">R$ 0,00</strong></article>
+        <article class="stat-card"><span>Valor máximo</span><strong id="totalMax">R$ 0,00</strong></article>
+      </section>
+
+      <section class="toolbar">
+        <input id="filterText" type="search" placeholder="Filtrar por nome, coleção, número..." />
+        <select id="filterLanguage">
+          <option value="all">Todos os idiomas</option>
+          <option value="pt-br">Português</option>
+          <option value="ja">Japonês</option>
+          <option value="en">Inglês</option>
+        </select>
+        <button id="btnRefresh" class="ghost-btn" type="button">Atualizar</button>
+      </section>
+
+      <section class="binder-panel">
+        <div class="binder-header">
+          <button id="prevPage" class="ghost-btn" type="button">← Página anterior</button>
+          <div><h2>Meu fichário</h2><p id="pageInfo">Página 1 de 1</p></div>
+          <button id="nextPage" class="ghost-btn" type="button">Próxima página →</button>
+        </div>
+        <div id="binderGrid" class="binder-grid"></div>
+      </section>
+    </main>
+  </div>
 
   <dialog id="addDialog" class="modal">
-    <form method="dialog" class="modal-card" id="addForm">
+    <div class="modal-card">
       <div class="modal-head">
-        <div>
-          <p class="eyebrow">Nova carta</p>
-          <h2>Adicionar ao fichário</h2>
-        </div>
-        <button class="icon-btn" value="cancel" aria-label="Fechar">×</button>
+        <div><p class="eyebrow">Nova carta</p><h2>Adicionar ao fichário</h2></div>
+        <button class="icon-btn" type="button" data-close="addDialog" aria-label="Fechar">×</button>
       </div>
 
       <div class="ocr-box">
@@ -83,14 +100,8 @@
       </div>
 
       <div class="form-grid">
-        <label>
-          Nome da carta
-          <input id="searchName" type="text" placeholder="Ex: Charizard, Pikachu, Lugia" />
-        </label>
-        <label>
-          Número/código impresso
-          <input id="searchNumber" type="text" placeholder="Ex: 4/102, 025/198, SVP 056" />
-        </label>
+        <label>Nome da carta<input id="searchName" type="text" placeholder="Ex: Omanyte, Pikachu, Lugia" /></label>
+        <label>Número/código impresso<input id="searchNumber" type="text" placeholder="Ex: 180/165, 025/198, SVP 056" /></label>
         <label>
           Idioma da busca
           <select id="searchLanguage">
@@ -100,39 +111,29 @@
             <option value="en">Inglês</option>
           </select>
         </label>
-        <label>
-          Coleção / expansão
-          <input id="searchSet" type="text" placeholder="Opcional" />
-        </label>
+        <label>Coleção / expansão<input id="searchSet" type="text" placeholder="Opcional. Ex: 151" /></label>
       </div>
 
       <div class="actions-row">
         <button id="btnSearchCards" type="button" class="primary-btn">Buscar cartas</button>
         <button id="btnClearSearch" type="button" class="ghost-btn">Limpar</button>
       </div>
-
       <div id="searchStatus" class="hint"></div>
       <div id="resultsList" class="results-list"></div>
-    </form>
+    </div>
   </dialog>
 
   <dialog id="priceDialog" class="modal">
-    <form method="dialog" class="modal-card compact" id="priceForm">
+    <div class="modal-card compact">
       <div class="modal-head">
-        <div>
-          <p class="eyebrow">Preço e detalhes</p>
-          <h2 id="selectedTitle">Carta selecionada</h2>
-        </div>
-        <button class="icon-btn" value="cancel" aria-label="Fechar">×</button>
+        <div><p class="eyebrow">Preço e detalhes</p><h2 id="selectedTitle">Carta selecionada</h2></div>
+        <button class="icon-btn" type="button" data-close="priceDialog" aria-label="Fechar">×</button>
       </div>
 
       <div id="selectedPreview" class="selected-preview"></div>
 
       <div class="form-grid">
-        <label>
-          Quantidade
-          <input id="cardQuantity" type="number" min="1" value="1" />
-        </label>
+        <label>Quantidade<input id="cardQuantity" type="number" min="1" value="1" /></label>
         <label>
           Condição
           <select id="cardCondition">
@@ -157,49 +158,25 @@
           Fonte do preço
           <select id="priceSource">
             <option>Liga Pokémon</option>
-            <option>Cardmarket via Pokémon TCG API</option>
-            <option>TCGPlayer via Pokémon TCG API</option>
+            <option>Mypcards</option>
             <option>Manual</option>
             <option>Sem preço</option>
           </select>
         </label>
-        <label>
-          Preço mínimo
-          <input id="priceMin" type="number" min="0" step="0.01" placeholder="0,00" />
-        </label>
-        <label>
-          Preço médio
-          <input id="priceAvg" type="number" min="0" step="0.01" placeholder="0,00" />
-        </label>
-        <label>
-          Preço máximo
-          <input id="priceMax" type="number" min="0" step="0.01" placeholder="0,00" />
-        </label>
-        <label>
-          Moeda
-          <select id="priceCurrency">
-            <option>BRL</option>
-            <option>EUR</option>
-            <option>USD</option>
-          </select>
-        </label>
+        <label>Preço mínimo<input id="priceMin" inputmode="decimal" placeholder="0,00" /></label>
+        <label>Preço médio<input id="priceAvg" inputmode="decimal" placeholder="0,00" /></label>
+        <label>Preço máximo<input id="priceMax" inputmode="decimal" placeholder="0,00" /></label>
+        <label>Moeda<input value="BRL" disabled /></label>
       </div>
 
-      <label>
-        Link da fonte / Liga Pokémon
-        <input id="priceLink" type="url" placeholder="Cole aqui o link da consulta" />
-      </label>
-
-      <label>
-        Observações
-        <textarea id="cardNotes" rows="3" placeholder="Ex: carta com leve whitening nas bordas"></textarea>
-      </label>
+      <label>Link da fonte / Liga Pokémon<input id="priceLink" type="url" readonly /></label>
+      <label>Observações<textarea id="cardNotes" rows="3" placeholder="Ex: carta com leve whitening nas bordas"></textarea></label>
 
       <div class="actions-row between">
         <a id="ligaSearchLink" class="link-btn" target="_blank" rel="noopener">Abrir busca na Liga Pokémon</a>
         <button id="btnSaveCard" type="button" class="primary-btn">Salvar no fichário</button>
       </div>
-    </form>
+    </div>
   </dialog>
 
   <div id="toast" class="toast"></div>
