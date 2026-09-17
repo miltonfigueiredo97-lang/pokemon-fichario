@@ -1,4 +1,4 @@
-// Pokémon Binder BR — V11.3 surgical behavior fixes
+// Pokémon Binder BR — V11.4 surgical behavior fixes
 (function(){
   'use strict';
 
@@ -64,6 +64,170 @@
     if(sheet)new MutationObserver(refitSoon).observe(sheet,{childList:true,subtree:false});
     document.addEventListener('fullscreenchange',refitSoon);
     window.addEventListener('resize',refitSoon,{passive:true});
+  }
+
+  // ------------------------------------------------------------------
+  // REALISTIC BINDER PAGE TURN
+  // ------------------------------------------------------------------
+  let pageFlipBusy=false;
+
+  function injectPageFlipStyles(){
+    if($('#v114PageFlipStyles'))return;
+    const style=document.createElement('style');
+    style.id='v114PageFlipStyles';
+    style.textContent=`
+      #binderStage.v114-page-flipping{perspective:1900px!important;overflow:hidden!important}
+      #binderStage .v114-page-ghost{
+        position:absolute!important;
+        z-index:96!important;
+        margin:0!important;
+        pointer-events:none!important;
+        transform-style:preserve-3d!important;
+        backface-visibility:hidden!important;
+        -webkit-backface-visibility:hidden!important;
+        will-change:transform,opacity,filter!important;
+        overflow:hidden!important;
+        box-shadow:0 24px 55px rgba(0,0,0,.34)!important;
+      }
+      #binderStage .v114-page-ghost::after{
+        content:""!important;
+        position:absolute!important;
+        inset:0!important;
+        z-index:80!important;
+        pointer-events:none!important;
+        background:
+          linear-gradient(90deg,rgba(0,0,0,.34),transparent 14%,transparent 72%,rgba(255,255,255,.08)),
+          linear-gradient(100deg,transparent 44%,rgba(255,255,255,.05) 50%,transparent 58%)!important;
+        opacity:.38!important;
+      }
+      #binderStage .v114-page-ghost.v114-next{
+        transform-origin:left center!important;
+        transform:perspective(1900px) rotateY(0deg)!important;
+        transition:transform .62s cubic-bezier(.22,.72,.17,1),opacity .56s ease,filter .56s ease!important;
+      }
+      #binderStage .v114-page-ghost.v114-next.v114-run{
+        transform:perspective(1900px) rotateY(-168deg)!important;
+        opacity:.06!important;
+        filter:brightness(.68)!important;
+      }
+      #binderStage .binder-sheet-wrap.v114-in-next{
+        opacity:.64!important;
+        transform:perspective(1900px) translateX(3px) scale(.994)!important;
+        transition:opacity .56s ease,transform .56s ease!important;
+      }
+      #binderStage .binder-sheet-wrap.v114-in-next.v114-run{
+        opacity:1!important;
+        transform:perspective(1900px) translateX(0) scale(1)!important;
+      }
+      #binderStage .v114-page-ghost.v114-prev{
+        transform:none!important;
+        opacity:1!important;
+        transition:opacity .55s ease,filter .55s ease!important;
+      }
+      #binderStage .v114-page-ghost.v114-prev.v114-run{
+        opacity:.20!important;
+        filter:brightness(.72)!important;
+      }
+      #binderStage .binder-sheet-wrap.v114-in-prev{
+        transform-origin:left center!important;
+        transform:perspective(1900px) rotateY(-168deg)!important;
+        opacity:.10!important;
+        transition:transform .62s cubic-bezier(.22,.72,.17,1),opacity .52s ease!important;
+        will-change:transform,opacity!important;
+      }
+      #binderStage .binder-sheet-wrap.v114-in-prev.v114-run{
+        transform:perspective(1900px) rotateY(0deg)!important;
+        opacity:1!important;
+      }
+      #binderStage.v114-page-flipping .binder-sheet-wrap,
+      #binderStage.v114-page-flipping .v114-page-ghost{
+        transform-style:preserve-3d!important;
+      }
+      @media (max-width:820px){
+        #binderStage .v114-page-ghost.v114-next.v114-run{transform:perspective(1450px) rotateY(-166deg)!important}
+        #binderStage .binder-sheet-wrap.v114-in-prev{transform:perspective(1450px) rotateY(-166deg)!important}
+        #binderStage .binder-sheet-wrap.v114-in-prev.v114-run{transform:perspective(1450px) rotateY(0deg)!important}
+      }
+      @media (prefers-reduced-motion:reduce){
+        #binderStage .v114-page-ghost,
+        #binderStage .binder-sheet-wrap.v114-in-next,
+        #binderStage .binder-sheet-wrap.v114-in-prev{transition:none!important}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function cleanCloneIds(root){
+    if(root.id)root.removeAttribute('id');
+    root.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+    root.querySelectorAll('button,input,select,textarea,a').forEach(el=>{
+      el.tabIndex=-1;
+      el.setAttribute('aria-hidden','true');
+    });
+  }
+
+  function startPageFlip(direction){
+    if(pageFlipBusy)return;
+    if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+    const stage=$('#binderStage');
+    const wrap=stage?.querySelector('.binder-sheet-wrap');
+    if(!stage||!wrap)return;
+
+    const stageRect=stage.getBoundingClientRect();
+    const wrapRect=wrap.getBoundingClientRect();
+    if(!wrapRect.width||!wrapRect.height)return;
+
+    const ghost=wrap.cloneNode(true);
+    cleanCloneIds(ghost);
+    ghost.classList.remove('v114-in-next','v114-in-prev','v114-run');
+    ghost.classList.add('v114-page-ghost',direction==='prev'?'v114-prev':'v114-next');
+    ghost.style.left=`${wrapRect.left-stageRect.left}px`;
+    ghost.style.top=`${wrapRect.top-stageRect.top}px`;
+    ghost.style.width=`${wrapRect.width}px`;
+    ghost.style.height=`${wrapRect.height}px`;
+
+    pageFlipBusy=true;
+    wrap.classList.remove('v114-in-next','v114-in-prev','v114-run');
+    wrap.classList.add(direction==='prev'?'v114-in-prev':'v114-in-next');
+    stage.classList.add('v114-page-flipping');
+    stage.appendChild(ghost);
+
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      ghost.classList.add('v114-run');
+      wrap.classList.add('v114-run');
+    }));
+
+    setTimeout(()=>{
+      ghost.remove();
+      wrap.classList.remove('v114-in-next','v114-in-prev','v114-run');
+      stage.classList.remove('v114-page-flipping');
+      pageFlipBusy=false;
+      refitSoon();
+    },690);
+  }
+
+  function installPageTurn(){
+    injectPageFlipStyles();
+    document.addEventListener('click',e=>{
+      const b=e.target.closest?.('button');
+      if(!b)return;
+
+      if(b.id==='nextPage'&&!b.disabled){
+        startPageFlip('next');
+        return;
+      }
+      if(b.id==='prevPage'&&!b.disabled){
+        startPageFlip('prev');
+        return;
+      }
+      if(b.classList.contains('page-thumb')){
+        const txt=b.querySelector('strong')?.textContent||'';
+        const target=Number((txt.match(/\d+/)||[])[0]||0);
+        let now=0;
+        try{now=Number(currentPage||0)}catch(_e){}
+        if(target&&now&&target!==now)startPageFlip(target>now?'next':'prev');
+      }
+    },true);
   }
 
   function hardRemoveStatusFrames(){
@@ -293,6 +457,7 @@
     installClearLogout();
     installFullscreenExit();
     installPageStability();
+    installPageTurn();
     hardRemoveStatusFrames();
     installSummaryCollapse();
     installVisualControls();
