@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'tools/apply_v12.py'
+      - 'tools/apply_v12_1.py'
       - '.github/workflows/apply-v12.yml'
 
 permissions:
@@ -18,8 +19,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Apply V12 links and cache
+      - name: Apply V12 links
         run: python tools/apply_v12.py
+      - name: Apply V12.1 matching fixes
+        run: python tools/apply_v12_1.py
       - name: Commit generated changes
         run: |
           if git diff --quiet; then
@@ -28,6 +31,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html sw.js
-          git commit -m "Ativar V12.0: notas, preços MYP e links"
+          git add index.html sw.js v12.js api/mypcards-public.js
+          git commit -m "Ativar V12.1: MYP e número completo"
           git push
