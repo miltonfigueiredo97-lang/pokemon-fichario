@@ -1,48 +1,53 @@
 // =============================================================
-// POKÉMON BINDER BR — SUPABASE + PREÇO AUTOMÁTICO + AMIGOS
-// Dados: public.pokemon_cards / pokemon_profiles / pokemon_friendships
+// POKÉMON BINDER BR — PROFESSIONAL BINDER
+// Supabase + TCGdex + MYP Cards market + Friends + PWA
 // =============================================================
 
 const SUPABASE_URL = "https://ryylegveltrypqclimqo.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Ved1tXBXQN1zofbJj3uPzQ_MqHxIEGw";
 const TCGDEX_BASE = "https://api.tcgdex.net/v2";
-const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2/cards";
 const PAGE_SIZE = 9;
 
 const LANGUAGE_LABEL = {
   "pt-br": "Português",
-  "ja": "Japonês",
-  "en": "Inglês"
+  "en": "Inglês",
+  "ja": "Japonês"
+};
+
+const STATUS_META = {
+  missing: { label: "Não tenho", short: "Falta" },
+  wanted: { label: "Quero", short: "Quero" },
+  owned: { label: "Tenho", short: "Tenho" },
+  ordered: { label: "Pedido", short: "Pedido" }
 };
 
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 let currentUser = null;
 let currentProfile = null;
-let authMode = "login";
+let settings = {
+  binder_name: "Meu Fichário",
+  binder_pages: 1,
+  binder_background: "graphite",
+  show_values: false
+};
 let collection = [];
-let filteredCollection = [];
 let currentPage = 1;
+let activeStatusFilter = "all";
 let selectedCard = null;
-let selectedPriceMeta = null;
-
+let selectedStatus = "owned";
+let selectedMarket = null;
+let editingCardId = null;
+let pendingPosition = null;
 let friendships = [];
 let profilesById = new Map();
-
-let friendBinderCards = [];
-let friendBinderPage = 1;
-let currentFriendProfile = null;
-
-const fxCache = new Map();
+let ocrLoaded = false;
 
 function $(id) { return document.getElementById(id); }
 
 function safeText(value) {
   return String(value ?? "").replace(/[<>&"]/g, c => ({
-    "<":"&lt;",
-    ">":"&gt;",
-    "&":"&amp;",
-    '"':"&quot;"
+    "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"
   }[c]));
 }
 
@@ -56,22 +61,29 @@ function normalizeText(value) {
     .trim();
 }
 
-function normalizeNumber(value) {
-  return String(value ?? "").trim().replace(/\s+/g, "").replace(/^0+(?=\d)/, "");
+function parseCollectorNumber(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/(?:^|[^0-9])(\d{1,4})\s*\/\s*(\d{1,4})(?:[^0-9]|$)/);
+  if (match) {
+    return {
+      numerator: String(Number(match[1])),
+      denominator: String(Number(match[2])),
+      full: `${Number(match[1])}/${Number(match[2])}`
+    };
+  }
+  const single = raw.match(/(?:^|[^0-9])(\d{1,4})(?:[^0-9]|$)/);
+  return single
+    ? { numerator: String(Number(single[1])), denominator: "", full: String(Number(single[1])) }
+    : { numerator: "", denominator: "", full: "" };
 }
 
-function parseMoney(value) {
-  const text = String(value ?? "").trim();
-  if (!text) return 0;
-  if (text.includes(",")) return Number(text.replace(/\./g, "").replace(",", ".")) || 0;
-  return Number(text) || 0;
+function normalizeNumerator(value) {
+  return parseCollectorNumber(value).numerator || String(value || "").replace(/^0+(?=\d)/, "").trim();
 }
 
 function money(value) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL"
-  }).format(Number(value || 0));
+  const n = Number(value || 0);
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number.isFinite(n) ? n : 0);
 }
 
 function toast(message) {
@@ -80,72 +92,52 @@ function toast(message) {
   el.textContent = message;
   el.classList.add("show");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => el.classList.remove("show"), 2300);
+  toast.timer = setTimeout(() => el.classList.remove("show"), 2500);
 }
 
-function openModal(id) {
-  const modal = $(id);
-  if (modal && !modal.open) modal.showModal();
+function openDialog(id) {
+  const el = $(id);
+  if (el && !el.open) el.showModal();
 }
 
-function closeModal(id) {
-  const modal = $(id);
-  if (modal?.open) modal.close();
+function closeDialog(id) {
+  const el = $(id);
+  if (el?.open) el.close();
 }
 
 function getCardImage(card) {
-  const image = card.imageUrl || card.image_url || "";
+  const image = card.imageUrl || card.image_url || card.market_image_pt || card.market_image_en || "";
   if (!image) return "";
-  if (image.includes("assets.tcgdex.net") && !/\.(webp|png|jpg|jpeg)$/i.test(image)) {
-    return `${image}/high.webp`;
-  }
+  if (image.includes("assets.tcgdex.net") && !/\.(webp|png|jpe?g)$/i.test(image)) return `${image}/high.webp`;
   return image;
 }
 
-function buildLigaSearchUrl(card) {
-  const terms = [
-    card.name,
-    card.number,
-    card.setName || card.set_name,
-    "pokemon"
-  ].filter(Boolean).join(" ");
-
-  return "https://www.ligapokemon.com.br/?view=cards/search&card=" +
-    encodeURIComponent(terms);
+function buildLigaUrl(card) {
+  const terms = [card.name, card.number, card.setName || card.set_name].filter(Boolean).join(" ");
+  return "https://www.ligapokemon.com.br/?view=cards/search&card=" + encodeURIComponent(terms);
 }
 
 function buildCardKey(card) {
-  const source = card.source || card.api_source || "manual";
-  const apiId = card.apiId || card.api_id || "";
+  const source = card.source || card.api_source || "catalog";
+  const apiId = card.apiId || card.api_id || card.marketInternalCode || card.market_internal_code || "";
   const lang = card.languageCode || card.language_code || "";
-
   if (apiId) return `${source}|${apiId}|${lang}`;
-
-  return [
-    card.name,
-    card.setId || card.set_id,
-    card.number,
-    lang
-  ].map(normalizeText).join("|");
+  return [card.name, card.setId || card.set_id, card.number, lang].map(normalizeText).join("|");
 }
 
-function firstFinite(...values) {
-  for (const value of values) {
-    const n = Number(value);
-    if (Number.isFinite(n) && n > 0) return n;
+function setButtonBusy(button, busy, text) {
+  if (!button) return;
+  if (busy) {
+    button.dataset.originalText = button.textContent;
+    button.textContent = text || "Aguarde...";
+    button.disabled = true;
+  } else {
+    button.textContent = button.dataset.originalText || button.textContent;
+    button.disabled = false;
   }
-  return 0;
 }
 
-function isoOrNull(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-// =============================================================
-// AUTH / PERFIL
-// =============================================================
+let authMode = "login";
 
 function setAuthMode(mode) {
   authMode = mode;
@@ -158,90 +150,47 @@ function setAuthMode(mode) {
 
 async function handleAuth(event) {
   event.preventDefault();
-
   const email = $("authEmail").value.trim();
   const password = $("authPassword").value;
   const btn = $("authSubmit");
-
-  btn.disabled = true;
-  $("authMessage").textContent = authMode === "login" ? "Entrando..." : "Criando conta...";
-
+  setButtonBusy(btn, true, authMode === "login" ? "Entrando..." : "Criando...");
   try {
     if (authMode === "signup") {
       const { data, error } = await db.auth.signUp({ email, password });
       if (error) throw error;
-
-      $("authMessage").textContent = data.session
-        ? "Conta criada."
-        : "Conta criada. Confirme seu e-mail e depois entre.";
+      $("authMessage").textContent = data.session ? "Conta criada." : "Conta criada. Confirme seu e-mail e depois entre.";
     } else {
       const { error } = await db.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      $("authMessage").textContent = "";
     }
-  } catch (err) {
-    console.error(err);
-    $("authMessage").textContent = err.message || "Não foi possível autenticar.";
+  } catch (error) {
+    console.error(error);
+    $("authMessage").textContent = error.message || "Não foi possível autenticar.";
   } finally {
-    btn.disabled = false;
+    setButtonBusy(btn, false);
   }
-}
-
-async function renderAuthState(session) {
-  currentUser = session?.user || null;
-
-  if (!currentUser) {
-    $("app").classList.add("hidden");
-    $("authScreen").classList.remove("hidden");
-    collection = [];
-    currentProfile = null;
-    applyFilters();
-    return;
-  }
-
-  $("authScreen").classList.add("hidden");
-  $("app").classList.remove("hidden");
-
-  await ensureSettings();
-  await loadCurrentProfile();
-  await loadCards(false);
 }
 
 async function ensureSettings() {
-  const { data, error } = await db
-    .from("pokemon_settings")
-    .select("user_id")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("settings select", error);
-    return;
-  }
-
+  const { data, error } = await db.from("pokemon_settings").select("*").eq("user_id", currentUser.id).maybeSingle();
+  if (error) throw error;
   if (!data) {
-    const { error: insertError } = await db
+    const { data: inserted, error: insertError } = await db
       .from("pokemon_settings")
-      .insert({ user_id: currentUser.id });
-
-    if (insertError) console.error("settings insert", insertError);
+      .insert({ user_id: currentUser.id })
+      .select("*")
+      .single();
+    if (insertError) throw insertError;
+    settings = { ...settings, ...inserted };
+  } else {
+    settings = { ...settings, ...data };
   }
 }
 
 async function loadCurrentProfile() {
-  const { data, error } = await db
-    .from("pokemon_profiles")
-    .select("*")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("profile", error);
-    return;
-  }
-
-  currentProfile = data || null;
-
+  const { data, error } = await db.from("pokemon_profiles").select("*").eq("user_id", currentUser.id).maybeSingle();
+  if (error) throw error;
+  currentProfile = data;
   if (currentProfile) {
     $("userHandle").textContent = `@${currentProfile.username}`;
     $("profileUsername").value = currentProfile.username || "";
@@ -252,1417 +201,1029 @@ async function loadCurrentProfile() {
 }
 
 async function saveProfile() {
-  if (!currentUser) return;
-
   const username = $("profileUsername").value.trim();
-  const visibility = $("profileVisibility").value;
-
+  const binderVisibility = $("profileVisibility").value;
   if (!/^[A-Za-z0-9_.-]{3,24}$/.test(username)) {
-    toast("Use 3 a 24 caracteres: letras, números, ponto, _ ou -.");
+    toast("Use 3 a 24 caracteres no @usuário.");
     return;
   }
-
   const { error } = await db
     .from("pokemon_profiles")
-    .update({
-      username,
-      binder_visibility: visibility
-    })
+    .update({ username, binder_visibility: binderVisibility })
     .eq("user_id", currentUser.id);
-
   if (error) {
-    console.error(error);
-    if (String(error.message || "").toLowerCase().includes("duplicate")) {
-      toast("Esse @usuário já está em uso.");
-    } else {
-      toast("Não consegui salvar o perfil.");
-    }
+    toast(String(error.message || "").toLowerCase().includes("duplicate") ? "Esse @usuário já existe." : "Não consegui salvar o perfil.");
     return;
   }
-
   await loadCurrentProfile();
   toast("Perfil salvo.");
 }
 
-// =============================================================
-// SUPABASE — FICHÁRIO
-// =============================================================
+async function updateSettings(patch, silent = false) {
+  settings = { ...settings, ...patch };
+  applySettingsToUI();
+  const { error } = await db.from("pokemon_settings").update(patch).eq("user_id", currentUser.id);
+  if (error) {
+    console.error(error);
+    if (!silent) toast("Não consegui salvar a configuração.");
+  }
+}
+
+function applySettingsToUI() {
+  const name = settings.binder_name || "Meu Fichário";
+  const pages = Math.max(1, Number(settings.binder_pages || 1));
+  settings.binder_pages = pages;
+  $("binderTitleHeader").textContent = name;
+  $("binderNameInput").value = name;
+  $("binderStage").className = `binder-stage theme-${settings.binder_background || "graphite"}`;
+  $("showValues").checked = Boolean(settings.show_values);
+  $("totalValueBox").classList.toggle("hidden", !settings.show_values);
+  document.querySelectorAll(".theme-swatch").forEach(btn => btn.classList.toggle("active", btn.dataset.theme === settings.binder_background));
+  currentPage = Math.min(Math.max(1, currentPage), pages);
+}
+
+async function renderAuthState(session) {
+  currentUser = session?.user || null;
+  if (!currentUser) {
+    $("app").classList.add("hidden");
+    $("authScreen").classList.remove("hidden");
+    collection = [];
+    return;
+  }
+  $("authScreen").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  try {
+    await Promise.all([ensureSettings(), loadCurrentProfile()]);
+    applySettingsToUI();
+    await loadCards(false);
+  } catch (error) {
+    console.error(error);
+    toast("Não consegui iniciar seu fichário.");
+  }
+}
 
 async function loadCards(showMessage = true) {
   if (!currentUser) return;
   if (showMessage) toast("Atualizando fichário...");
-
   const { data, error } = await db
     .from("pokemon_cards")
     .select("*")
     .eq("user_id", currentUser.id)
+    .order("binder_page", { ascending: true })
+    .order("binder_slot", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
-
   if (error) {
     console.error(error);
     toast("Não consegui carregar o fichário.");
     return;
   }
-
   collection = data || [];
-  applyFilters();
-
+  const maxPage = collection.reduce((m, c) => Math.max(m, Number(c.binder_page || 1)), 1);
+  if (maxPage > Number(settings.binder_pages || 1)) await updateSettings({ binder_pages: maxPage }, true);
+  renderAll();
   if (showMessage) toast("Fichário atualizado.");
 }
 
-async function saveSelectedCard() {
-  if (!selectedCard || !currentUser) return;
-
-  const quantity = Math.max(1, Number($("cardQuantity").value || 1));
-  const condition = $("cardCondition").value;
-  const finish = $("cardFinish").value;
-  const cardKey = buildCardKey(selectedCard);
-  const button = $("btnSaveCard");
-  const ligaLink = buildLigaSearchUrl(selectedCard);
-
-  button.disabled = true;
-
-  try {
-    const { data: existing, error: findError } = await db
-      .from("pokemon_cards")
-      .select("id, quantity")
-      .eq("user_id", currentUser.id)
-      .eq("card_key", cardKey)
-      .eq("condition", condition)
-      .eq("finish", finish)
-      .maybeSingle();
-
-    if (findError) throw findError;
-
-    const common = {
-      price_min: parseMoney($("priceMin").value),
-      price_avg: parseMoney($("priceAvg").value),
-      price_max: parseMoney($("priceMax").value),
-      currency: "BRL",
-      price_source: $("priceSource").value,
-      price_link: ligaLink,
-      notes: $("cardNotes").value.trim(),
-      price_checked_at: selectedPriceMeta?.checkedAt || null,
-      price_market_updated_at: selectedPriceMeta?.marketUpdatedAt || null,
-      price_original_currency: selectedPriceMeta?.currency || null,
-      price_original_min: selectedPriceMeta?.originalMin || null,
-      price_original_avg: selectedPriceMeta?.originalAvg || null,
-      price_original_max: selectedPriceMeta?.originalMax || null,
-      price_fx_rate: selectedPriceMeta?.fxRate || null
-    };
-
-    if (existing) {
-      const { error } = await db
-        .from("pokemon_cards")
-        .update({
-          ...common,
-          quantity: Number(existing.quantity || 0) + quantity
-        })
-        .eq("id", existing.id)
-        .eq("user_id", currentUser.id);
-
-      if (error) throw error;
-      toast("Cópia agrupada na carta existente.");
-    } else {
-      const { error } = await db
-        .from("pokemon_cards")
-        .insert({
-          user_id: currentUser.id,
-          card_key: cardKey,
-          api_source: selectedCard.source || "TCGdex",
-          api_id: selectedCard.apiId || "",
-          name: selectedCard.name || "",
-          language_code: selectedCard.languageCode || "",
-          language: selectedCard.language || "",
-          set_name: selectedCard.setName || "",
-          set_id: selectedCard.setId || "",
-          number: selectedCard.number || "",
-          rarity: selectedCard.rarity || "",
-          card_type: selectedCard.type || "",
-          image_url: selectedCard.imageUrl || "",
-          quantity,
-          condition,
-          finish,
-          ...common
-        });
-
-      if (error) throw error;
-      toast("Carta adicionada.");
-    }
-
-    closeModal("priceDialog");
-    closeModal("addDialog");
-    await loadCards(false);
-  } catch (err) {
-    console.error(err);
-    toast("Erro ao salvar a carta.");
-  } finally {
-    button.disabled = false;
-  }
+function cardsOnPage(page) {
+  return collection.filter(card => Number(card.binder_page || 1) === Number(page));
 }
 
-async function deleteCard(id) {
-  const card = collection.find(c => c.id === id);
-  if (!card) return;
-
-  const qty = Number(card.quantity || 1);
-  const msg = qty > 1
-    ? `Apagar ${qty} cópias agrupadas de ${card.name}?`
-    : `Apagar ${card.name}?`;
-
-  if (!confirm(msg)) return;
-
-  const backup = [...collection];
-  collection = collection.filter(c => c.id !== id);
-  applyFilters();
-
-  const { error } = await db
-    .from("pokemon_cards")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", currentUser.id);
-
-  if (error) {
-    console.error(error);
-    collection = backup;
-    applyFilters();
-    toast("Não consegui apagar a carta.");
-    return;
-  }
-
-  toast("Carta apagada.");
+function getCardAt(page, slot) {
+  return collection.find(card => Number(card.binder_page || 1) === Number(page) && Number(card.binder_slot) === Number(slot));
 }
 
-// =============================================================
-// RENDER DO MEU FICHÁRIO
-// =============================================================
+function findFirstFreePosition(preferredPage = currentPage) {
+  const pages = Math.max(1, Number(settings.binder_pages || 1));
+  for (let p = Math.max(1, preferredPage); p <= pages; p++) {
+    for (let s = 1; s <= 9; s++) if (!getCardAt(p, s)) return { page: p, slot: s };
+  }
+  for (let p = 1; p < Math.max(1, preferredPage); p++) {
+    for (let s = 1; s <= 9; s++) if (!getCardAt(p, s)) return { page: p, slot: s };
+  }
+  return { page: pages + 1, slot: 1 };
+}
 
-function applyFilters() {
-  const text = normalizeText($("filterText")?.value || "");
-  const lang = $("filterLanguage")?.value || "all";
-
-  filteredCollection = collection.filter(card => {
-    const haystack = normalizeText([
-      card.name,
-      card.set_name,
-      card.number,
-      card.language,
-      card.rarity
-    ].join(" "));
-
-    return (!text || haystack.includes(text)) &&
-      (lang === "all" || card.language_code === lang);
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-  currentPage = Math.min(Math.max(currentPage, 1), totalPages);
-
+function renderAll() {
+  applySettingsToUI();
   renderBinder();
-  renderStats();
-}
-
-function renderStats() {
-  const totals = collection.reduce((acc, card) => {
-    const qty = Number(card.quantity || 1);
-    acc.qty += qty;
-    acc.min += Number(card.price_min || 0) * qty;
-    acc.avg += Number(card.price_avg || 0) * qty;
-    acc.max += Number(card.price_max || 0) * qty;
-    return acc;
-  }, { qty: 0, min: 0, avg: 0, max: 0 });
-
-  $("totalCards").textContent = totals.qty;
-  $("totalMin").textContent = money(totals.min);
-  $("totalAvg").textContent = money(totals.avg);
-  $("totalMax").textContent = money(totals.max);
+  renderSummary();
+  renderPagesGrid();
 }
 
 function renderBinder() {
-  renderCardGrid($("binderGrid"), filteredCollection, currentPage, true);
-  const totalPages = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-  $("pageInfo").textContent = `Página ${currentPage} de ${totalPages}`;
-}
-
-function renderCardGrid(grid, cards, page, editable) {
-  if (!grid) return;
+  const grid = $("binderSheet");
   grid.innerHTML = "";
+  const pageCards = cardsOnPage(currentPage);
 
-  const pageCards = cards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  for (let i = 0; i < PAGE_SIZE; i++) {
-    const card = pageCards[i];
-    const slot = document.createElement("article");
-    slot.className = "card-slot" + (card ? "" : " empty");
+  for (let slot = 1; slot <= 9; slot++) {
+    const pocket = document.createElement("div");
+    pocket.className = "binder-pocket";
+    const card = pageCards.find(c => Number(c.binder_slot) === slot);
 
     if (!card) {
-      slot.textContent = "Espaço vazio";
-      grid.appendChild(slot);
-      continue;
+      const empty = document.createElement("button");
+      empty.className = "pocket-empty-btn";
+      empty.type = "button";
+      empty.title = `Adicionar no bolso ${slot}`;
+      empty.textContent = "+";
+      empty.addEventListener("click", () => openAddForPosition(currentPage, slot));
+      pocket.appendChild(empty);
+    } else {
+      pocket.appendChild(renderPocketCard(card));
     }
+    grid.appendChild(pocket);
+  }
 
-    const image = getCardImage(card);
+  const pages = Math.max(1, Number(settings.binder_pages || 1));
+  $("pageLabel").textContent = `Capa + Pág. ${currentPage} · ${currentPage}/${pages}`;
+  $("prevPage").disabled = currentPage <= 1;
+  $("nextPage").disabled = currentPage >= pages;
+}
 
-    slot.innerHTML = `
-      ${editable ? `<button type="button" class="delete-card-btn" data-card-id="${safeText(card.id)}" title="Apagar carta">×</button>` : ""}
-      <span class="qty-badge">x${safeText(card.quantity || 1)}</span>
-      <div class="card-img-wrap">${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}" loading="lazy">` : ""}</div>
-      <div class="card-title">${safeText(card.name || "Sem nome")}</div>
-      <div class="card-meta">${safeText(card.set_name || "Coleção não informada")}<br>${safeText(card.number || "-")} • ${safeText(card.language || "-")}</div>
-      <div class="price-pill">${money(card.price_min)} - ${money(card.price_max)}</div>
-      <div class="source-line">Fonte: ${safeText(card.price_source || "Sem preço")}</div>`;
+function renderPocketCard(card) {
+  const status = card.collection_status || "owned";
+  const wrap = document.createElement("button");
+  wrap.type = "button";
+  wrap.className = `pocket-card status-${status}`;
+  if (activeStatusFilter !== "all" && status !== activeStatusFilter) wrap.classList.add("filtered-out");
+  const image = getCardImage(card);
+  const statusLabel = STATUS_META[status]?.short || status;
+  const qty = Math.max(0, Number(card.quantity || 0));
+  const value = Number(card.price_avg || 0) * Math.max(qty, 1);
+  wrap.innerHTML = `
+    ${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}" loading="lazy">` : `<span>${safeText(card.name)}</span>`}
+    <span class="card-status-ribbon">${safeText(statusLabel)}</span>
+    ${status === "owned" && qty > 1 ? `<span class="card-qty">x${qty}</span>` : ""}
+    ${settings.show_values && Number(card.price_avg || 0) > 0 ? `<span class="card-value">${money(value)}</span>` : ""}`;
+  wrap.addEventListener("click", () => openExistingCard(card));
+  return wrap;
+}
 
-    grid.appendChild(slot);
+function renderSummary() {
+  const total = collection.length;
+  const counts = { missing: 0, wanted: 0, owned: 0, ordered: 0 };
+  collection.forEach(card => counts[card.collection_status || "owned"] = (counts[card.collection_status || "owned"] || 0) + 1);
+  const capacity = Math.max(1, Number(settings.binder_pages || 1)) * 9;
+  const empty = Math.max(0, capacity - total);
+  const completion = total ? Math.round((counts.owned / total) * 100) : 0;
+  const totalValue = collection
+    .filter(c => (c.collection_status || "owned") === "owned")
+    .reduce((sum, c) => sum + Number(c.price_avg || 0) * Math.max(Number(c.quantity || 1), 1), 0);
+
+  $("completionPercent").textContent = `${completion}%`;
+  $("progressBar").style.width = `${completion}%`;
+  $("progressText").textContent = `${counts.owned} de ${total} carta${total === 1 ? "" : "s"} marcada${counts.owned === 1 ? "" : "s"} como “Tenho”`;
+  $("sumTotal").textContent = total;
+  $("sumMissing").textContent = counts.missing;
+  $("sumOwned").textContent = counts.owned;
+  $("sumWanted").textContent = counts.wanted;
+  $("sumOrdered").textContent = counts.ordered;
+  $("sumEmpty").textContent = empty;
+  $("filterAllCount").textContent = total;
+  $("filterMissingCount").textContent = counts.missing;
+  $("filterWantedCount").textContent = counts.wanted;
+  $("filterOwnedCount").textContent = counts.owned;
+  $("filterOrderedCount").textContent = counts.ordered;
+  $("totalValue").textContent = money(totalValue);
+  $("coverSlots").textContent = capacity;
+  $("coverOwned").textContent = counts.owned;
+  $("coverWanted").textContent = counts.wanted;
+  $("binderHeaderStats").textContent = `${total} carta${total === 1 ? "" : "s"} · ${counts.owned} tenho · ${counts.wanted} quero · ${completion}% completo`;
+
+  document.querySelectorAll("[data-status-filter]").forEach(btn => btn.classList.toggle("active", btn.dataset.statusFilter === activeStatusFilter));
+}
+
+function setStatusFilter(status) {
+  activeStatusFilter = status;
+  renderBinder();
+  renderSummary();
+}
+
+async function addPage() {
+  const next = Math.max(1, Number(settings.binder_pages || 1)) + 1;
+  await updateSettings({ binder_pages: next });
+  currentPage = next;
+  renderAll();
+  toast(`Página ${next} adicionada.`);
+}
+
+function goToPage(page) {
+  currentPage = Math.min(Math.max(1, Number(page || 1)), Math.max(1, Number(settings.binder_pages || 1)));
+  renderBinder();
+  renderPagesGrid();
+}
+
+function renderPagesGrid() {
+  const grid = $("pagesGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const pages = Math.max(1, Number(settings.binder_pages || 1));
+  for (let p = 1; p <= pages; p++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "page-thumb" + (p === currentPage ? " active" : "");
+    const cells = [];
+    for (let s = 1; s <= 9; s++) {
+      const card = getCardAt(p, s);
+      const img = card ? getCardImage(card) : "";
+      cells.push(`<span class="page-mini-pocket">${img ? `<img src="${safeText(img)}" alt="">` : ""}</span>`);
+    }
+    btn.innerHTML = `<strong>Página ${p}</strong><div class="page-mini-grid">${cells.join("")}</div><small>${cardsOnPage(p).length}/9 preenchidos</small>`;
+    btn.addEventListener("click", () => { goToPage(p); closeDialog("pagesDialog"); });
+    grid.appendChild(btn);
   }
 }
 
-// =============================================================
-// BUSCA DE CARTAS
-// =============================================================
+function openAddForPosition(page = currentPage, slot = null) {
+  const position = slot ? { page, slot } : findFirstFreePosition(page);
+  pendingPosition = position;
+  editingCardId = null;
+  selectedCard = null;
+  selectedMarket = null;
+  $("searchName").value = "";
+  $("searchNumber").value = "";
+  $("searchSet").value = "";
+  $("resultsList").innerHTML = "";
+  $("searchStatus").textContent = `Nova carta será posicionada na página ${position.page}, bolso ${position.slot}.`;
+  openDialog("addDialog");
+}
 
-function parseCardSearch() {
-  const rawName = $("searchName").value.trim();
-  const rawNumber = $("searchNumber").value.trim();
-  const setHint = $("searchSet").value.trim();
-  const match = rawNumber.match(/^\s*([A-Za-z]*\d{1,4})\s*\/\s*(\d{1,4})\s*$/);
+async function searchMypCards(name, number, setHint) {
+  if (!name) return { cards: [], needsToken: false };
+  try {
+    const params = new URLSearchParams({ name });
+    if (number) params.set("number", number);
+    if (setHint) params.set("set", setHint);
+    const response = await fetch(`/api/mypcards?${params.toString()}`, { cache: "no-store" });
+    const json = await response.json();
+    if (!json.ok) return { cards: [], needsToken: Boolean(json.needsToken), message: json.message || "" };
+    return { cards: (json.cards || []).map(mapMypCard), needsToken: false };
+  } catch (error) {
+    console.warn("MYP Cards", error);
+    return { cards: [], needsToken: false, message: "Mercado BR temporariamente indisponível." };
+  }
+}
 
+function mapMypCard(card) {
   return {
-    name: rawName,
-    number: normalizeNumber(match ? match[1] : rawNumber),
-    denominator: match ? normalizeNumber(match[2]) : "",
-    setHint,
-    language: $("searchLanguage").value
+    source: "MYP Cards",
+    apiId: `myp-${card.internalCode}`,
+    marketInternalCode: card.internalCode,
+    name: card.namePt || card.nameEn || "",
+    namePt: card.namePt || "",
+    nameEn: card.nameEn || "",
+    languageCode: card.imagePt ? "pt-br" : "en",
+    language: card.imagePt ? "Português" : "Inglês",
+    setName: card.editionPt || card.editionEn || "",
+    setId: card.editionCode || "",
+    number: card.number || "",
+    rarity: "",
+    type: "",
+    imageUrl: card.imagePt || card.imageEn || "",
+    imagePt: card.imagePt || "",
+    imageEn: card.imageEn || "",
+    market: {
+      source: "MYP Cards",
+      min: Number(card.minPrice || 0),
+      avg: Number(card.avgPrice || 0),
+      max: Number(card.maxPrice || 0),
+      link: card.link || "",
+      availableQuantity: card.availableQuantity,
+      internalCode: card.internalCode,
+      namePt: card.namePt || "",
+      editionPt: card.editionPt || "",
+      imagePt: card.imagePt || "",
+      imageEn: card.imageEn || ""
+    },
+    marketScore: Number(card.matchScore || 0)
   };
 }
 
-async function searchCards() {
-  const search = parseCardSearch();
-
-  if (!search.name && !search.number) {
-    toast("Digite o nome ou o número da carta.");
-    return;
-  }
-
-  $("searchStatus").textContent = "Buscando...";
-  $("resultsList").innerHTML = "";
-
-  try {
-    const languages = search.language === "all"
-      ? ["pt-br", "en", "ja"]
-      : [search.language];
-
-    let results = [];
-
-    for (const lang of languages) {
-      results.push(...await searchTCGdex(lang, search));
-    }
-
-    if (results.length < 3 && search.name) {
-      results.push(...await searchPokemonTCG(search));
-    }
-
-    const finalResults = rankAndFilter(
-      dedupeResults(results),
-      search
-    ).slice(0, 30);
-
-    renderResults(finalResults);
-
-    $("searchStatus").textContent = finalResults.length
-      ? `${finalResults.length} resultado(s). Português aparece primeiro quando disponível.`
-      : "Não encontrei essa carta. Tente nome + número.";
-  } catch (err) {
-    console.error(err);
-    $("searchStatus").textContent = "Erro ao buscar cartas.";
-  }
-}
-
-async function searchTCGdex(lang, search) {
+async function searchTCGdex(lang, name, number) {
   const attempts = [];
-
-  if (search.name && search.number) attempts.push({ name: search.name, localId: search.number });
-  if (search.name) attempts.push({ name: search.name });
-  if (search.number) attempts.push({ localId: search.number });
-
+  const numerator = parseCollectorNumber(number).numerator || normalizeNumerator(number);
+  if (name && numerator) attempts.push({ name, localId: numerator });
+  if (name) attempts.push({ name });
+  if (numerator) attempts.push({ localId: numerator });
   const out = [];
 
   for (const query of attempts) {
     const params = new URLSearchParams();
     if (query.name) params.set("name", query.name);
     if (query.localId) params.set("localId", query.localId);
-    params.set("pagination:itemsPerPage", "40");
-
-    const response = await fetch(`${TCGDEX_BASE}/${lang}/cards?${params.toString()}`);
-    if (!response.ok) continue;
-
-    const brief = await response.json();
-    if (!Array.isArray(brief)) continue;
-
-    const details = await Promise.all(
-      brief.slice(0, 20).map(async item => {
-        try {
-          const detailResponse = await fetch(
-            `${TCGDEX_BASE}/${lang}/cards/${encodeURIComponent(item.id)}`
-          );
-
-          const full = detailResponse.ok
-            ? await detailResponse.json()
-            : item;
-
-          return mapTCGdex(full, lang);
-        } catch {
-          return mapTCGdex(item, lang);
-        }
-      })
-    );
-
-    out.push(...details);
+    params.set("pagination:itemsPerPage", "35");
+    try {
+      const response = await fetch(`${TCGDEX_BASE}/${lang}/cards?${params}`);
+      if (!response.ok) continue;
+      const list = await response.json();
+      if (!Array.isArray(list)) continue;
+      const details = await Promise.all(list.slice(0, 15).map(item => fetchTCGdexCard(lang, item.id, item)));
+      out.push(...details.filter(Boolean));
+    } catch (error) {
+      console.warn("TCGdex search", lang, error);
+    }
   }
-
   return out;
 }
 
+async function fetchTCGdexCard(lang, id, fallback = null) {
+  try {
+    const response = await fetch(`${TCGDEX_BASE}/${lang}/cards/${encodeURIComponent(id)}`);
+    if (!response.ok) return fallback ? mapTCGdex(fallback, lang) : null;
+    return mapTCGdex(await response.json(), lang);
+  } catch {
+    return fallback ? mapTCGdex(fallback, lang) : null;
+  }
+}
+
 function mapTCGdex(card, lang) {
+  const set = card.set || {};
   return {
     source: "TCGdex",
     apiId: card.id || "",
     name: card.name || "",
     languageCode: lang,
     language: LANGUAGE_LABEL[lang] || lang,
-    setName: card.set?.name || card.set?.id || "",
-    setId: card.set?.id || "",
+    setName: set.name || set.id || "",
+    setId: set.id || "",
     number: String(card.localId || ""),
-    printedTotal: String(card.set?.cardCount?.official || ""),
-    total: String(card.set?.cardCount?.total || ""),
+    printedTotal: String(set.cardCount?.official || ""),
+    total: String(set.cardCount?.total || ""),
     rarity: card.rarity || "",
-    type: card.category || "",
+    type: Array.isArray(card.types) ? card.types.join(", ") : (card.category || ""),
+    category: card.category || "",
     imageUrl: card.image || "",
     pricing: card.pricing || null
   };
 }
 
-async function searchPokemonTCG(search) {
-  const clauses = [];
-  if (search.name) clauses.push(`name:*${search.name.replace(/\s+/g, "*")}*`);
-  if (search.number) clauses.push(`number:${search.number}`);
-
-  const response = await fetch(
-    `${POKEMON_TCG_BASE}?q=${encodeURIComponent(clauses.join(" "))}&pageSize=20`
-  );
-
-  if (!response.ok) return [];
-
-  const json = await response.json();
-
-  return (json.data || []).map(card => ({
-    source: "Pokémon TCG API",
-    apiId: card.id || "",
-    name: card.name || "",
-    languageCode: "en",
-    language: "Inglês",
-    setName: card.set?.name || "",
-    setId: card.set?.id || "",
-    number: String(card.number || ""),
-    printedTotal: String(card.set?.printedTotal || ""),
-    total: String(card.set?.total || ""),
-    rarity: card.rarity || "",
-    type: card.supertype || "",
-    imageUrl: card.images?.large || card.images?.small || "",
-    pricing: {
-      tcgplayer: card.tcgplayer?.prices
-        ? {
-            unit: "USD",
-            updated: card.tcgplayer.updatedAt || null,
-            ...card.tcgplayer.prices
-          }
-        : null,
-      cardmarket: card.cardmarket?.prices
-        ? {
-            unit: "EUR",
-            updated: card.cardmarket.updatedAt || null,
-            ...card.cardmarket.prices
-          }
-        : null
-    }
-  }));
+async function hydratePortuguese(results) {
+  const ids = [...new Set(results.filter(c => c.source === "TCGdex" && c.languageCode !== "pt-br").map(c => c.apiId).filter(Boolean))].slice(0, 18);
+  const hydrated = await Promise.all(ids.map(id => fetchTCGdexCard("pt-br", id)));
+  return hydrated.filter(Boolean);
 }
 
-function dedupeResults(results) {
+function rankCatalog(cards, query) {
+  const name = normalizeText(query.name);
+  const number = parseCollectorNumber(query.number);
+  const setHint = normalizeText(query.setHint);
+  const language = query.language;
+
+  return [...cards].sort((a, b) => score(b) - score(a));
+
+  function score(card) {
+    let s = 0;
+    const cardName = normalizeText(card.name);
+    const setName = normalizeText(card.setName);
+    const setId = normalizeText(card.setId);
+    const cardNum = parseCollectorNumber(card.number);
+
+    if (card.source === "MYP Cards") s += 160 + Math.min(Number(card.marketScore || 0), 800) * .2;
+    if (card.languageCode === "pt-br") s += 320;
+    else if (card.languageCode === "en") s += 100;
+    else if (card.languageCode === "ja") s += 70;
+    if (language !== "all" && card.languageCode === language) s += 250;
+
+    if (name) {
+      if (cardName === name) s += 350;
+      else if (cardName.includes(name) || name.includes(cardName)) s += 170;
+      else s -= 150;
+    }
+    if (number.numerator) {
+      const cardNumerator = cardNum.numerator || normalizeNumerator(card.number);
+      if (cardNumerator === number.numerator) s += 430;
+      else s -= 260;
+      if (number.denominator && cardNum.denominator === number.denominator) s += 240;
+      if (number.denominator && card.printedTotal === number.denominator) s += 120;
+    }
+    if (setHint && (setName.includes(setHint) || setId.includes(setHint))) s += 250;
+    if (card.market?.avg || card.market?.min) s += 80;
+    if (card.imageUrl) s += 15;
+    return s;
+  }
+}
+
+function dedupeCatalog(cards) {
   const seen = new Set();
-
-  return results.filter(card => {
-    const key = [
-      card.source,
-      card.apiId,
-      card.languageCode,
-      card.name,
-      card.number,
-      card.setId
-    ].join("|");
-
+  return cards.filter(card => {
+    const key = [card.source, card.apiId, card.languageCode, card.name, card.number, card.setId].join("|");
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
-function rankAndFilter(results, search) {
-  const wantedName = normalizeText(search.name);
-  const wantedNumber = normalizeNumber(search.number);
-  const wantedSet = normalizeText(search.setHint);
-  const wantedDenominator = normalizeNumber(search.denominator);
-
-  let candidates = results;
-
-  if (wantedName) {
-    const nameMatches = candidates.filter(card => {
-      const name = normalizeText(card.name);
-      return name === wantedName ||
-        name.includes(wantedName) ||
-        wantedName.includes(name);
-    });
-
-    if (nameMatches.length) candidates = nameMatches;
+async function searchCards() {
+  const name = $("searchName").value.trim();
+  const number = $("searchNumber").value.trim();
+  const setHint = $("searchSet").value.trim();
+  const language = $("searchLanguage").value;
+  if (!name && !number) {
+    toast("Digite o nome ou o número da carta.");
+    return;
   }
+  const btn = $("btnSearchCards");
+  setButtonBusy(btn, true, "Buscando...");
+  $("searchStatus").textContent = "Consultando catálogo e mercado brasileiro...";
+  $("resultsList").innerHTML = "";
 
-  if (wantedNumber) {
-    const numberMatches = candidates.filter(
-      card => normalizeNumber(card.number) === wantedNumber
-    );
+  try {
+    const languages = language === "all" ? ["pt-br", "en", "ja"] : [language];
+    const [myp, ...tcgGroups] = await Promise.all([
+      searchMypCards(name, number, setHint),
+      ...languages.map(lang => searchTCGdex(lang, name, number))
+    ]);
+    let tcg = tcgGroups.flat();
+    if (language === "all" || language === "pt-br") tcg.push(...await hydratePortuguese(tcg));
 
-    if (numberMatches.length) candidates = numberMatches;
-  }
+    const query = { name, number, setHint, language };
+    const results = rankCatalog(dedupeCatalog([...(myp.cards || []), ...tcg]), query).slice(0, 30);
+    renderResults(results);
 
-  return candidates.sort((a, b) => score(b) - score(a));
-
-  function score(card) {
-    let s = 0;
-    const name = normalizeText(card.name);
-    const setName = normalizeText(card.setName);
-    const setId = normalizeText(card.setId);
-
-    if (card.languageCode === "pt-br") s += 400;
-    else if (card.languageCode === "en") s += 130;
-    else if (card.languageCode === "ja") s += 80;
-
-    if (wantedName && name === wantedName) s += 240;
-    else if (
-      wantedName &&
-      (name.includes(wantedName) || wantedName.includes(name))
-    ) s += 120;
-
-    if (wantedNumber && normalizeNumber(card.number) === wantedNumber) s += 260;
-
-    if (wantedSet && (setName.includes(wantedSet) || setId.includes(wantedSet))) {
-      s += 170;
+    if (results.length) {
+      const brCount = results.filter(c => c.languageCode === "pt-br").length;
+      $("searchStatus").textContent = `${results.length} resultado(s) · ${brCount} em português${myp.needsToken ? " · preço BR requer token MYP" : ""}.`;
+    } else {
+      $("searchStatus").textContent = myp.needsToken
+        ? "A base brasileira precisa de token MYP Cards. A busca TCGdex também não encontrou esta carta."
+        : "Não encontrei essa impressão. Tente nome + número.";
     }
-
-    if (wantedDenominator) {
-      if (normalizeNumber(card.printedTotal) === wantedDenominator) s += 70;
-      if (normalizeNumber(card.total) === wantedDenominator) s += 45;
-      if (setName.includes(wantedDenominator)) s += 35;
-    }
-
-    if (card.imageUrl) s += 10;
-    if (card.pricing?.tcgplayer || card.pricing?.cardmarket) s += 20;
-
-    return s;
+  } catch (error) {
+    console.error(error);
+    $("searchStatus").textContent = "Erro ao buscar. Tente novamente.";
+  } finally {
+    setButtonBusy(btn, false);
   }
 }
 
 function renderResults(results) {
   const list = $("resultsList");
   list.innerHTML = "";
-
-  for (const card of results) {
-    const item = document.createElement("article");
-    item.className = "result-card";
-
+  results.forEach(card => {
+    const el = document.createElement("article");
+    el.className = "result-card";
     const image = getCardImage(card);
-
-    item.innerHTML = `
-      ${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}" loading="lazy">` : "<div></div>"}
-      <div class="result-info">
+    const brPrice = card.market?.avg || card.market?.min || 0;
+    el.innerHTML = `
+      ${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}" loading="lazy">` : `<div></div>`}
+      <div>
         <h3>${safeText(card.name)}</h3>
-        <p>
-          Coleção: ${safeText(card.setName || "-")}<br>
-          Número: ${safeText(card.number || "-")} • ${safeText(card.language)}<br>
-          Raridade: ${safeText(card.rarity || "-")}
-        </p>
+        <p>${safeText(card.setName || "Coleção não informada")}<br>${safeText(card.number || "-")} · ${safeText(card.language || "-")}${card.rarity ? `<br>${safeText(card.rarity)}${card.type ? ` · ${safeText(card.type)}` : ""}` : ""}</p>
+        <div class="result-badges">
+          <span class="result-badge">${safeText(card.source)}</span>
+          ${card.languageCode === "pt-br" ? `<span class="result-badge br">PT-BR</span>` : ""}
+          ${brPrice ? `<span class="result-badge br">${money(brPrice)} BR</span>` : ""}
+        </div>
       </div>
-      <button class="primary-btn choose-result" type="button">Escolher</button>`;
-
-    item
-      .querySelector(".choose-result")
-      .addEventListener("click", () => chooseCard(card));
-
-    list.appendChild(item);
-  }
+      <button class="btn btn-primary choose-result" type="button">Escolher</button>`;
+    el.querySelector(".choose-result").addEventListener("click", () => chooseCatalogCard(card));
+    list.appendChild(el);
+  });
 }
 
-// =============================================================
-// PREÇO AUTOMÁTICO
-// =============================================================
-
-async function chooseCard(card) {
-  selectedCard = card;
-  selectedPriceMeta = null;
-
-  $("selectedTitle").textContent = card.name || "Carta selecionada";
-
-  const image = getCardImage(card);
-
-  $("selectedPreview").innerHTML = `
-    ${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}">` : ""}
-    <div>
-      <h3>${safeText(card.name)}</h3>
-      <p class="card-meta">
-        ${safeText(card.setName || "-")}<br>
-        ${safeText(card.number || "-")} • ${safeText(card.language || "-")}<br>
-        ${safeText(card.rarity || "-")}
-      </p>
-    </div>`;
-
-  $("cardQuantity").value = 1;
-  $("cardCondition").value = "Nova";
-  $("cardFinish").value = "Normal";
-  $("priceSource").value = "Sem preço";
-  $("priceMin").value = "";
-  $("priceAvg").value = "";
-  $("priceMax").value = "";
-  $("cardNotes").value = "";
-
-  const liga = buildLigaSearchUrl(card);
-  $("priceLink").value = liga;
-  $("ligaSearchLink").href = liga;
-
-  setPriceStatus("Buscando preço atual...", "");
-  openModal("priceDialog");
-
-  await autoFillCurrentPrice(card, true);
-}
-
-function setPriceStatus(text, type) {
-  const el = $("priceStatus");
-  el.textContent = text;
-  el.classList.remove("ok", "warn");
-  if (type) el.classList.add(type);
-}
-
-async function ensurePricing(card) {
-  if (card.pricing?.tcgplayer || card.pricing?.cardmarket) return card;
-
-  if (card.source === "TCGdex" && card.apiId) {
-    const languages = [
-      card.languageCode || "pt-br",
-      "en",
-      "pt-br"
-    ].filter((v, i, arr) => arr.indexOf(v) === i);
-
-    for (const lang of languages) {
-      try {
-        const response = await fetch(
-          `${TCGDEX_BASE}/${lang}/cards/${encodeURIComponent(card.apiId)}`
-        );
-
-        if (!response.ok) continue;
-
-        const full = await response.json();
-
-        if (full?.pricing?.tcgplayer || full?.pricing?.cardmarket) {
-          card.pricing = full.pricing;
-          return card;
-        }
-      } catch {}
+async function enrichCatalogCard(card) {
+  let enriched = { ...card };
+  if (card.source === "MYP Cards" && (!card.rarity || !card.type)) {
+    const candidates = await searchTCGdex(card.languageCode === "pt-br" ? "pt-br" : "en", card.nameEn || card.name, card.number);
+    const ranked = rankCatalog(candidates, { name: card.nameEn || card.name, number: card.number, setHint: card.setId || card.setName, language: card.languageCode });
+    const best = ranked[0];
+    if (best) {
+      enriched.rarity = best.rarity || enriched.rarity;
+      enriched.type = best.type || enriched.type;
+      enriched.apiIdTcg = best.apiId;
+      if (!enriched.imageUrl) enriched.imageUrl = best.imageUrl;
     }
   }
-
-  if (card.name) {
-    try {
-      const clauses = [`name:*${card.name.replace(/\s+/g, "*")}*`];
-      if (card.number) clauses.push(`number:${card.number}`);
-
-      const response = await fetch(
-        `${POKEMON_TCG_BASE}?q=${encodeURIComponent(clauses.join(" "))}&pageSize=10`
-      );
-
-      if (response.ok) {
-        const json = await response.json();
-        const candidates = json.data || [];
-
-        const exact = candidates.find(c =>
-          normalizeText(c.name) === normalizeText(card.name) &&
-          (!card.number || normalizeNumber(c.number) === normalizeNumber(card.number))
-        ) || candidates[0];
-
-        if (exact) {
-          const mapped = searchCardPricingFromPokemonTCG(exact);
-          if (mapped?.tcgplayer || mapped?.cardmarket) {
-            card.pricing = mapped;
-            return card;
-          }
-        }
-      }
-    } catch {}
-  }
-
-  return card;
+  return enriched;
 }
 
-function searchCardPricingFromPokemonTCG(card) {
-  return {
-    tcgplayer: card.tcgplayer?.prices
-      ? {
-          unit: "USD",
-          updated: card.tcgplayer.updatedAt || null,
-          ...card.tcgplayer.prices
-        }
-      : null,
-    cardmarket: card.cardmarket?.prices
-      ? {
-          unit: "EUR",
-          updated: card.cardmarket.updatedAt || null,
-          ...card.cardmarket.prices
-        }
-      : null
-  };
+async function findBrazilianMarket(card) {
+  if (card.market && (card.market.min || card.market.avg || card.market.max)) return card.market;
+  const myp = await searchMypCards(card.namePt || card.name, card.number, card.setId || card.setName);
+  if (myp.cards.length) {
+    const ranked = rankCatalog(myp.cards, { name: card.namePt || card.name, number: card.number, setHint: card.setId || card.setName, language: "pt-br" });
+    if (ranked[0]?.market) return ranked[0].market;
+  }
+  return { source: "MYP Cards", needsToken: myp.needsToken, min: 0, avg: 0, max: 0, link: "" };
 }
 
-function tcgPlayerVariantCandidates(finish) {
-  const f = normalizeText(finish);
-
-  if (f.includes("reverse")) {
-    return ["reverse-holofoil", "reverseHolofoil", "reverse", "reverseHolo"];
-  }
-
-  if (f.includes("holo") || f.includes("foil") || f.includes("especial")) {
-    return [
-      "holofoil",
-      "holo",
-      "unlimited-holofoil",
-      "unlimitedHolofoil",
-      "1st-edition-holofoil",
-      "1stEditionHolofoil"
-    ];
-  }
-
-  return ["normal", "unlimited", "1st-edition", "1stEdition"];
+async function chooseCatalogCard(card) {
+  selectedCard = await enrichCatalogCard(card);
+  editingCardId = null;
+  selectedStatus = "owned";
+  selectedMarket = null;
+  if (!pendingPosition) pendingPosition = findFirstFreePosition(currentPage);
+  fillCardDialogBase(selectedCard, {
+    page: pendingPosition.page,
+    slot: pendingPosition.slot,
+    quantity: 1,
+    condition: "Nova",
+    finish: inferFinish(selectedCard),
+    notes: ""
+  });
+  closeDialog("addDialog");
+  openDialog("cardDialog");
+  await refreshMarketForSelected();
 }
 
-function extractTCGPlayerPrice(pricing, finish, allowFallback = true) {
-  const provider = pricing?.tcgplayer;
-  if (!provider) return null;
-
-  const candidates = tcgPlayerVariantCandidates(finish);
-
-  for (const key of candidates) {
-    const variant = provider[key];
-
-    if (variant && typeof variant === "object") {
-      const low = firstFinite(variant.lowPrice, variant.low, variant.directLowPrice);
-      const avg = firstFinite(
-        variant.marketPrice,
-        variant.market,
-        variant.midPrice,
-        variant.mid,
-        low
-      );
-      const high = firstFinite(variant.highPrice, variant.high, avg);
-
-      if (low || avg || high) {
-        return {
-          provider: "TCGPlayer via TCGdex",
-          currency: provider.unit || "USD",
-          low: low || avg,
-          avg: avg || low,
-          high: high || avg || low,
-          updated: provider.updated || null,
-          variantKey: key
-        };
-      }
-    }
-  }
-
-  if (!allowFallback) return null;
-
-  const ignored = new Set(["updated", "unit"]);
-  for (const [key, variant] of Object.entries(provider)) {
-    if (ignored.has(key) || !variant || typeof variant !== "object") continue;
-
-    const low = firstFinite(variant.lowPrice, variant.low, variant.directLowPrice);
-    const avg = firstFinite(
-      variant.marketPrice,
-      variant.market,
-      variant.midPrice,
-      variant.mid,
-      low
-    );
-    const high = firstFinite(variant.highPrice, variant.high, avg);
-
-    if (low || avg || high) {
-      return {
-        provider: "TCGPlayer via TCGdex",
-        currency: provider.unit || "USD",
-        low: low || avg,
-        avg: avg || low,
-        high: high || avg || low,
-        updated: provider.updated || null,
-        variantKey: key
-      };
-    }
-  }
-
-  return null;
-}
-
-function extractCardmarketPrice(pricing, finish) {
-  const provider = pricing?.cardmarket;
-  if (!provider) return null;
-
-  const f = normalizeText(finish);
-  const holo = f.includes("holo") || f.includes("foil") || f.includes("especial");
-
-  const low = holo
-    ? firstFinite(
-        provider["low-holo"],
-        provider.lowHolo,
-        provider.lowHoloPrice,
-        provider.lowPriceHolo
-      )
-    : firstFinite(provider.low, provider.lowPrice);
-
-  const avg = holo
-    ? firstFinite(
-        provider["avg-holo"],
-        provider.avgHolo,
-        provider["trend-holo"],
-        provider.trendHolo,
-        provider["avg7-holo"],
-        provider.avg7Holo,
-        low
-      )
-    : firstFinite(
-        provider.avg,
-        provider.averageSellPrice,
-        provider.trend,
-        provider.trendPrice,
-        provider.avg7,
-        provider.avg30,
-        low
-      );
-
-  const high = holo
-    ? firstFinite(
-        provider["avg30-holo"],
-        provider.avg30Holo,
-        provider["avg7-holo"],
-        provider.avg7Holo,
-        avg
-      )
-    : firstFinite(provider.avg30, provider.avg7, provider.trendPrice, avg);
-
-  if (!low && !avg && !high) return null;
-
-  return {
-    provider: "Cardmarket via TCGdex",
-    currency: provider.unit || "EUR",
-    low: low || avg,
-    avg: avg || low,
-    high: high || avg || low,
-    updated: provider.updated || null,
-    variantKey: holo ? "holo" : "normal"
-  };
-}
-
-function inferFinishFromVariant(variantKey) {
-  const key = normalizeText(variantKey);
-
-  if (key.includes("reverse")) return "Reverse Holo";
-  if (key.includes("holo") || key.includes("foil")) return "Holo";
+function inferFinish(card) {
+  const rarity = normalizeText(card.rarity);
+  if (rarity.includes("holo")) return "Holo";
+  if (rarity.includes("full art") || rarity.includes("ultra")) return "Full-Art";
+  if (normalizeText(card.setName).includes("promo")) return "Promo";
   return "Normal";
 }
 
-async function getFxRate(currency) {
-  const unit = String(currency || "BRL").toUpperCase();
-  if (unit === "BRL") return 1;
-
-  const cached = fxCache.get(unit);
-  const now = Date.now();
-
-  if (cached && now - cached.time < 6 * 60 * 60 * 1000) {
-    return cached.rate;
-  }
-
-  try {
-    const response = await fetch(
-      `https://api.frankfurter.app/latest?from=${encodeURIComponent(unit)}&to=BRL`
-    );
-
-    if (response.ok) {
-      const json = await response.json();
-      const rate = Number(json?.rates?.BRL);
-
-      if (Number.isFinite(rate) && rate > 0) {
-        fxCache.set(unit, { rate, time: now });
-        return rate;
-      }
-    }
-  } catch {}
-
-  try {
-    const response = await fetch(
-      `https://open.er-api.com/v6/latest/${encodeURIComponent(unit)}`
-    );
-
-    if (response.ok) {
-      const json = await response.json();
-      const rate = Number(json?.rates?.BRL);
-
-      if (Number.isFinite(rate) && rate > 0) {
-        fxCache.set(unit, { rate, time: now });
-        return rate;
-      }
-    }
-  } catch {}
-
-  return null;
+function fillCardDialogBase(card, values) {
+  $("selectedTitle").textContent = card.name || "Carta";
+  const image = getCardImage(card);
+  $("selectedPreview").innerHTML = `
+    ${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}">` : ""}
+    <div>
+      <h3>${safeText(card.name || "")}</h3>
+      <p>${safeText(card.setName || card.set_name || "-")}<br>${safeText(card.number || "-")} · ${safeText(card.language || "-")}<br>${safeText(card.rarity || "Raridade não informada")}${card.type ? ` · ${safeText(card.type)}` : ""}</p>
+    </div>`;
+  $("cardQuantity").value = values.quantity ?? 1;
+  $("cardCondition").value = values.condition || "Nova";
+  $("cardFinish").value = values.finish || "Normal";
+  $("cardPage").value = values.page || currentPage;
+  $("cardSlot").value = values.slot || 1;
+  $("cardNotes").value = values.notes || "";
+  $("btnDeleteSelected").classList.toggle("hidden", !editingCardId);
+  setSelectedStatus(values.status || selectedStatus || "owned");
+  $("ligaSearchLink").href = buildLigaUrl(card);
+  $("mypcardsLink").classList.add("hidden");
+  setPriceLabels(0, 0, 0);
+  $("marketStatus").className = "market-status";
+  $("marketStatus").textContent = "Consultando mercado brasileiro...";
 }
 
-async function autoFillCurrentPrice(card, mayAdjustFinish = false) {
-  if (!card) return;
-
-  setPriceStatus("Buscando preço atual...", "");
-
-  const enriched = await ensurePricing(card);
-  const finish = $("cardFinish").value;
-
-  let market = extractTCGPlayerPrice(enriched.pricing, finish, false);
-
-  if (!market) {
-    market = extractCardmarketPrice(enriched.pricing, finish);
+async function refreshMarketForSelected() {
+  if (!selectedCard) return;
+  $("marketStatus").className = "market-status";
+  $("marketStatus").textContent = "Consultando MYP Cards em BRL...";
+  const market = await findBrazilianMarket(selectedCard);
+  selectedMarket = market;
+  setPriceLabels(market.min || 0, market.avg || 0, market.max || 0);
+  if (market.link) {
+    $("mypcardsLink").href = market.link;
+    $("mypcardsLink").classList.remove("hidden");
   }
-
-  if (!market) {
-    market = extractTCGPlayerPrice(enriched.pricing, finish, true);
-
-    if (market && mayAdjustFinish) {
-      $("cardFinish").value = inferFinishFromVariant(market.variantKey);
-    }
+  if (market.min || market.avg || market.max) {
+    const qtyText = Number.isFinite(Number(market.availableQuantity)) && market.availableQuantity != null ? ` · ${market.availableQuantity} un. ofertada(s)` : "";
+    $("marketStatus").className = "market-status ok";
+    $("marketStatus").textContent = `Mercado brasileiro encontrado no MYP Cards${qtyText}. Valores em BRL.`;
+  } else if (market.needsToken) {
+    $("marketStatus").className = "market-status warn";
+    $("marketStatus").textContent = "A API oficial do MYP Cards exige um token neste endpoint. O link brasileiro ficou disponível, mas o preço automático precisa da chave da API.";
+  } else {
+    $("marketStatus").className = "market-status warn";
+    $("marketStatus").textContent = "Sem cotação BR automática para esta impressão agora. Use o link do MYP Cards/Liga para conferir.";
   }
+}
 
-  if (!market) {
-    selectedPriceMeta = null;
-    $("priceSource").value = "Liga Pokémon";
-    $("priceMin").value = "";
-    $("priceAvg").value = "";
-    $("priceMax").value = "";
+function setPriceLabels(min, avg, max) {
+  $("priceMinLabel").textContent = min ? money(min) : "—";
+  $("priceAvgLabel").textContent = avg ? money(avg) : "—";
+  $("priceMaxLabel").textContent = max ? money(max) : "—";
+}
 
-    setPriceStatus(
-      "Não encontrei cotação automática para esta carta/variante. O link da Liga Pokémon já está preenchido para conferência.",
-      "warn"
-    );
-    return;
-  }
+function setSelectedStatus(status) {
+  selectedStatus = status;
+  document.querySelectorAll("[data-card-status]").forEach(btn => btn.classList.toggle("active", btn.dataset.cardStatus === status));
+  if (status !== "owned") $("cardQuantity").value = 0;
+  else if (Number($("cardQuantity").value || 0) < 1) $("cardQuantity").value = 1;
+}
 
-  const fxRate = await getFxRate(market.currency);
-
-  if (!fxRate) {
-    selectedPriceMeta = null;
-    $("priceSource").value = market.provider;
-    setPriceStatus(
-      `Encontrei o preço em ${market.currency}, mas não consegui converter para BRL agora.`,
-      "warn"
-    );
-    return;
-  }
-
-  const minBRL = market.low * fxRate;
-  const avgBRL = market.avg * fxRate;
-  const maxBRL = market.high * fxRate;
-
-  $("priceMin").value = minBRL.toFixed(2);
-  $("priceAvg").value = avgBRL.toFixed(2);
-  $("priceMax").value = maxBRL.toFixed(2);
-  $("priceSource").value = market.provider;
-
-  selectedPriceMeta = {
-    provider: market.provider,
-    currency: String(market.currency || "").toUpperCase(),
-    originalMin: market.low,
-    originalAvg: market.avg,
-    originalMax: market.high,
-    fxRate,
-    checkedAt: new Date().toISOString(),
-    marketUpdatedAt: isoOrNull(market.updated)
+function openExistingCard(card) {
+  editingCardId = card.id;
+  selectedStatus = card.collection_status || "owned";
+  selectedMarket = {
+    source: card.price_br_source || card.price_source || "",
+    min: Number(card.price_min || 0),
+    avg: Number(card.price_avg || 0),
+    max: Number(card.price_max || 0),
+    link: card.price_br_link || card.price_link || "",
+    internalCode: card.market_internal_code,
+    namePt: card.market_name_pt,
+    editionPt: card.market_edition_pt,
+    imagePt: card.market_image_pt,
+    imageEn: card.market_image_en
   };
-
-  const updatedText = selectedPriceMeta.marketUpdatedAt
-    ? ` Mercado: ${new Date(selectedPriceMeta.marketUpdatedAt).toLocaleString("pt-BR")}.`
-    : "";
-
-  setPriceStatus(
-    `Preço preenchido automaticamente em BRL • ${market.provider} • ${selectedPriceMeta.currency} → BRL.${updatedText}`,
-    "ok"
-  );
+  selectedCard = {
+    source: card.api_source || "saved",
+    apiId: card.api_id || "",
+    name: card.name,
+    languageCode: card.language_code,
+    language: card.language,
+    setName: card.set_name,
+    setId: card.set_id,
+    number: card.number,
+    rarity: card.rarity,
+    type: card.card_type,
+    imageUrl: card.image_url,
+    marketInternalCode: card.market_internal_code
+  };
+  pendingPosition = { page: card.binder_page || 1, slot: card.binder_slot || 1 };
+  fillCardDialogBase(selectedCard, {
+    page: card.binder_page,
+    slot: card.binder_slot,
+    quantity: card.quantity,
+    condition: card.condition,
+    finish: card.finish,
+    notes: card.notes,
+    status: selectedStatus
+  });
+  setPriceLabels(card.price_min, card.price_avg, card.price_max);
+  if (selectedMarket.link) {
+    $("mypcardsLink").href = selectedMarket.link;
+    $("mypcardsLink").classList.remove("hidden");
+  }
+  $("marketStatus").className = Number(card.price_avg || 0) ? "market-status ok" : "market-status warn";
+  $("marketStatus").textContent = Number(card.price_avg || 0)
+    ? `Última cotação BR salva: ${card.price_br_source || card.price_source || "mercado brasileiro"}.`
+    : "Esta carta ainda não tem cotação BR salva.";
+  openDialog("cardDialog");
+  refreshMarketForSelected();
 }
 
-// =============================================================
-// OCR
-// =============================================================
+async function saveSelectedCard() {
+  if (!selectedCard || !currentUser) return;
+  const button = $("btnSaveCard");
+  const page = Math.max(1, Number($("cardPage").value || 1));
+  const slot = Math.min(9, Math.max(1, Number($("cardSlot").value || 1)));
+  const condition = $("cardCondition").value;
+  const finish = $("cardFinish").value;
+  const quantity = selectedStatus === "owned" ? Math.max(1, Number($("cardQuantity").value || 1)) : 0;
+  const occupant = getCardAt(page, slot);
+  if (occupant && occupant.id !== editingCardId) {
+    toast(`O bolso ${slot} da página ${page} já está ocupado.`);
+    return;
+  }
 
-async function runOCR() {
+  setButtonBusy(button, true, "Salvando...");
+  try {
+    if (page > Number(settings.binder_pages || 1)) await updateSettings({ binder_pages: page }, true);
+    const market = selectedMarket || {};
+    const payload = {
+      user_id: currentUser.id,
+      card_key: buildCardKey(selectedCard),
+      api_source: selectedCard.source || "catalog",
+      api_id: selectedCard.apiId || "",
+      name: selectedCard.name || "",
+      language_code: selectedCard.languageCode || "",
+      language: selectedCard.language || "",
+      set_name: selectedCard.setName || "",
+      set_id: selectedCard.setId || "",
+      number: selectedCard.number || "",
+      rarity: selectedCard.rarity || "",
+      card_type: selectedCard.type || "",
+      image_url: getCardImage(selectedCard),
+      quantity,
+      condition,
+      finish,
+      collection_status: selectedStatus,
+      binder_page: page,
+      binder_slot: slot,
+      price_min: Number(market.min || 0),
+      price_avg: Number(market.avg || 0),
+      price_max: Number(market.max || 0),
+      currency: "BRL",
+      price_source: market.min || market.avg || market.max ? "MYP Cards" : "Sem preço BR",
+      price_link: market.link || buildLigaUrl(selectedCard),
+      price_br_source: market.min || market.avg || market.max ? "MYP Cards" : null,
+      price_br_link: market.link || null,
+      market_internal_code: market.internalCode || selectedCard.marketInternalCode || null,
+      market_name_pt: market.namePt || selectedCard.namePt || null,
+      market_edition_pt: market.editionPt || null,
+      market_image_pt: market.imagePt || selectedCard.imagePt || null,
+      market_image_en: market.imageEn || selectedCard.imageEn || null,
+      price_checked_at: new Date().toISOString(),
+      notes: $("cardNotes").value.trim()
+    };
+
+    if (editingCardId) {
+      const { error } = await db.from("pokemon_cards").update(payload).eq("id", editingCardId).eq("user_id", currentUser.id);
+      if (error) throw error;
+      toast("Carta atualizada.");
+    } else {
+      const { data: existing, error: findError } = await db
+        .from("pokemon_cards")
+        .select("id,quantity,binder_page,binder_slot")
+        .eq("user_id", currentUser.id)
+        .eq("card_key", payload.card_key)
+        .eq("condition", condition)
+        .eq("finish", finish)
+        .maybeSingle();
+      if (findError) throw findError;
+
+      if (existing) {
+        const patch = {
+          ...payload,
+          quantity: selectedStatus === "owned" ? Number(existing.quantity || 0) + quantity : 0,
+          binder_page: existing.binder_page || page,
+          binder_slot: existing.binder_slot || slot
+        };
+        delete patch.user_id;
+        const { error } = await db.from("pokemon_cards").update(patch).eq("id", existing.id).eq("user_id", currentUser.id);
+        if (error) throw error;
+        toast("Carta repetida agrupada.");
+      } else {
+        const { error } = await db.from("pokemon_cards").insert(payload);
+        if (error) throw error;
+        toast("Carta adicionada ao fichário.");
+      }
+    }
+
+    closeDialog("cardDialog");
+    pendingPosition = null;
+    editingCardId = null;
+    await loadCards(false);
+  } catch (error) {
+    console.error(error);
+    toast("Não consegui salvar a carta.");
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function deleteSelectedCard() {
+  if (!editingCardId) return;
+  const card = collection.find(c => c.id === editingCardId);
+  if (!card || !confirm(`Excluir ${card.name} do fichário?`)) return;
+  const { error } = await db.from("pokemon_cards").delete().eq("id", editingCardId).eq("user_id", currentUser.id);
+  if (error) {
+    toast("Não consegui excluir a carta.");
+    return;
+  }
+  closeDialog("cardDialog");
+  editingCardId = null;
+  await loadCards(false);
+  toast("Carta excluída.");
+}
+
+async function ensureOCRLibrary() {
+  if (window.Tesseract) return true;
+  if (ocrLoaded) return Boolean(window.Tesseract);
+  ocrLoaded = true;
+  return new Promise(resolve => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+  });
+}
+
+async function usePhotoHints() {
   const file = $("cardPhoto").files?.[0];
-
-  if (!file) {
-    toast("Escolha ou tire uma foto primeiro.");
+  if (!file) { toast("Tire ou escolha uma foto primeiro."); return; }
+  $("ocrStatus").textContent = "Carregando leitor...";
+  if (!await ensureOCRLibrary()) {
+    $("ocrStatus").textContent = "Leitor indisponível. Use a busca manual.";
     return;
   }
-
-  if (!window.Tesseract) {
-    toast("OCR não carregou. Use a busca manual.");
-    return;
-  }
-
-  $("ocrStatus").textContent = "Lendo imagem...";
-
   try {
     const result = await window.Tesseract.recognize(file, "por+eng", {
-      logger: m => {
-        if (m.progress) {
-          $("ocrStatus").textContent =
-            `Lendo imagem... ${Math.round(m.progress * 100)}%`;
-        }
-      }
+      logger: m => { if (m.progress) $("ocrStatus").textContent = `Lendo pistas... ${Math.round(m.progress * 100)}%`; }
     });
-
     const text = result?.data?.text || "";
-    $("ocrText").value = text.trim();
-
-    const lines = text
-      .split(/\n+/)
-      .map(v => v.trim())
-      .filter(Boolean);
-
-    const number = text.match(/([A-Za-z]*\d{1,4})\s*\/\s*(\d{1,4})/);
-
-    if (!$("searchName").value && lines[0]) {
-      $("searchName").value = lines[0]
-        .replace(/[^\p{L}\p{N}\s.'-]/gu, "")
-        .trim();
-    }
-
-    if (!$("searchNumber").value && number) {
-      $("searchNumber").value = `${number[1]}/${number[2]}`;
-    }
-
-    $("ocrStatus").textContent = "OCR concluído. Confira os campos.";
-  } catch (err) {
-    console.error(err);
-    $("ocrStatus").textContent =
-      "Não consegui ler a imagem. Use a busca manual.";
+    const number = text.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
+    const lines = text.split(/\n+/).map(v => v.replace(/[^\p{L}\p{N}\s.'-]/gu, " ").replace(/\s+/g, " ").trim()).filter(v => v.length >= 3);
+    const plausibleName = lines.find(line => !/^(basico|basic|hp|habilidade|ability|treinador|trainer)/i.test(line) && /[a-zA-ZÀ-ÿ]/.test(line));
+    if (plausibleName && !$("searchName").value) $("searchName").value = plausibleName.replace(/\bHP\s*\d+.*/i, "").trim();
+    if (number && !$("searchNumber").value) $("searchNumber").value = `${number[1]}/${number[2]}`;
+    $("ocrStatus").textContent = "Pistas preenchidas. Confira e toque em Buscar.";
+  } catch (error) {
+    console.error(error);
+    $("ocrStatus").textContent = "A leitura textual falhou. O scanner visual será a próxima etapa.";
   }
 }
 
-// =============================================================
-// AMIGOS
-// =============================================================
+async function saveAppearance() {
+  const binderName = $("binderNameInput").value.trim() || "Meu Fichário";
+  const activeTheme = document.querySelector(".theme-swatch.active")?.dataset.theme || "graphite";
+  await updateSettings({ binder_name: binderName, binder_background: activeTheme });
+  renderAll();
+  closeDialog("appearanceDialog");
+  toast("Aparência salva.");
+}
 
-async function openFriends() {
-  await loadCurrentProfile();
-  await loadFriendships();
-  renderSocialLists();
-  $("friendSearchResults").innerHTML = "";
-  $("friendSearch").value = "";
-  openModal("friendsDialog");
+function exportCSV() {
+  const headers = ["Nome","Coleção","Número","Idioma","Status","Quantidade","Condição","Acabamento","Preço mínimo BR","Preço médio BR","Preço máximo BR","Fonte","Página","Bolso","Link"];
+  const rows = collection.map(c => [
+    c.name,c.set_name,c.number,c.language,STATUS_META[c.collection_status || "owned"]?.label || c.collection_status,
+    c.quantity,c.condition,c.finish,c.price_min,c.price_avg,c.price_max,c.price_br_source || c.price_source,c.binder_page,c.binder_slot,c.price_br_link || c.price_link
+  ]);
+  const csv = [headers, ...rows].map(row => row.map(v => `"${String(v ?? "").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${(settings.binder_name || "pokemon-fichario").replace(/[^a-z0-9-_]+/gi,"-")}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
 async function loadFriendships() {
   const { data, error } = await db
     .from("pokemon_friendships")
     .select("*")
+    .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
     .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    toast("Não consegui carregar os amigos.");
-    return;
-  }
-
+  if (error) throw error;
   friendships = data || [];
-
-  const ids = new Set();
-
-  for (const f of friendships) {
-    ids.add(f.requester_id);
-    ids.add(f.addressee_id);
-  }
-
-  ids.delete(currentUser.id);
+  const ids = [...new Set(friendships.flatMap(f => [f.requester_id, f.addressee_id]).filter(id => id !== currentUser.id))];
   profilesById = new Map();
-
-  if (ids.size) {
-    const { data: profiles, error: profileError } = await db
-      .from("pokemon_profiles")
-      .select("user_id,username,display_name,avatar_url,binder_visibility")
-      .in("user_id", [...ids]);
-
-    if (profileError) {
-      console.error(profileError);
-    } else {
-      for (const p of profiles || []) profilesById.set(p.user_id, p);
-    }
+  if (ids.length) {
+    const { data: profiles } = await db.from("pokemon_profiles").select("user_id,username,display_name,binder_visibility").in("user_id", ids);
+    (profiles || []).forEach(p => profilesById.set(p.user_id, p));
   }
+  renderFriends();
 }
 
-function friendshipWith(userId) {
-  return friendships.find(f =>
-    (f.requester_id === currentUser.id && f.addressee_id === userId) ||
-    (f.addressee_id === currentUser.id && f.requester_id === userId)
-  ) || null;
-}
+function renderFriends() {
+  const requests = $("friendRequests");
+  const friends = $("friendsList");
+  requests.innerHTML = ""; friends.innerHTML = "";
 
-function renderSocialLists() {
-  const requestsEl = $("friendRequests");
-  const friendsEl = $("friendsList");
-
-  requestsEl.innerHTML = "";
-  friendsEl.innerHTML = "";
-
-  const incoming = friendships.filter(f =>
-    f.status === "pending" && f.addressee_id === currentUser.id
-  );
-
+  const received = friendships.filter(f => f.status === "pending" && f.addressee_id === currentUser.id);
   const accepted = friendships.filter(f => f.status === "accepted");
 
-  if (!incoming.length) {
-    requestsEl.innerHTML = `<p class="hint">Nenhum pedido pendente.</p>`;
-  } else {
-    for (const f of incoming) {
-      const profile = profilesById.get(f.requester_id);
-      requestsEl.appendChild(
-        socialItem(profile, `
-          <button class="primary-btn" data-accept-friend="${safeText(f.id)}" type="button">Aceitar</button>
-          <button class="ghost-btn" data-remove-friend="${safeText(f.id)}" type="button">Recusar</button>
-        `)
-      );
-    }
-  }
+  if (!received.length) requests.innerHTML = `<p class="muted">Nenhum pedido pendente.</p>`;
+  received.forEach(f => {
+    const p = profilesById.get(f.requester_id);
+    requests.appendChild(socialItem(p, [
+      { label: "Aceitar", action: () => updateFriendship(f.id, "accepted") },
+      { label: "Recusar", action: () => removeFriendship(f.id) }
+    ]));
+  });
 
-  if (!accepted.length) {
-    friendsEl.innerHTML = `<p class="hint">Você ainda não adicionou amigos.</p>`;
-  } else {
-    for (const f of accepted) {
-      const friendId = f.requester_id === currentUser.id
-        ? f.addressee_id
-        : f.requester_id;
-
-      const profile = profilesById.get(friendId);
-
-      friendsEl.appendChild(
-        socialItem(profile, `
-          <button class="primary-btn" data-view-friend="${safeText(friendId)}" type="button">Ver fichário</button>
-          <button class="ghost-btn" data-remove-friend="${safeText(f.id)}" type="button">Remover</button>
-        `)
-      );
-    }
-  }
+  if (!accepted.length) friends.innerHTML = `<p class="muted">Adicione amigos para ver os fichários deles.</p>`;
+  accepted.forEach(f => {
+    const friendId = f.requester_id === currentUser.id ? f.addressee_id : f.requester_id;
+    const p = profilesById.get(friendId);
+    friends.appendChild(socialItem(p, [
+      { label: "Ver fichário", action: () => viewFriendBinder(p) },
+      { label: "Remover", action: () => removeFriendship(f.id) }
+    ]));
+  });
 }
 
-function socialItem(profile, actionsHtml) {
-  const item = document.createElement("div");
-  item.className = "social-item";
-
-  if (!profile) {
-    item.innerHTML = `<div><strong>Usuário</strong><small>Perfil indisponível</small></div><div class="social-item-actions">${actionsHtml}</div>`;
-    return item;
-  }
-
-  item.innerHTML = `
-    <div>
-      <strong>@${safeText(profile.username)}</strong>
-      <small>${safeText(profile.display_name || "")}</small>
-    </div>
-    <div class="social-item-actions">${actionsHtml}</div>`;
-
-  return item;
+function socialItem(profile, actions) {
+  const el = document.createElement("div");
+  el.className = "social-item";
+  el.innerHTML = `<div><strong>@${safeText(profile?.username || "usuário")}</strong><small>${safeText(profile?.display_name || "")}</small></div><div class="social-actions"></div>`;
+  const box = el.querySelector(".social-actions");
+  actions.forEach(a => {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = a.label; btn.addEventListener("click", a.action); box.appendChild(btn);
+  });
+  return el;
 }
 
 async function searchFriends() {
-  const term = $("friendSearch").value.trim().replace(/^@/, "");
-  const list = $("friendSearchResults");
-  list.innerHTML = "";
-
-  if (term.length < 2) {
-    toast("Digite pelo menos 2 caracteres.");
-    return;
-  }
-
+  const q = $("friendSearch").value.trim();
+  const box = $("friendSearchResults");
+  box.innerHTML = "";
+  if (q.length < 2) { toast("Digite pelo menos 2 caracteres."); return; }
   const { data, error } = await db
     .from("pokemon_profiles")
-    .select("user_id,username,display_name,avatar_url,binder_visibility")
-    .ilike("username", `%${term}%`)
+    .select("user_id,username,display_name,binder_visibility")
+    .ilike("username", `%${q.replace(/^@/, "")}%`)
     .neq("user_id", currentUser.id)
     .limit(20);
-
-  if (error) {
-    console.error(error);
-    toast("Não consegui buscar usuários.");
-    return;
-  }
-
-  if (!data?.length) {
-    list.innerHTML = `<p class="hint">Nenhum usuário encontrado.</p>`;
-    return;
-  }
-
-  for (const profile of data) {
-    const relation = friendshipWith(profile.user_id);
-    let actions = "";
-
-    if (!relation) {
-      actions = `<button class="primary-btn" data-add-friend="${safeText(profile.user_id)}" type="button">Adicionar</button>`;
-    } else if (relation.status === "accepted") {
-      actions = `<button class="primary-btn" data-view-friend="${safeText(profile.user_id)}" type="button">Ver fichário</button>`;
-    } else if (relation.addressee_id === currentUser.id) {
-      actions = `<button class="primary-btn" data-accept-friend="${safeText(relation.id)}" type="button">Aceitar</button>`;
-    } else {
-      actions = `<button class="ghost-btn" type="button" disabled>Pedido enviado</button>`;
-    }
-
-    list.appendChild(socialItem(profile, actions));
-  }
+  if (error) { toast("Não consegui buscar usuários."); return; }
+  if (!data?.length) { box.innerHTML = `<p class="muted">Nenhum usuário encontrado.</p>`; return; }
+  data.forEach(p => {
+    const existing = friendships.find(f => (f.requester_id === p.user_id || f.addressee_id === p.user_id));
+    const actions = existing
+      ? [{ label: existing.status === "accepted" ? "Amigo" : "Pendente", action: () => {} }]
+      : [{ label: "Adicionar", action: () => sendFriendRequest(p.user_id) }];
+    box.appendChild(socialItem(p, actions));
+  });
 }
 
-async function sendFriendRequest(targetUserId) {
-  const { error } = await db
-    .from("pokemon_friendships")
-    .insert({
-      requester_id: currentUser.id,
-      addressee_id: targetUserId,
-      status: "pending"
-    });
-
-  if (error) {
-    console.error(error);
-    toast("Não consegui enviar o pedido.");
-    return;
-  }
-
-  toast("Pedido de amizade enviado.");
+async function sendFriendRequest(userId) {
+  const { error } = await db.from("pokemon_friendships").insert({ requester_id: currentUser.id, addressee_id: userId, status: "pending" });
+  if (error) { toast("Não consegui enviar o pedido."); return; }
   await loadFriendships();
-  renderSocialLists();
   await searchFriends();
+  toast("Pedido enviado.");
 }
 
-async function acceptFriendRequest(friendshipId) {
-  const { error } = await db
-    .from("pokemon_friendships")
-    .update({ status: "accepted" })
-    .eq("id", friendshipId);
-
-  if (error) {
-    console.error(error);
-    toast("Não consegui aceitar o pedido.");
-    return;
-  }
-
-  toast("Amizade aceita.");
+async function updateFriendship(id, status) {
+  const { error } = await db.from("pokemon_friendships").update({ status }).eq("id", id);
+  if (error) { toast("Não consegui atualizar o pedido."); return; }
   await loadFriendships();
-  renderSocialLists();
+  toast("Pedido aceito.");
 }
 
-async function removeFriendship(friendshipId) {
-  const { error } = await db
-    .from("pokemon_friendships")
-    .delete()
-    .eq("id", friendshipId);
-
-  if (error) {
-    console.error(error);
-    toast("Não consegui remover.");
-    return;
-  }
-
-  toast("Amizade atualizada.");
+async function removeFriendship(id) {
+  const { error } = await db.from("pokemon_friendships").delete().eq("id", id);
+  if (error) { toast("Não consegui remover."); return; }
   await loadFriendships();
-  renderSocialLists();
 }
 
-async function openFriendBinder(friendUserId) {
-  const profile = profilesById.get(friendUserId);
-
-  if (!profile) {
-    toast("Perfil do amigo não encontrado.");
-    return;
-  }
-
-  if (profile.binder_visibility === "private") {
-    toast("Esse fichário está privado.");
-    return;
-  }
-
-  currentFriendProfile = profile;
-  friendBinderPage = 1;
-  $("friendBinderTitle").textContent = `@${profile.username}`;
-  $("friendBinderStats").textContent = "Carregando fichário...";
-
+async function viewFriendBinder(profile) {
+  if (!profile) return;
   const { data, error } = await db
     .from("pokemon_cards")
     .select("*")
-    .eq("user_id", friendUserId)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    console.error(error);
-    toast("Esse fichário não está disponível.");
-    return;
-  }
-
-  friendBinderCards = data || [];
-  renderFriendBinder();
-  closeModal("friendsDialog");
-  openModal("friendBinderDialog");
+    .eq("user_id", profile.user_id)
+    .order("binder_page")
+    .order("binder_slot");
+  if (error) { toast("Esse fichário não está disponível para você."); return; }
+  $("friendBinderTitle").textContent = `@${profile.username}`;
+  const grid = $("friendBinderGrid");
+  grid.innerHTML = "";
+  (data || []).forEach(card => {
+    const el = document.createElement("div");
+    el.className = "friend-card";
+    const image = getCardImage(card);
+    el.innerHTML = `${image ? `<img src="${safeText(image)}" alt="${safeText(card.name)}">` : ""}<strong>${safeText(card.name)}</strong><small>${safeText(card.set_name || "")} · ${safeText(card.number || "")}</small>`;
+    grid.appendChild(el);
+  });
+  closeDialog("friendsDialog");
+  openDialog("friendBinderDialog");
 }
-
-function renderFriendBinder() {
-  const totalPages = Math.max(1, Math.ceil(friendBinderCards.length / PAGE_SIZE));
-  friendBinderPage = Math.min(Math.max(friendBinderPage, 1), totalPages);
-
-  renderCardGrid(
-    $("friendBinderGrid"),
-    friendBinderCards,
-    friendBinderPage,
-    false
-  );
-
-  const totalCopies = friendBinderCards.reduce(
-    (sum, card) => sum + Number(card.quantity || 1),
-    0
-  );
-
-  $("friendBinderStats").textContent =
-    `${totalCopies} carta(s) • ${friendBinderCards.length} entrada(s)`;
-
-  $("friendPageInfo").textContent =
-    `Página ${friendBinderPage} de ${totalPages}`;
-}
-
-// =============================================================
-// EVENTOS / INICIALIZAÇÃO
-// =============================================================
 
 function bindEvents() {
   $("tabLogin").addEventListener("click", () => setAuthMode("login"));
   $("tabSignup").addEventListener("click", () => setAuthMode("signup"));
   $("authForm").addEventListener("submit", handleAuth);
-
   $("btnLogout").addEventListener("click", () => db.auth.signOut());
-  $("btnOpenAdd").addEventListener("click", () => openModal("addDialog"));
-  $("btnFriends").addEventListener("click", openFriends);
-  $("btnRefresh").addEventListener("click", () => loadCards(true));
 
-  $("btnRunOCR").addEventListener("click", runOCR);
+  $("btnOpenAdd").addEventListener("click", () => openAddForPosition(currentPage));
+  $("btnMobileScan").addEventListener("click", () => openAddForPosition(currentPage));
+  $("prevPage").addEventListener("click", () => goToPage(currentPage - 1));
+  $("nextPage").addEventListener("click", () => goToPage(currentPage + 1));
+  $("btnPages").addEventListener("click", () => { renderPagesGrid(); openDialog("pagesDialog"); });
+  $("btnAddPage").addEventListener("click", addPage);
+  $("btnAddPageModal").addEventListener("click", addPage);
+  $("btnBackground").addEventListener("click", () => openDialog("appearanceDialog"));
+  $("btnSummarySettings").addEventListener("click", () => openDialog("appearanceDialog"));
+  $("btnSaveAppearance").addEventListener("click", saveAppearance);
+
+  document.querySelectorAll(".theme-swatch").forEach(btn => btn.addEventListener("click", () => {
+    document.querySelectorAll(".theme-swatch").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    $("binderStage").className = `binder-stage theme-${btn.dataset.theme}`;
+  }));
+
+  $("showValues").addEventListener("change", async event => {
+    await updateSettings({ show_values: event.target.checked }, true);
+    renderAll();
+  });
+  document.querySelectorAll("[data-status-filter]").forEach(btn => btn.addEventListener("click", () => setStatusFilter(btn.dataset.statusFilter)));
+  $("btnExport").addEventListener("click", exportCSV);
+  $("btnPrint").addEventListener("click", () => window.print());
+
   $("btnSearchCards").addEventListener("click", searchCards);
-
   $("btnClearSearch").addEventListener("click", () => {
-    $("searchName").value = "";
-    $("searchNumber").value = "";
-    $("searchSet").value = "";
-    $("ocrText").value = "";
-    $("searchStatus").textContent = "";
-    $("resultsList").innerHTML = "";
+    $("searchName").value = ""; $("searchNumber").value = ""; $("searchSet").value = ""; $("resultsList").innerHTML = ""; $("searchStatus").textContent = "";
   });
-
+  $("btnUsePhotoHints").addEventListener("click", usePhotoHints);
+  $("cardPhoto").addEventListener("change", () => { if ($("cardPhoto").files?.[0]) $("ocrStatus").textContent = "Foto pronta. Toque em “Tentar ler nome/número” ou use a busca manual."; });
+  document.querySelectorAll("[data-card-status]").forEach(btn => btn.addEventListener("click", () => setSelectedStatus(btn.dataset.cardStatus)));
   $("btnSaveCard").addEventListener("click", saveSelectedCard);
+  $("btnDeleteSelected").addEventListener("click", deleteSelectedCard);
 
-  $("cardFinish").addEventListener("change", () => {
-    if (selectedCard) autoFillCurrentPrice(selectedCard, false);
-  });
-
-  $("filterText").addEventListener("input", applyFilters);
-  $("filterLanguage").addEventListener("change", applyFilters);
-
-  $("prevPage").addEventListener("click", () => {
-    currentPage = Math.max(1, currentPage - 1);
-    renderBinder();
-  });
-
-  $("nextPage").addEventListener("click", () => {
-    const max = Math.max(1, Math.ceil(filteredCollection.length / PAGE_SIZE));
-    currentPage = Math.min(max, currentPage + 1);
-    renderBinder();
-  });
-
+  $("btnFriends").addEventListener("click", async () => { await loadFriendships(); openDialog("friendsDialog"); });
+  $("btnMobileFriends").addEventListener("click", async () => { await loadFriendships(); openDialog("friendsDialog"); });
+  $("btnMobileProfile").addEventListener("click", async () => { await loadFriendships(); openDialog("friendsDialog"); });
   $("btnSaveProfile").addEventListener("click", saveProfile);
   $("btnSearchFriends").addEventListener("click", searchFriends);
 
-  $("friendPrevPage").addEventListener("click", () => {
-    friendBinderPage = Math.max(1, friendBinderPage - 1);
-    renderFriendBinder();
-  });
-
-  $("friendNextPage").addEventListener("click", () => {
-    const max = Math.max(1, Math.ceil(friendBinderCards.length / PAGE_SIZE));
-    friendBinderPage = Math.min(max, friendBinderPage + 1);
-    renderFriendBinder();
-  });
+  $("btnMobileSummary").addEventListener("click", () => $("summaryPanel").classList.add("mobile-open"));
+  $("btnCloseSummary").addEventListener("click", () => $("summaryPanel").classList.remove("mobile-open"));
 
   document.addEventListener("click", event => {
     const close = event.target.closest("[data-close]");
-    if (close) {
-      closeModal(close.dataset.close);
-      return;
-    }
-
-    const del = event.target.closest("[data-card-id]");
-    if (del) {
-      deleteCard(del.dataset.cardId);
-      return;
-    }
-
-    const addFriend = event.target.closest("[data-add-friend]");
-    if (addFriend) {
-      sendFriendRequest(addFriend.dataset.addFriend);
-      return;
-    }
-
-    const acceptFriend = event.target.closest("[data-accept-friend]");
-    if (acceptFriend) {
-      acceptFriendRequest(acceptFriend.dataset.acceptFriend);
-      return;
-    }
-
-    const removeFriend = event.target.closest("[data-remove-friend]");
-    if (removeFriend) {
-      removeFriendship(removeFriend.dataset.removeFriend);
-      return;
-    }
-
-    const viewFriend = event.target.closest("[data-view-friend]");
-    if (viewFriend) {
-      openFriendBinder(viewFriend.dataset.viewFriend);
-    }
+    if (close) closeDialog(close.dataset.close);
   });
 
   document.addEventListener("keydown", event => {
-    if (
-      event.key === "Enter" &&
-      event.target.closest("dialog") &&
-      event.target.tagName !== "TEXTAREA"
-    ) {
-      event.preventDefault();
+    if (event.key === "Enter" && event.target.closest("dialog") && event.target.tagName !== "TEXTAREA") {
+      if (event.target.closest("#addDialog")) {
+        event.preventDefault();
+        searchCards();
+      }
     }
-  }, true);
+  });
+}
+
+async function registerPWA() {
+  if ("serviceWorker" in navigator) {
+    try { await navigator.serviceWorker.register("/sw.js"); } catch (error) { console.warn("SW", error); }
+  }
 }
 
 async function boot() {
   bindEvents();
-
+  registerPWA();
   const { data } = await db.auth.getSession();
   await renderAuthState(data.session);
-
-  db.auth.onAuthStateChange((_event, session) => {
-    setTimeout(() => renderAuthState(session), 0);
-  });
+  db.auth.onAuthStateChange((_event, session) => setTimeout(() => renderAuthState(session), 0));
 }
 
 document.addEventListener("DOMContentLoaded", boot);
