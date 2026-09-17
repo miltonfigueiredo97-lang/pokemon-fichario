@@ -91,3 +91,122 @@ function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignu
 async function registerPWA(){if("serviceWorker"in navigator)try{await navigator.serviceWorker.register("/sw.js")}catch(e){console.warn(e)}}
 async function boot(){bindEvents();registerPWA();const{data}=await db.auth.getSession();await renderAuthState(data.session);db.auth.onAuthStateChange((_e,s)=>setTimeout(()=>renderAuthState(s),0))}
 document.addEventListener("DOMContentLoaded",boot);
+
+// ===== V5 RELIABLE SLOT DRAG =====
+function dragCardFromEvent(e){
+  const id=(e.dataTransfer&&e.dataTransfer.getData('text/plain'))||draggedCard?.id||'';
+  return collection.find(c=>String(c.id)===String(id))||draggedCard||null;
+}
+function binderDrop(e,pocket,page,slot){
+  e.preventDefault();
+  e.stopPropagation();
+  pocket?.classList.remove('drag-over');
+  const source=dragCardFromEvent(e);
+  if(source) moveCard(source,+page,+slot);
+}
+function renderBinder(){
+  const g=$('binderSheet');
+  g.innerHTML='';
+  for(let slot=1;slot<=9;slot++){
+    const pocket=document.createElement('div');
+    pocket.className='binder-pocket';
+    pocket.dataset.page=currentPage;
+    pocket.dataset.slot=slot;
+    const c=getCardAt(currentPage,slot);
+    if(c){
+      pocket.appendChild(renderPocketCard(c));
+    }else{
+      const b=document.createElement('button');
+      b.className='pocket-empty-btn';
+      b.type='button';
+      b.textContent='＋';
+      b.title=`Adicionar no bolso ${slot}`;
+      b.onclick=()=>openAddForPosition(currentPage,slot);
+      pocket.appendChild(b);
+    }
+    pocket.addEventListener('dragenter',e=>{e.preventDefault();pocket.classList.add('drag-over')});
+    pocket.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move';pocket.classList.add('drag-over')});
+    pocket.addEventListener('dragleave',e=>{if(!pocket.contains(e.relatedTarget))pocket.classList.remove('drag-over')});
+    pocket.addEventListener('drop',e=>binderDrop(e,pocket,currentPage,slot));
+    g.appendChild(pocket);
+  }
+  const pages=Math.max(1,+settings.binder_pages||1);
+  $('pageLabel').textContent=`Página ${currentPage} · ${currentPage}/${pages}`;
+  $('prevPage').disabled=currentPage<=1;
+  $('nextPage').disabled=currentPage>=pages;
+}
+function renderPocketCard(c){
+  const st=c.collection_status||'owned';
+  const b=document.createElement('button');
+  b.className=`pocket-card status-${st}`;
+  b.type='button';
+  b.draggable=true;
+  b.dataset.id=c.id;
+  if(activeStatusFilter!=='all'&&st!==activeStatusFilter)b.classList.add('filtered-out');
+  const img=cardImage(c),q=Math.max(0,+c.quantity||0),v=(+c.price_avg||0)*Math.max(q,1);
+  b.innerHTML=`${img?`<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy" draggable="false">`:`<span>${esc(c.name)}</span>`}<span class="card-status-ribbon">${esc(STATUS[st]||st)}</span>${st==='owned'&&q>1?`<span class="card-qty">x${q}</span>`:''}${settings.show_values&&+c.price_avg>0?`<span class="card-value">${money(v)}</span>`:''}`;
+  b.addEventListener('click',()=>{if(!b.dataset.justDragged)openExistingCard(c)});
+  b.addEventListener('dblclick',()=>openExistingCard(c,true));
+  b.addEventListener('contextmenu',e=>{e.preventDefault();showContextMenu(c,e.clientX,e.clientY)});
+  b.addEventListener('dragstart',e=>{
+    draggedCard=c;
+    b.classList.add('dragging');
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain',String(c.id));
+    try{e.dataTransfer.setDragImage(b,Math.round(b.offsetWidth/2),Math.round(b.offsetHeight/2))}catch{}
+  });
+  b.addEventListener('dragend',()=>{
+    draggedCard=null;
+    b.classList.remove('dragging');
+    document.querySelectorAll('.binder-pocket.drag-over').forEach(p=>p.classList.remove('drag-over'));
+  });
+  b.addEventListener('dragenter',e=>{e.preventDefault();e.stopPropagation();b.closest('.binder-pocket')?.classList.add('drag-over')});
+  b.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';b.closest('.binder-pocket')?.classList.add('drag-over')});
+  b.addEventListener('drop',e=>{
+    const p=b.closest('.binder-pocket');
+    binderDrop(e,p,p?.dataset.page,p?.dataset.slot);
+  });
+  let press;
+  const start=e=>{press=setTimeout(()=>showContextMenu(c,e.clientX||innerWidth/2,e.clientY||innerHeight/2),620)};
+  b.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse')start(e)});
+  ['pointerup','pointercancel','pointermove'].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(press)));
+  return b;
+}
+
+let touchBinderDrag=null;
+let suppressPocketClick=false;
+document.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse')return;
+  const card=e.target.closest('.pocket-card');
+  if(!card)return;
+  touchBinderDrag={id:card.dataset.id,x:e.clientX,y:e.clientY,moved:false,card};
+},{passive:true});
+document.addEventListener('pointermove',e=>{
+  if(!touchBinderDrag||e.pointerType==='mouse')return;
+  const dx=e.clientX-touchBinderDrag.x,dy=e.clientY-touchBinderDrag.y;
+  if(!touchBinderDrag.moved&&Math.hypot(dx,dy)>12){
+    touchBinderDrag.moved=true;
+    touchBinderDrag.card.classList.add('dragging');
+  }
+  if(!touchBinderDrag.moved)return;
+  document.querySelectorAll('.binder-pocket.drag-over').forEach(p=>p.classList.remove('drag-over'));
+  document.elementFromPoint(e.clientX,e.clientY)?.closest('.binder-pocket')?.classList.add('drag-over');
+},{passive:true});
+document.addEventListener('pointerup',e=>{
+  if(!touchBinderDrag||e.pointerType==='mouse')return;
+  const state=touchBinderDrag;
+  touchBinderDrag=null;
+  state.card.classList.remove('dragging');
+  const pocket=document.elementFromPoint(e.clientX,e.clientY)?.closest('.binder-pocket');
+  document.querySelectorAll('.binder-pocket.drag-over').forEach(p=>p.classList.remove('drag-over'));
+  if(state.moved&&pocket){
+    suppressPocketClick=true;
+    const source=collection.find(c=>String(c.id)===String(state.id));
+    if(source)moveCard(source,+pocket.dataset.page,+pocket.dataset.slot);
+  }
+},{passive:true});
+document.addEventListener('click',e=>{
+  if(suppressPocketClick&&e.target.closest('.pocket-card')){
+    e.preventDefault();e.stopImmediatePropagation();suppressPocketClick=false;
+  }
+},true);
