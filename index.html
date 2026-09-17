@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#111315">
+  <meta name="theme-color" content="#0a0b0d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Pokémon Binder BR</title>
@@ -18,7 +18,7 @@
       <div>
         <p class="kicker">Pokémon TCG</p>
         <h1>Pokémon Binder BR</h1>
-        <p class="muted">Seu fichário digital, com mercado brasileiro, amigos e scanner.</p>
+        <p class="muted">Fichário digital, catálogo multilíngue, preços e coleção social.</p>
       </div>
       <div class="auth-tabs">
         <button id="tabLogin" class="seg-btn active" type="button">Entrar</button>
@@ -33,45 +33,43 @@
     </div>
   </section>
 
-  <div id="app" class="hidden">
+  <div id="app" class="app hidden">
     <header class="app-header">
       <div class="header-left">
         <div class="brand-mark small">PB</div>
-        <div>
+        <div class="header-copy">
           <p class="kicker">Fichário digital</p>
           <h1 id="binderTitleHeader">Meu Fichário</h1>
-          <p id="binderHeaderStats" class="header-sub">0 cartas · 0% completo</p>
+          <p id="binderHeaderStats" class="header-sub">0 cartas</p>
         </div>
       </div>
       <div class="header-actions">
         <span id="userHandle" class="user-chip"></span>
-        <button id="btnFriends" class="icon-text-btn" type="button">👥 <span>Amigos</span></button>
-        <button id="btnOpenAdd" class="btn btn-primary desktop-only" type="button">+ Adicionar</button>
-        <button id="btnLogout" class="icon-text-btn" type="button">↗ <span>Sair</span></button>
+        <button id="btnFriends" class="icon-text-btn" type="button">Amigos</button>
+        <button id="btnOpenAdd" class="btn btn-primary desktop-only" type="button">＋ Adicionar</button>
+        <button id="btnLogout" class="icon-text-btn" type="button">Sair</button>
       </div>
     </header>
 
     <main class="workspace">
       <section class="binder-area">
         <div class="binder-toolbar">
-          <button id="prevPage" class="round-btn" type="button" aria-label="Página anterior">←</button>
+          <button id="prevPage" class="round-btn" type="button" aria-label="Página anterior">‹</button>
           <div class="page-center">
-            <span id="pageLabel" class="page-label">Capa + Pág. 1 · 1/1</span>
+            <span id="pageLabel" class="page-label">Página 1 · 1/1</span>
             <button id="btnPages" class="mini-btn" type="button">▦ Páginas</button>
           </div>
-          <button id="nextPage" class="round-btn" type="button" aria-label="Próxima página">→</button>
+          <button id="nextPage" class="round-btn" type="button" aria-label="Próxima página">›</button>
         </div>
 
         <div id="binderStage" class="binder-stage theme-graphite">
           <div class="binder-spread">
             <section class="binder-cover">
               <div class="cover-top">
-                <div class="cover-brand">◇ FICHÁRIO</div>
-                <div class="cover-badge">NORMAL · 3×3</div>
+                <span class="cover-brand">POKÉMON BINDER</span>
+                <span class="cover-badge">3 × 3</span>
               </div>
-              <div class="cover-title-wrap">
-                <div class="cover-title">Meu<br>Fichário</div>
-              </div>
+              <div class="cover-title-wrap"><div class="cover-title">Meu<br>Fichário</div></div>
               <div class="cover-footer">
                 <div class="cover-rule"></div>
                 <div class="cover-stats">
@@ -83,270 +81,147 @@
             </section>
 
             <section class="binder-sheet-wrap">
+              <div class="binder-spine"></div>
               <div id="binderSheet" class="binder-sheet"></div>
-              <button id="btnAddPage" class="sheet-add-page" type="button" title="Adicionar página">+</button>
-              <button id="btnBackground" class="sheet-background" type="button">◉ Fundo</button>
+              <button id="btnAddPage" class="sheet-add-page" type="button" title="Adicionar página">＋</button>
+              <button id="btnBackground" class="sheet-background" type="button">Fundo</button>
             </section>
           </div>
+          <p class="binder-hint desktop-only">Arraste cartas entre bolsos · botão direito para ações rápidas · clique para detalhes</p>
         </div>
       </section>
 
       <aside class="summary-panel" id="summaryPanel">
         <div class="summary-head">
-          <div>
-            <p class="kicker">Resumo</p>
-            <h2>Fichário</h2>
-          </div>
+          <div><p class="kicker">Coleção</p><h2>Resumo</h2></div>
           <button id="btnCloseSummary" class="icon-only mobile-only" type="button">×</button>
         </div>
-
         <section class="progress-card">
-          <div class="progress-top">
-            <strong id="completionPercent">0%</strong>
-            <span>DA COLEÇÃO COMPLETA</span>
-          </div>
+          <div class="progress-top"><strong id="completionPercent">0%</strong><span>COMPLETA</span></div>
           <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-          <p id="progressText">0 de 0 cartas marcadas como “Tenho”</p>
+          <p id="progressText">0 de 0 marcadas como Tenho</p>
         </section>
-
         <section class="summary-grid">
           <button class="summary-stat filter-stat active" data-status-filter="all"><strong id="sumTotal">0</strong><span>TOTAL</span></button>
+          <button class="summary-stat filter-stat status-owned" data-status-filter="owned"><strong id="sumOwned">0</strong><span>TENHO</span></button>
+          <button class="summary-stat filter-stat status-wanted" data-status-filter="wanted"><strong id="sumWanted">0</strong><span>QUERO</span></button>
+          <button class="summary-stat filter-stat status-ordered" data-status-filter="ordered"><strong id="sumOrdered">0</strong><span>PEDIDO</span></button>
           <button class="summary-stat filter-stat status-missing" data-status-filter="missing"><strong id="sumMissing">0</strong><span>NÃO TENHO</span></button>
-          <button class="summary-stat filter-stat status-owned" data-status-filter="owned"><strong id="sumOwned">0</strong><span>TENHO ✓</span></button>
-          <button class="summary-stat filter-stat status-wanted" data-status-filter="wanted"><strong id="sumWanted">0</strong><span>QUERO ★</span></button>
-          <button class="summary-stat filter-stat status-ordered" data-status-filter="ordered"><strong id="sumOrdered">0</strong><span>PEDIDO ↗</span></button>
           <button class="summary-stat"><strong id="sumEmpty">9</strong><span>VAZIO</span></button>
         </section>
-
-        <section class="control-block">
-          <label class="toggle-row">
-            <span>Mostrar valores</span>
-            <input id="showValues" type="checkbox">
-            <i></i>
-          </label>
-          <div id="totalValueBox" class="value-box hidden">
-            <span>Valor médio estimado</span>
-            <strong id="totalValue">R$ 0,00</strong>
-            <small>Somente cartas marcadas como “Tenho”.</small>
-          </div>
+        <section class="control-block compact-block">
+          <label class="toggle-row"><span>Mostrar valores</span><input id="showValues" type="checkbox"><i></i></label>
+          <div id="totalValueBox" class="value-box hidden"><span>Valor médio salvo</span><strong id="totalValue">R$ 0,00</strong></div>
         </section>
-
-        <section class="control-block">
-          <p class="section-title">FILTRAR</p>
+        <section class="control-block compact-block">
+          <p class="section-title">FILTRO</p>
           <div class="status-filter-list">
             <button class="filter-line active" data-status-filter="all"><span>Todos</span><b id="filterAllCount">0</b></button>
-            <button class="filter-line" data-status-filter="missing"><span><i class="dot missing"></i>Não tenho</span><b id="filterMissingCount">0</b></button>
-            <button class="filter-line" data-status-filter="wanted"><span><i class="dot wanted"></i>Wishlist</span><b id="filterWantedCount">0</b></button>
             <button class="filter-line" data-status-filter="owned"><span><i class="dot owned"></i>Tenho</span><b id="filterOwnedCount">0</b></button>
+            <button class="filter-line" data-status-filter="wanted"><span><i class="dot wanted"></i>Wishlist</span><b id="filterWantedCount">0</b></button>
             <button class="filter-line" data-status-filter="ordered"><span><i class="dot ordered"></i>Pedido</span><b id="filterOrderedCount">0</b></button>
+            <button class="filter-line" data-status-filter="missing"><span><i class="dot missing"></i>Não tenho</span><b id="filterMissingCount">0</b></button>
           </div>
         </section>
-
-        <section class="control-block">
-          <p class="section-title">AÇÕES</p>
+        <section class="control-block compact-block">
           <div class="action-grid">
-            <button id="btnExport" class="action-btn" type="button">↓ Exportar CSV</button>
-            <button id="btnPrint" class="action-btn" type="button">▣ Imprimir lista</button>
-            <button id="btnSummarySettings" class="action-btn" type="button">⚙ Aparência</button>
+            <button id="btnExport" class="action-btn" type="button">Exportar CSV</button>
+            <button id="btnPrint" class="action-btn" type="button">Imprimir lista</button>
+            <button id="btnSummarySettings" class="action-btn" type="button">Aparência</button>
           </div>
         </section>
       </aside>
     </main>
 
     <nav class="mobile-nav">
-      <button class="mobile-nav-btn active" data-mobile-tab="binder" type="button"><span>▦</span><small>Fichário</small></button>
+      <button class="mobile-nav-btn active" type="button"><span>▦</span><small>Fichário</small></button>
       <button id="btnMobileSummary" class="mobile-nav-btn" type="button"><span>◫</span><small>Resumo</small></button>
-      <button id="btnMobileScan" class="scan-fab" type="button" aria-label="Escanear carta">⌁</button>
+      <button id="btnMobileScan" class="scan-fab" type="button" aria-label="Adicionar carta">＋</button>
       <button id="btnMobileFriends" class="mobile-nav-btn" type="button"><span>♙</span><small>Amigos</small></button>
       <button id="btnMobileProfile" class="mobile-nav-btn" type="button"><span>⚙</span><small>Perfil</small></button>
     </nav>
   </div>
 
-  <dialog id="addDialog" class="sheet-dialog">
-    <div class="dialog-shell">
-      <div class="dialog-head">
-        <div><p class="kicker">Adicionar carta</p><h2>Buscar no catálogo</h2></div>
+  <dialog id="addDialog" class="sheet-dialog catalog-dialog">
+    <div class="dialog-shell catalog-shell">
+      <div class="dialog-head catalog-head">
+        <div><p class="kicker">Catálogo</p><h2>Adicionar cartas</h2><p class="muted compact-copy">Pesquise, selecione várias cartas e adicione tudo de uma vez.</p></div>
         <button class="icon-only" data-close="addDialog" type="button">×</button>
       </div>
-
-      <div class="scan-panel">
-        <label class="camera-tile">
-          <input id="cardPhoto" type="file" accept="image/*" capture="environment">
-          <span class="camera-icon">⌁</span>
-          <strong>Usar câmera</strong>
-          <small>Foto para identificação</small>
-        </label>
-        <div>
-          <p class="muted">O scanner visual será ligado à base definitiva. Por enquanto a foto fica pronta para a etapa de identificação.</p>
-          <button id="btnUsePhotoHints" class="btn btn-secondary" type="button">Tentar ler nome/número</button>
-          <p id="ocrStatus" class="form-message"></p>
-        </div>
+      <div class="catalog-toolbar">
+        <div class="search-big-wrap"><span>⌕</span><input id="searchName" type="search" placeholder="Nome, número ou coleção — ex.: Lugia EX 134"></div>
+        <label class="camera-compact"><input id="cardPhoto" type="file" accept="image/*" capture="environment"><span>⌁</span><b>Câmera</b></label>
+        <button id="btnUsePhotoHints" class="mini-btn" type="button">Ler foto</button>
       </div>
-
-      <div class="search-grid">
-        <label>Nome<input id="searchName" type="text" placeholder="Ex.: Lugia-EX"></label>
-        <label>Número<input id="searchNumber" type="text" placeholder="Ex.: 134/135"></label>
-        <label>Coleção<input id="searchSet" type="text" placeholder="Ex.: Plasma Storm / PLS"></label>
-        <label>Idioma
-          <select id="searchLanguage">
-            <option value="all">Todos (prioriza PT-BR)</option>
-            <option value="pt-br">Português</option>
-            <option value="en">Inglês</option>
-            <option value="ja">Japonês</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="dialog-actions">
-        <button id="btnClearSearch" class="btn btn-secondary" type="button">Limpar</button>
+      <div class="catalog-filters">
+        <select id="searchLanguage"><option value="all">Todos os idiomas</option><option value="pt-br">Português</option><option value="en">Inglês</option><option value="ja">Japonês</option></select>
+        <input id="searchNumber" type="text" placeholder="Número — 134/135">
+        <input id="searchSet" type="text" placeholder="Coleção — Plasma Storm">
+        <select id="resultRarityFilter"><option value="all">Todas as raridades</option></select>
         <button id="btnSearchCards" class="btn btn-primary" type="button">Buscar</button>
       </div>
+      <p id="ocrStatus" class="form-message"></p>
       <p id="searchStatus" class="form-message"></p>
-      <div id="resultsList" class="results-list"></div>
-    </div>
-  </dialog>
-
-  <dialog id="cardDialog" class="sheet-dialog">
-    <div class="dialog-shell narrow">
-      <div class="dialog-head">
-        <div><p class="kicker">Carta</p><h2 id="selectedTitle">Selecionada</h2></div>
-        <button class="icon-only" data-close="cardDialog" type="button">×</button>
-      </div>
-
-      <div id="selectedPreview" class="selected-card-preview"></div>
-
-      <div class="status-picker" id="statusPicker">
-        <button data-card-status="missing" class="status-option missing" type="button">Não tenho</button>
-        <button data-card-status="wanted" class="status-option wanted" type="button">Quero</button>
-        <button data-card-status="owned" class="status-option owned active" type="button">Tenho</button>
-        <button data-card-status="ordered" class="status-option ordered" type="button">Pedido</button>
-      </div>
-
-      <div id="marketStatus" class="market-status">Consultando mercado brasileiro...</div>
-
-      <div class="price-grid">
-        <div><span>Mínimo BR</span><strong id="priceMinLabel">—</strong></div>
-        <div><span>Médio BR</span><strong id="priceAvgLabel">—</strong></div>
-        <div><span>Máximo BR</span><strong id="priceMaxLabel">—</strong></div>
-      </div>
-
-      <div class="form-grid">
-        <label>Quantidade<input id="cardQuantity" type="number" min="0" value="1"></label>
-        <label>Condição
-          <select id="cardCondition">
-            <option>Nova</option>
-            <option>NM</option>
-            <option>SP</option>
-            <option>MP</option>
-            <option>HP</option>
-            <option>DM</option>
-          </select>
-        </label>
-        <label>Acabamento
-          <select id="cardFinish">
-            <option>Normal</option>
-            <option>Holo</option>
-            <option>Reverse Holo</option>
-            <option>Foil</option>
-            <option>Full-Art</option>
-            <option>Promo</option>
-            <option>Especial</option>
-          </select>
-        </label>
-        <label>Página<input id="cardPage" type="number" min="1" value="1"></label>
-        <label>Bolso<input id="cardSlot" type="number" min="1" max="9" value="1"></label>
-      </div>
-
-      <label>Observações<textarea id="cardNotes" rows="3"></textarea></label>
-
-      <div class="source-links">
-        <a id="mypcardsLink" class="text-link hidden" target="_blank" rel="noopener">MYP Cards</a>
-        <a id="ligaSearchLink" class="text-link" target="_blank" rel="noopener">Liga Pokémon</a>
-      </div>
-
-      <div class="dialog-actions between">
-        <button id="btnDeleteSelected" class="btn btn-danger hidden" type="button">Excluir</button>
-        <button id="btnSaveCard" class="btn btn-primary" type="button">Salvar no fichário</button>
+      <div id="resultsList" class="catalog-grid"></div>
+      <div class="selection-tray">
+        <div><strong id="selectedCount">0 cartas escolhidas</strong><small>Serão colocadas nos próximos bolsos vazios. Clique novamente para retirar.</small></div>
+        <button id="btnClearSelection" class="btn btn-secondary" type="button">Limpar</button>
+        <button id="btnAddSelected" class="btn btn-primary" type="button" disabled>＋ Adicionar</button>
       </div>
     </div>
   </dialog>
 
-  <dialog id="pagesDialog" class="sheet-dialog">
-    <div class="dialog-shell narrow">
-      <div class="dialog-head">
-        <div><p class="kicker">Navegação</p><h2>Páginas</h2></div>
-        <button class="icon-only" data-close="pagesDialog" type="button">×</button>
-      </div>
-      <div id="pagesGrid" class="pages-grid"></div>
-      <button id="btnAddPageModal" class="btn btn-primary full" type="button">+ Adicionar página</button>
-    </div>
-  </dialog>
-
-  <dialog id="appearanceDialog" class="sheet-dialog">
-    <div class="dialog-shell narrow">
-      <div class="dialog-head">
-        <div><p class="kicker">Aparência</p><h2>Seu fichário</h2></div>
-        <button class="icon-only" data-close="appearanceDialog" type="button">×</button>
-      </div>
-      <label>Nome do fichário<input id="binderNameInput" type="text" maxlength="40"></label>
-      <p class="section-title">FUNDO</p>
-      <div class="theme-grid">
-        <button class="theme-swatch graphite active" data-theme="graphite" type="button">Grafite</button>
-        <button class="theme-swatch burgundy" data-theme="burgundy" type="button">Vinho</button>
-        <button class="theme-swatch navy" data-theme="navy" type="button">Azul</button>
-        <button class="theme-swatch forest" data-theme="forest" type="button">Verde</button>
-      </div>
-      <button id="btnSaveAppearance" class="btn btn-primary full" type="button">Salvar</button>
-    </div>
-  </dialog>
-
-  <dialog id="friendsDialog" class="sheet-dialog">
-    <div class="dialog-shell">
-      <div class="dialog-head">
-        <div><p class="kicker">Social</p><h2>Amigos</h2></div>
-        <button class="icon-only" data-close="friendsDialog" type="button">×</button>
-      </div>
-      <section class="social-card">
-        <h3>Meu perfil</h3>
-        <div class="search-grid">
-          <label>@usuário<input id="profileUsername" type="text" maxlength="24"></label>
-          <label>Privacidade
-            <select id="profileVisibility">
-              <option value="private">Somente eu</option>
-              <option value="friends">Amigos</option>
-              <option value="public">Público</option>
-            </select>
-          </label>
+  <dialog id="cardDialog" class="sheet-dialog card-inspector-dialog">
+    <div class="dialog-shell inspector-shell">
+      <button class="icon-only inspector-close" data-close="cardDialog" type="button">×</button>
+      <section class="card-showcase">
+        <div class="showcase-orbit"></div>
+        <div id="card3d" class="card-3d" tabindex="0">
+          <div class="card-3d-inner">
+            <div class="card-face card-front"><img id="card3dImage" alt="Carta"></div>
+            <div class="card-face card-back"><div class="pokeball-art"><span></span></div><b>POKÉMON</b></div>
+          </div>
         </div>
-        <button id="btnSaveProfile" class="btn btn-secondary" type="button">Salvar perfil</button>
+        <p class="showcase-help">Mova o mouse para inclinar · duplo clique para virar</p>
       </section>
-      <section class="social-card">
-        <h3>Buscar usuários</h3>
-        <div class="inline-search">
-          <input id="friendSearch" type="search" placeholder="@usuário">
-          <button id="btnSearchFriends" class="btn btn-primary" type="button">Buscar</button>
+      <section class="card-details-panel">
+        <div class="details-head"><div><p class="kicker">Carta</p><h2 id="selectedTitle">Selecionada</h2><p id="selectedMeta" class="muted"></p></div><span id="selectedLangBadge" class="lang-badge"></span></div>
+        <div class="detail-chips"><span id="detailRarity">Raridade —</span><span id="detailType">Tipo —</span><span id="detailNumber"># —</span></div>
+        <div class="status-picker" id="statusPicker">
+          <button data-card-status="missing" class="status-option missing" type="button">Não tenho</button>
+          <button data-card-status="wanted" class="status-option wanted" type="button">Quero</button>
+          <button data-card-status="owned" class="status-option owned active" type="button">Tenho</button>
+          <button data-card-status="ordered" class="status-option ordered" type="button">Pedido</button>
         </div>
-        <div id="friendSearchResults" class="social-list"></div>
+        <div class="market-board">
+          <div class="market-board-title"><span>Mercado brasileiro</span><small id="marketStatus">Consultando...</small></div>
+          <div class="price-grid"><div><span>Mínimo</span><strong id="priceMinLabel">—</strong></div><div><span>Médio</span><strong id="priceAvgLabel">—</strong></div><div><span>Máximo</span><strong id="priceMaxLabel">—</strong></div></div>
+          <div id="globalPriceLine" class="global-price-line"></div>
+        </div>
+        <div class="form-grid inspector-form">
+          <label>Quantidade<input id="cardQuantity" type="number" min="0" value="1"></label>
+          <label>Condição<select id="cardCondition"><option>Nova</option><option>NM</option><option>SP</option><option>MP</option><option>HP</option><option>DM</option></select></label>
+          <label>Acabamento<select id="cardFinish"><option>Normal</option><option>Holo</option><option>Reverse Holo</option><option>Foil</option><option>Full-Art</option><option>Promo</option><option>Especial</option></select></label>
+          <label>Página<input id="cardPage" type="number" min="1" value="1"></label>
+          <label>Bolso<input id="cardSlot" type="number" min="1" max="9" value="1"></label>
+        </div>
+        <label>Observações<textarea id="cardNotes" rows="2"></textarea></label>
+        <div class="source-links"><a id="mypcardsLink" class="text-link hidden" target="_blank" rel="noopener">MYP Cards</a><a id="ligaSearchLink" class="text-link" target="_blank" rel="noopener">Liga Pokémon</a></div>
+        <div class="dialog-actions between"><button id="btnDeleteSelected" class="btn btn-danger hidden" type="button">Excluir</button><button id="btnSaveCard" class="btn btn-primary" type="button">Salvar no fichário</button></div>
       </section>
-      <div class="social-columns">
-        <section class="social-card"><h3>Pedidos</h3><div id="friendRequests" class="social-list"></div></section>
-        <section class="social-card"><h3>Amigos</h3><div id="friendsList" class="social-list"></div></section>
-      </div>
     </div>
   </dialog>
 
-  <dialog id="friendBinderDialog" class="sheet-dialog">
-    <div class="dialog-shell">
-      <div class="dialog-head">
-        <div><p class="kicker">Fichário de amigo</p><h2 id="friendBinderTitle">@usuário</h2></div>
-        <button class="icon-only" data-close="friendBinderDialog" type="button">×</button>
-      </div>
-      <div id="friendBinderGrid" class="friend-grid"></div>
-    </div>
-  </dialog>
+  <dialog id="pagesDialog" class="sheet-dialog"><div class="dialog-shell narrow"><div class="dialog-head"><div><p class="kicker">Navegação</p><h2>Páginas</h2></div><button class="icon-only" data-close="pagesDialog" type="button">×</button></div><div id="pagesGrid" class="pages-grid"></div><button id="btnAddPageModal" class="btn btn-primary full" type="button">＋ Adicionar página</button></div></dialog>
 
+  <dialog id="appearanceDialog" class="sheet-dialog"><div class="dialog-shell narrow"><div class="dialog-head"><div><p class="kicker">Aparência</p><h2>Seu fichário</h2></div><button class="icon-only" data-close="appearanceDialog" type="button">×</button></div><label>Nome do fichário<input id="binderNameInput" type="text" maxlength="40"></label><p class="section-title">FUNDO</p><div class="theme-grid"><button class="theme-swatch graphite active" data-theme="graphite" type="button">Grafite</button><button class="theme-swatch burgundy" data-theme="burgundy" type="button">Vinho</button><button class="theme-swatch navy" data-theme="navy" type="button">Azul</button><button class="theme-swatch forest" data-theme="forest" type="button">Verde</button></div><button id="btnSaveAppearance" class="btn btn-primary full" type="button">Salvar</button></div></dialog>
+
+  <dialog id="friendsDialog" class="sheet-dialog"><div class="dialog-shell"><div class="dialog-head"><div><p class="kicker">Social</p><h2>Amigos</h2></div><button class="icon-only" data-close="friendsDialog" type="button">×</button></div><section class="social-card"><h3>Meu perfil</h3><div class="search-grid"><label>@usuário<input id="profileUsername" type="text" maxlength="24"></label><label>Privacidade<select id="profileVisibility"><option value="private">Somente eu</option><option value="friends">Amigos</option><option value="public">Público</option></select></label></div><button id="btnSaveProfile" class="btn btn-secondary" type="button">Salvar perfil</button></section><section class="social-card"><h3>Buscar usuários</h3><div class="inline-search"><input id="friendSearch" type="search" placeholder="@usuário"><button id="btnSearchFriends" class="btn btn-primary" type="button">Buscar</button></div><div id="friendSearchResults" class="social-list"></div></section><div class="social-columns"><section class="social-card"><h3>Pedidos</h3><div id="friendRequests" class="social-list"></div></section><section class="social-card"><h3>Amigos</h3><div id="friendsList" class="social-list"></div></section></div></div></dialog>
+
+  <dialog id="friendBinderDialog" class="sheet-dialog"><div class="dialog-shell"><div class="dialog-head"><div><p class="kicker">Fichário de amigo</p><h2 id="friendBinderTitle">@usuário</h2></div><button class="icon-only" data-close="friendBinderDialog" type="button">×</button></div><div id="friendBinderGrid" class="friend-grid"></div></div></dialog>
+
+  <div id="cardContextMenu" class="context-menu hidden"><button data-ctx="view">Ver carta em 3D</button><button data-ctx="owned">Marcar Tenho</button><button data-ctx="wanted">Marcar Wishlist</button><button data-ctx="ordered">Marcar Pedido</button><button data-ctx="move">Mover para...</button><hr><button data-ctx="delete" class="danger-text">Remover carta</button></div>
   <div id="toast" class="toast"></div>
-
   <script src="/script.js"></script>
 </body>
 </html>
