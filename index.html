@@ -43,10 +43,11 @@
       <div>
         <p class="eyebrow">Fichário digital</p>
         <h1>Pokémon Binder BR</h1>
-        <p class="subtitle">Cartas em português, japonês e inglês com preço identificado por fonte.</p>
+        <p class="subtitle">Cadastre sua coleção, veja preços atuais e acompanhe os fichários dos amigos.</p>
       </div>
       <div class="topbar-actions">
-        <span id="userEmail" class="user-email"></span>
+        <span id="userHandle" class="user-email"></span>
+        <button id="btnFriends" class="ghost-btn" type="button">👥 Amigos</button>
         <button id="btnOpenAdd" class="primary-btn" type="button">+ Adicionar carta</button>
         <button id="btnLogout" class="ghost-btn" type="button">Sair</button>
       </div>
@@ -131,6 +132,7 @@
       </div>
 
       <div id="selectedPreview" class="selected-preview"></div>
+      <div id="priceStatus" class="price-status">Selecione a carta para carregar o preço.</div>
 
       <div class="form-grid">
         <label>Quantidade<input id="cardQuantity" type="number" min="1" value="1" /></label>
@@ -157,8 +159,9 @@
         <label>
           Fonte do preço
           <select id="priceSource">
+            <option>TCGPlayer via TCGdex</option>
+            <option>Cardmarket via TCGdex</option>
             <option>Liga Pokémon</option>
-            <option>Mypcards</option>
             <option>Manual</option>
             <option>Sem preço</option>
           </select>
@@ -169,13 +172,74 @@
         <label>Moeda<input value="BRL" disabled /></label>
       </div>
 
-      <label>Link da fonte / Liga Pokémon<input id="priceLink" type="url" readonly /></label>
+      <label>Link da Liga Pokémon<input id="priceLink" type="url" readonly /></label>
       <label>Observações<textarea id="cardNotes" rows="3" placeholder="Ex: carta com leve whitening nas bordas"></textarea></label>
 
       <div class="actions-row between">
-        <a id="ligaSearchLink" class="link-btn" target="_blank" rel="noopener">Abrir busca na Liga Pokémon</a>
+        <a id="ligaSearchLink" class="link-btn" target="_blank" rel="noopener">Abrir na Liga Pokémon</a>
         <button id="btnSaveCard" type="button" class="primary-btn">Salvar no fichário</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="friendsDialog" class="modal">
+    <div class="modal-card social-modal">
+      <div class="modal-head">
+        <div><p class="eyebrow">Social</p><h2>Amigos e perfil</h2></div>
+        <button class="icon-btn" type="button" data-close="friendsDialog" aria-label="Fechar">×</button>
+      </div>
+
+      <section class="social-section">
+        <h3>Meu perfil</h3>
+        <div class="form-grid">
+          <label>Nome de usuário<input id="profileUsername" type="text" maxlength="24" placeholder="ex: milton97" /></label>
+          <label>
+            Quem pode ver meu fichário?
+            <select id="profileVisibility">
+              <option value="private">Somente eu</option>
+              <option value="friends">Meus amigos</option>
+              <option value="public">Todos os usuários</option>
+            </select>
+          </label>
+        </div>
+        <button id="btnSaveProfile" class="primary-btn" type="button">Salvar perfil</button>
+        <p class="hint">Seu @usuário é usado para seus amigos encontrarem você. Seu e-mail não fica público.</p>
+      </section>
+
+      <section class="social-section">
+        <h3>Buscar usuários</h3>
+        <div class="social-search">
+          <input id="friendSearch" type="search" placeholder="Buscar @usuário..." />
+          <button id="btnSearchFriends" class="primary-btn" type="button">Buscar</button>
+        </div>
+        <div id="friendSearchResults" class="social-list"></div>
+      </section>
+
+      <section class="social-grid">
+        <div class="social-section">
+          <h3>Pedidos recebidos</h3>
+          <div id="friendRequests" class="social-list"></div>
+        </div>
+        <div class="social-section">
+          <h3>Meus amigos</h3>
+          <div id="friendsList" class="social-list"></div>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="friendBinderDialog" class="modal">
+    <div class="modal-card friend-binder-modal">
+      <div class="modal-head">
+        <div><p class="eyebrow">Fichário de amigo</p><h2 id="friendBinderTitle">@usuário</h2><p id="friendBinderStats" class="hint"></p></div>
+        <button class="icon-btn" type="button" data-close="friendBinderDialog" aria-label="Fechar">×</button>
+      </div>
+      <div class="binder-header">
+        <button id="friendPrevPage" class="ghost-btn" type="button">← Página anterior</button>
+        <p id="friendPageInfo">Página 1 de 1</p>
+        <button id="friendNextPage" class="ghost-btn" type="button">Próxima página →</button>
+      </div>
+      <div id="friendBinderGrid" class="binder-grid"></div>
     </div>
   </dialog>
 
