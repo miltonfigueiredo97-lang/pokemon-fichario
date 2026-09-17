@@ -1,9 +1,11 @@
-const CACHE_NAME = 'pokemon-binder-v7-recovery';
+const CACHE_NAME = 'pokemon-binder-v8';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/style.css',
+  '/v8.css',
   '/script.js',
+  '/v8.js',
   '/manifest.webmanifest',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg'
