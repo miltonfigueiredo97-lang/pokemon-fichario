@@ -1,0 +1,145 @@
+/* Pokémon Binder BR — V11.2 surgical fixes */
+
+/* Status color belongs ONLY to the small ribbon, never to the whole card. */
+.pocket-card.status-owned,
+.pocket-card.status-wanted,
+.pocket-card.status-ordered,
+.pocket-card.status-missing,
+.pocket-card:focus,
+.pocket-card:focus-visible{
+  border:0!important;
+  outline:0!important;
+  box-shadow:none!important;
+}
+.pocket-card.status-owned::after,
+.pocket-card.status-wanted::after,
+.pocket-card.status-ordered::after,
+.pocket-card.status-missing::after{
+  content:none!important;
+  display:none!important;
+  border:0!important;
+  outline:0!important;
+  box-shadow:none!important;
+}
+
+/* The MYP access link must never become a giant CTA inside card details. */
+.market-board .v11-myp-note{display:none!important}
+
+/* Remove ambiguous logout icon from the floating rail. */
+.v11-tool[data-kind="logout"]{display:none!important}
+
+/* Normal desktop: fixed, safe binder size with breathing room at top/bottom. */
+@media (min-width:821px){
+  .binder-stage{
+    padding:46px 72px 30px!important;
+    place-items:center!important;
+  }
+  .binder-spread{
+    height:min(640px,calc(100dvh - 128px))!important;
+    width:auto!important;
+    aspect-ratio:1.455 / 1!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:12px!important;
+    align-self:center!important;
+    justify-self:center!important;
+  }
+  .binder-cover,.binder-sheet-wrap{
+    width:100%!important;
+    height:100%!important;
+  }
+}
+
+/* Fullscreen is requested on .binder-area, not #binderStage. */
+.binder-area:fullscreen,
+.binder-area.v11-fullscreen-fallback{
+  width:100vw!important;
+  height:100dvh!important;
+  background:#0b0e12!important;
+  overflow:hidden!important;
+}
+.binder-area:fullscreen #binderStage,
+.binder-area.v11-fullscreen-fallback #binderStage{
+  width:100vw!important;
+  height:100dvh!important;
+  padding:54px 72px 54px!important;
+  background:#0b0e12!important;
+  place-items:center!important;
+}
+.binder-area:fullscreen .binder-spread,
+.binder-area.v11-fullscreen-fallback .binder-spread{
+  height:min(720px,calc(100dvh - 110px))!important;
+  width:auto!important;
+  aspect-ratio:1.455 / 1!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:14px!important;
+  margin:auto!important;
+}
+.binder-area:fullscreen .binder-cover,
+.binder-area.v11-fullscreen-fallback .binder-cover{
+  transform:perspective(1900px) rotateY(.7deg)!important;
+  box-shadow:-8px 24px 60px rgba(0,0,0,.44)!important;
+}
+.binder-area:fullscreen .binder-sheet-wrap,
+.binder-area.v11-fullscreen-fallback .binder-sheet-wrap{
+  transform:perspective(1900px) rotateY(-.7deg)!important;
+  box-shadow:8px 24px 60px rgba(0,0,0,.44)!important;
+}
+.binder-area:fullscreen .v11-rail,
+.binder-area.v11-fullscreen-fallback .v11-rail{
+  display:none!important;
+}
+.binder-area:fullscreen .page-center,
+.binder-area.v11-fullscreen-fallback .page-center{
+  top:14px!important;
+}
+
+.v112-exit-fullscreen{
+  display:none;
+  position:absolute;
+  z-index:120;
+  top:14px;
+  right:18px;
+  min-height:36px;
+  padding:0 13px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:999px;
+  background:rgba(9,12,15,.88);
+  color:#f5f1e7;
+  font-size:10px;
+  font-weight:900;
+  backdrop-filter:blur(12px);
+}
+.binder-area:fullscreen .v112-exit-fullscreen,
+.binder-area.v11-fullscreen-fallback .v112-exit-fullscreen{
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+}
+
+/* Explicit logout lives in the summary, not as an unexplained arrow. */
+.v112-logout{
+  color:#ff9b9b!important;
+  border-color:rgba(255,90,90,.22)!important;
+}
+
+/* Mobile: one complete 3x3 page, centered, never clipped by nav. */
+@media (max-width:820px){
+  .binder-stage{
+    padding:46px 8px 10px!important;
+    display:grid!important;
+    place-items:center!important;
+    overflow:hidden!important;
+  }
+  .binder-spread{
+    display:block!important;
+    height:min(calc(100dvh - 146px - env(safe-area-inset-bottom)),calc((100vw - 24px) * 264 / 189))!important;
+    width:auto!important;
+    aspect-ratio:189 / 264!important;
+    margin:auto!important;
+  }
+  .binder-sheet-wrap{
+    width:100%!important;
+    height:100%!important;
+    margin:0!important;
+  }
+}
