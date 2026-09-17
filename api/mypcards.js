@@ -1,3 +1,7 @@
+const API_ROOT = 'https://mypcards.com/api/v1';
+const DOCS_URL = 'https://mypcards.github.io/mypcards-api/';
+const CONTACT_URL = 'https://mypcards.com/contato';
+
 function normalize(value) {
   return String(value || '')
     .toLowerCase()
@@ -41,25 +45,26 @@ function scoreProduct(product, wanted) {
   const foundNumber = productNumber(product);
 
   if (wantedName) {
-    if (pt === wantedName || en === wantedName) score += 500;
-    else if (pt.includes(wantedName) || en.includes(wantedName) || wantedName.includes(pt) || wantedName.includes(en)) score += 220;
+    if (pt === wantedName || en === wantedName) score += 700;
+    else if (pt.includes(wantedName) || en.includes(wantedName) || wantedName.includes(pt) || wantedName.includes(en)) score += 260;
+    else score -= 300;
   }
 
   const wantedParts = numberParts(wanted.number);
   if (wantedParts.numerator) {
-    if (foundNumber.numerator === wantedParts.numerator) score += 500;
-    else score -= 260;
-    if (wantedParts.denominator && foundNumber.denominator === wantedParts.denominator) score += 240;
+    if (foundNumber.numerator === wantedParts.numerator) score += 700;
+    else score -= 500;
+    if (wantedParts.denominator && foundNumber.denominator === wantedParts.denominator) score += 320;
   }
 
   if (wantedSet) {
-    if (editionPt.includes(wantedSet) || editionEn.includes(wantedSet) || editionCode === wantedSet || editionCode.includes(wantedSet)) score += 260;
+    if (editionPt.includes(wantedSet) || editionEn.includes(wantedSet) || editionCode === wantedSet || editionCode.includes(wantedSet)) score += 320;
   }
 
-  if (product.img_pt) score += 90;
-  if (product.min_price) score += 35;
-  if (product.avg_price) score += 35;
-  if (product.available_quantity > 0) score += 25;
+  if (product.img_pt) score += 100;
+  if (product.min_price != null) score += 40;
+  if (product.avg_price != null) score += 40;
+  if (Number(product.available_quantity || 0) > 0) score += 30;
   return score;
 }
 
@@ -89,19 +94,31 @@ function normalizeProduct(product) {
   };
 }
 
-async function requestMyp(path) {
+function nameVariants(name) {
+  const value = String(name || '').trim();
+  const out = new Set([value]);
+  if (!value) return [];
+
+  out.add(value.replace(/\s*-\s*/g, '-'));
+  out.add(value.replace(/-/g, ' '));
+  out.add(value.replace(/\s+(EX|GX)$/i, '-$1'));
+  out.add(value.replace(/-(EX|GX)$/i, ' $1'));
+  out.add(value.replace(/\s+(VMAX|VSTAR|V-?ASTRO)$/i, ' $1'));
+
+  return [...out].filter(Boolean);
+}
+
+async function requestMyp(path, token) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 9000);
-  const headers = {
-    'Accept': 'application/json',
-    'User-Agent': 'PokemonBinderBR/2.0'
-  };
-  if (process.env.MYPCARDS_API_TOKEN) headers['X-Api-Token'] = process.env.MYPCARDS_API_TOKEN;
-
   try {
-    const response = await fetch(`https://mypcards.com/api/v1${path}`, {
+    const response = await fetch(`${API_ROOT}${path}`, {
       method: 'GET',
-      headers,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'PokemonBinderBR/3.0',
+        'X-Api-Token': token
+      },
       signal: controller.signal
     });
     const text = await response.text();
@@ -111,6 +128,18 @@ async function requestMyp(path) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function tokenRequired(res, upstreamStatus = null) {
+  res.status(200).json({
+    ok: false,
+    needsToken: true,
+    upstreamStatus,
+    envName: 'MYPCARDS_API_TOKEN',
+    docsUrl: DOCS_URL,
+    contactUrl: CONTACT_URL,
+    message: 'A API oficial do MYP Cards exige X-Api-Token. O token é emitido pelo suporte do MYP Cards.'
+  });
 }
 
 module.exports = async function handler(req, res) {
@@ -125,35 +154,53 @@ module.exports = async function handler(req, res) {
   const name = String(req.query.name || '').trim();
   const number = String(req.query.number || '').trim();
   const set = String(req.query.set || '').trim();
+  const token = String(process.env.MYPCARDS_API_TOKEN || '').trim();
 
   if (!name) {
     res.status(400).json({ ok: false, error: 'name_required' });
     return;
   }
 
+  // According to the official MYP Cards Swagger, tokens are generated
+  // internally by their support team. Do not fake/scrape a token.
+  if (!token) {
+    tokenRequired(res);
+    return;
+  }
+
   try {
-    const { response, data } = await requestMyp(`/pokemon/carta/${encodeURIComponent(name)}`);
+    let cards = [];
+    let lastStatus = null;
 
-    if (response.status === 401 || response.status === 403) {
+    for (const candidate of nameVariants(name)) {
+      const { response, data } = await requestMyp(`/pokemon/carta/${encodeURIComponent(candidate)}`, token);
+      lastStatus = response.status;
+
+      if (response.status === 401 || response.status === 403) {
+        tokenRequired(res, response.status);
+        return;
+      }
+      if (!response.ok) continue;
+
+      const found = Array.isArray(data?.cards) ? data.cards : Array.isArray(data) ? data : [];
+      if (found.length) {
+        cards = found;
+        break;
+      }
+    }
+
+    if (!cards.length) {
       res.status(200).json({
-        ok: false,
-        needsToken: true,
-        upstreamStatus: response.status,
-        message: 'A API do MYP Cards exige X-Api-Token para esta consulta.'
+        ok: true,
+        source: 'MYP Cards',
+        query: { name, number, set },
+        count: 0,
+        cards: [],
+        upstreamStatus: lastStatus
       });
       return;
     }
 
-    if (!response.ok) {
-      res.status(200).json({
-        ok: false,
-        upstreamStatus: response.status,
-        message: 'MYP Cards indisponível para esta consulta.'
-      });
-      return;
-    }
-
-    const cards = Array.isArray(data?.cards) ? data.cards : Array.isArray(data) ? data : [];
     const wanted = { name, number, set };
     const ranked = cards
       .map(product => ({ product, score: scoreProduct(product, wanted) }))
@@ -171,7 +218,8 @@ module.exports = async function handler(req, res) {
     res.status(200).json({
       ok: false,
       error: error?.name === 'AbortError' ? 'timeout' : 'upstream_error',
-      message: 'Não foi possível consultar o mercado brasileiro agora.'
+      message: 'Não foi possível consultar a API do MYP Cards agora.',
+      docsUrl: DOCS_URL
     });
   }
 };
