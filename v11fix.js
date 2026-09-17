@@ -140,9 +140,7 @@
         opacity:1!important;
       }
       #binderStage.v114-page-flipping .binder-sheet-wrap,
-      #binderStage.v114-page-flipping .v114-page-ghost{
-        transform-style:preserve-3d!important;
-      }
+      #binderStage.v114-page-flipping .v114-page-ghost{transform-style:preserve-3d!important}
       @media (max-width:820px){
         #binderStage .v114-page-ghost.v114-next.v114-run{transform:perspective(1450px) rotateY(-166deg)!important}
         #binderStage .binder-sheet-wrap.v114-in-prev{transform:perspective(1450px) rotateY(-166deg)!important}
@@ -181,10 +179,14 @@
     cleanCloneIds(ghost);
     ghost.classList.remove('v114-in-next','v114-in-prev','v114-run');
     ghost.classList.add('v114-page-ghost',direction==='prev'?'v114-prev':'v114-next');
-    ghost.style.left=`${wrapRect.left-stageRect.left}px`;
-    ghost.style.top=`${wrapRect.top-stageRect.top}px`;
-    ghost.style.width=`${wrapRect.width}px`;
-    ghost.style.height=`${wrapRect.height}px`;
+    ghost.style.setProperty('left',`${wrapRect.left-stageRect.left}px`,'important');
+    ghost.style.setProperty('top',`${wrapRect.top-stageRect.top}px`,'important');
+    ghost.style.setProperty('width',`${wrapRect.width}px`,'important');
+    ghost.style.setProperty('height',`${wrapRect.height}px`,'important');
+    ghost.style.setProperty('min-width','0','important');
+    ghost.style.setProperty('min-height','0','important');
+    ghost.style.setProperty('max-width','none','important');
+    ghost.style.setProperty('max-height','none','important');
 
     pageFlipBusy=true;
     wrap.classList.remove('v114-in-next','v114-in-prev','v114-run');
@@ -211,15 +213,8 @@
     document.addEventListener('click',e=>{
       const b=e.target.closest?.('button');
       if(!b)return;
-
-      if(b.id==='nextPage'&&!b.disabled){
-        startPageFlip('next');
-        return;
-      }
-      if(b.id==='prevPage'&&!b.disabled){
-        startPageFlip('prev');
-        return;
-      }
+      if(b.id==='nextPage'&&!b.disabled){startPageFlip('next');return}
+      if(b.id==='prevPage'&&!b.disabled){startPageFlip('prev');return}
       if(b.classList.contains('page-thumb')){
         const txt=b.querySelector('strong')?.textContent||'';
         const target=Number((txt.match(/\d+/)||[])[0]||0);
