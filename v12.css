@@ -1,0 +1,27 @@
+/* Pokémon Binder BR — V12.0 */
+.v12-version-block{margin-top:auto!important;padding-top:10px!important}
+.v12-version-button{width:100%;display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:7px;padding:10px 11px;border:1px solid rgba(255,255,255,.11);border-radius:9px;background:#0e1215;color:#d9ddd9;text-align:left;cursor:pointer}
+.v12-version-button:hover{border-color:rgba(255,111,91,.48);background:#13181c}
+.v12-version-button span{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#7f898f;font-weight:900}
+.v12-version-button strong{font-size:11px;color:#ff715d}
+.v12-version-button small{justify-self:end;font-size:9px;color:#a4adb2;font-weight:800}
+.v12-price-update{border-color:rgba(50,215,160,.25)!important;color:#69e8bd!important}
+.v12-price-update:disabled{opacity:.55!important;cursor:wait!important}
+.v12-price-progress{min-height:14px;margin:7px 2px 0;color:#8e999f;font-size:9px;line-height:1.4}
+.v12-release-dialog{width:min(760px,calc(100vw - 28px));max-width:760px}
+.v12-release-shell{max-height:min(82dvh,760px)!important;overflow:hidden!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important}
+.v12-release-list{overflow:auto;padding:4px 4px 8px;display:grid;gap:12px}
+.v12-release-item{border:1px solid rgba(255,255,255,.09);background:#0d1114;border-radius:12px;padding:14px 15px}
+.v12-release-item.current{border-color:rgba(255,111,91,.42);box-shadow:inset 3px 0 0 #ff715d}
+.v12-release-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+.v12-release-head strong{color:#ff715d;font-size:13px}
+.v12-release-head span{color:#f1eee6;font-size:13px;font-weight:850}
+.v12-release-item ul{margin:0;padding-left:18px;color:#aeb6ba;font-size:11px;line-height:1.55}
+.v12-release-item li+li{margin-top:4px}
+@media(max-width:820px){
+  .v12-version-block{padding-bottom:78px!important}
+  .v12-version-button{grid-template-columns:auto auto;gap:5px 8px}
+  .v12-version-button small{grid-column:1/-1;justify-self:start}
+  .v12-release-dialog{width:100vw;max-width:none;height:100dvh;max-height:100dvh;margin:0;border-radius:0}
+  .v12-release-shell{height:100dvh;max-height:100dvh!important;border-radius:0!important}
+}
