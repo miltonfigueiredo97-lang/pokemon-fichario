@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# V8: ativa a camada segura depois da recuperação da tela preta.
 index_path = Path('index.html')
 sw_path = Path('sw.js')
 
