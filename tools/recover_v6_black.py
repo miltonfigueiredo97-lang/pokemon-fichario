@@ -17,7 +17,6 @@ js_markers = [
 for marker in js_markers:
     idx = js.find(marker)
     if idx != -1:
-        # Se o marcador simples foi encontrado, remova tambem barras-n literais imediatamente antes.
         start = idx
         while start >= 2 and js[start-2:start] == r'\n':
             start -= 2
@@ -37,10 +36,11 @@ for marker in css_markers:
         css = css[:start].rstrip() + '\n'
         break
 
-# Forca o PWA a abandonar o cache da versao quebrada.
 import re
 sw = re.sub(r"const CACHE_NAME = '[^']+';", "const CACHE_NAME = 'pokemon-binder-v7-recovery';", sw, count=1)
 
 js_path.write_text(js, encoding='utf-8')
 css_path.write_text(css, encoding='utf-8')
 sw_path.write_text(sw, encoding='utf-8')
+
+# trigger recovery workflow
