@@ -242,7 +242,19 @@
     if(card){card={...card,name:name||card.name,setName:setName||card.setName,setId:setId||card.setId,languageCode:code,language:langName(code)};const full=number.includes('/')?number:await resolveFullNumber(card);if(full)card.number=full;if(image)card.imageUrl=image;return card}
     return{source:'Importação',apiId,setId,name,number,setName,languageCode:code,language:langName(code),rarity:'',type:'',imageUrl:image,printedTotal:''}
   }
-  function desiredPosition(row,used){const p=Number(rowValue(row,'Página')),s=Number(rowValue(row,'Bolso'));if(p>=1&&s>=1&&s<=9&&!getCardAt(p,s)&&!used.has(`${p}:${s}`)){used.add(`${p}:${s}`);return{page:p,slot:s}}const pos=freePositions(currentPage,1).find(x=>!used.has(`${x.page}:${x.slot}`))||freePositions(1,1)[0];used.add(`${pos.page}:${pos.slot}`);return pos}
+  function desiredPosition(row,used){
+    const requestedPage=Number(rowValue(row,'Página')),requestedSlot=Number(rowValue(row,'Bolso'));
+    const isFree=(page,slot)=>page>=1&&slot>=1&&slot<=9&&!getCardAt(page,slot)&&!used.has(`${page}:${slot}`);
+    if(isFree(requestedPage,requestedSlot)){used.add(`${requestedPage}:${requestedSlot}`);return{page:requestedPage,slot:requestedSlot}}
+    const basePages=Math.max(1,+settings.binder_pages||1);
+    const start=Math.max(1,+currentPage||1);
+    const scan=[];
+    for(let page=start;page<=basePages;page++)scan.push(page);
+    for(let page=1;page<start;page++)scan.push(page);
+    for(const page of scan){for(let slot=1;slot<=9;slot++){if(isFree(page,slot)){used.add(`${page}:${slot}`);return{page,slot}}}}
+    let page=basePages+1;
+    while(true){for(let slot=1;slot<=9;slot++){if(!used.has(`${page}:${slot}`)){used.add(`${page}:${slot}`);return{page,slot}}}page++}
+  }
   async function importExcelFile(file){if(!file)return;if(!await ensureXLSX())return toast('Não consegui carregar o módulo de Excel.');const buf=await file.arrayBuffer(),wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets['Fichário']||wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(ws,{defval:''});if(!rows.length)return toast('A planilha não tem cartas.');const valid=rows.filter(r=>String(rowValue(r,'Nome')).trim()&&String(rowValue(r,'Número')).trim());if(!valid.length)return toast('Preencha pelo menos Nome e Número.');const status=$v('#v12PriceProgress'),used=new Set();let added=0,failed=0,maxPage=+settings.binder_pages||1;bulkBusy=true;
     try{for(let i=0;i<valid.length;i++){if(i>0)await sleep(1350);const row=valid[i];if(status)status.textContent=`Importando ${i+1}/${valid.length} · ${rowValue(row,'Nome')}`;try{const card=await resolveImportCard(row),finish=normalizeFinish(rowValue(row,'Acabamento')),condition=normalizeCondition(rowValue(row,'Condição')),st=statusToInternal(rowValue(row,'Status')),quantity=st==='owned'?Math.max(1,Number(rowValue(row,'Quantidade'))||1):0,pos=desiredPosition(row,used);maxPage=Math.max(maxPage,pos.page);const dual=await queryBothMarkets(card,finish,condition);dual.finishConfirmed=true;const payload=cardPayload(card,{page:pos.page,slot:pos.slot,status:st,quantity,condition,finish,finishConfirmed:true,notes:String(rowValue(row,'Observações')||'')},dual);const{data:existing}=await db.from('pokemon_cards').select('id,quantity').eq('user_id',currentUser.id).eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).maybeSingle();if(existing){const patch={quantity:st==='owned'?(+existing.quantity||0)+quantity:0,collection_status:st,finish_confirmed:true,...marketPatch(card,dual)};const{error}=await db.from('pokemon_cards').update(patch).eq('id',existing.id).eq('user_id',currentUser.id);if(error)throw error}else{const{error}=await db.from('pokemon_cards').insert(payload);if(error)throw error}added++}catch(e){console.error('Importação:',e);failed++}}
       if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);await loadCards(false);if(status)status.textContent=`Importação concluída: ${added} carta(s) · ${failed} erro(s).`;toast(`Importação concluída: ${added}/${valid.length}.`)
