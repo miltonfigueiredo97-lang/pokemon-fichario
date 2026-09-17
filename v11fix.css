@@ -1,4 +1,4 @@
-/* Pokémon Binder BR — V11.2 surgical fixes */
+/* Pokémon Binder BR — V11.3 surgical fixes */
 
 /* Status color belongs ONLY to the small ribbon, never to the whole card. */
 .pocket-card.status-owned,
@@ -20,6 +20,39 @@
   border:0!important;
   outline:0!important;
   box-shadow:none!important;
+}
+
+/* Keep card artwork sharp: no 3D rasterization or filter layer on the binder page. */
+.binder-sheet-wrap{
+  transform:none!important;
+  backface-visibility:visible!important;
+}
+.pocket-card,
+.pocket-card:hover,
+.pocket-card:active{
+  transform:none!important;
+  filter:none!important;
+  will-change:auto!important;
+}
+.pocket-card img{
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  transform:none!important;
+  filter:none!important;
+  image-rendering:auto!important;
+  backface-visibility:visible!important;
+  will-change:auto!important;
+  box-shadow:0 6px 14px rgba(0,0,0,.30)!important;
+}
+body:not(.v113-show-missing-color) .pocket-card.status-missing img{
+  filter:grayscale(1) brightness(.48)!important;
+}
+body.v113-show-missing-color .pocket-card.status-missing img{
+  filter:none!important;
+}
+body.v113-hide-status-badges .card-status-ribbon{
+  display:none!important;
 }
 
 /* The MYP access link must never become a giant CTA inside card details. */
@@ -81,7 +114,7 @@
 }
 .binder-area:fullscreen .binder-sheet-wrap,
 .binder-area.v11-fullscreen-fallback .binder-sheet-wrap{
-  transform:perspective(1900px) rotateY(-.7deg)!important;
+  transform:none!important;
   box-shadow:8px 24px 60px rgba(0,0,0,.44)!important;
 }
 .binder-area:fullscreen .v11-rail,
@@ -122,8 +155,57 @@
   border-color:rgba(255,90,90,.22)!important;
 }
 
+/* Clear desktop control to collapse/restore the right summary panel. */
+.v113-summary-toggle{
+  position:absolute!important;
+  z-index:105!important;
+  top:12px!important;
+  right:12px!important;
+  height:34px!important;
+  padding:0 11px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:6px!important;
+  border:1px solid rgba(255,255,255,.13)!important;
+  border-radius:999px!important;
+  background:rgba(8,11,14,.86)!important;
+  color:#ddd9cf!important;
+  font-size:9px!important;
+  font-weight:900!important;
+  box-shadow:0 8px 24px rgba(0,0,0,.24)!important;
+  backdrop-filter:blur(10px)!important;
+}
+.v113-summary-toggle:hover{background:#1a2025!important;border-color:rgba(255,255,255,.25)!important}
+.workspace.v11-summary-collapsed{grid-template-columns:minmax(0,1fr) 0!important}
+.workspace.v11-summary-collapsed .summary-panel{
+  width:0!important;
+  min-width:0!important;
+  opacity:0!important;
+  pointer-events:none!important;
+  overflow:hidden!important;
+  border:0!important;
+}
+
+/* Visual preferences in Resumo. */
+.v113-visual-controls{display:grid!important;gap:10px!important}
+.v113-visual-controls .toggle-row{min-height:30px!important}
+.v113-visual-controls .toggle-row + .toggle-row{margin-top:2px!important}
+
+/* Profile save feedback must be visible inside the dialog. */
+.v113-profile-status{
+  margin:8px 0 0!important;
+  min-height:16px!important;
+  color:#929aa1!important;
+  font-size:10px!important;
+  font-weight:750!important;
+}
+.v113-profile-status.ok{color:#32d7a0!important}
+.v113-profile-status.error{color:#ff8b8b!important}
+
 /* Mobile: one complete 3x3 page, centered, never clipped by nav. */
 @media (max-width:820px){
+  .v113-summary-toggle{display:none!important}
   .binder-stage{
     padding:46px 8px 10px!important;
     display:grid!important;
@@ -141,5 +223,6 @@
     width:100%!important;
     height:100%!important;
     margin:0!important;
+    transform:none!important;
   }
 }
