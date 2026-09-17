@@ -134,7 +134,7 @@
     </main>
 
     <nav class="mobile-nav">
-      <button class="mobile-nav-btn active" type="button"><span>▦</span><small>Fichário</small></button>
+      <button id="btnMobileBinder" class="mobile-nav-btn active" type="button"><span>▦</span><small>Fichário</small></button>
       <button id="btnMobileSummary" class="mobile-nav-btn" type="button"><span>◫</span><small>Resumo</small></button>
       <button id="btnMobileScan" class="scan-fab" type="button" aria-label="Adicionar carta">＋</button>
       <button id="btnMobileFriends" class="mobile-nav-btn" type="button"><span>♙</span><small>Amigos</small></button>
@@ -150,8 +150,9 @@
       </div>
       <div class="catalog-toolbar">
         <div class="search-big-wrap"><span>⌕</span><input id="searchName" type="search" placeholder="Nome, número ou coleção — ex.: Lugia EX 134"></div>
-        <label class="camera-compact"><input id="cardPhoto" type="file" accept="image/*" capture="environment"><span>⌁</span><b>Câmera</b></label>
-        <button id="btnUsePhotoHints" class="mini-btn" type="button">Ler foto</button>
+        <button id="btnLiveScan" class="camera-compact" type="button"><span>⌁</span><b>Escanear</b></button>
+        <label class="camera-compact gallery-compact"><input id="cardPhoto" type="file" accept="image/*"><span>▧</span><b>Galeria</b></label>
+        <button id="btnUsePhotoHints" class="mini-btn hidden" type="button">Ler foto</button>
       </div>
       <div class="catalog-filters">
         <select id="searchLanguage"><option value="all">Todos os idiomas</option><option value="pt-br">Português</option><option value="en">Inglês</option><option value="ja">Japonês</option></select>
@@ -171,6 +172,27 @@
     </div>
   </dialog>
 
+
+  <dialog id="scanDialog" class="sheet-dialog live-scan-dialog">
+    <div class="dialog-shell live-scan-shell">
+      <div class="scan-topbar">
+        <div><p class="kicker">Scanner ao vivo</p><h2>Enquadre a carta</h2></div>
+        <button id="btnCloseLiveScan" class="icon-only" type="button">×</button>
+      </div>
+      <div class="live-camera-stage">
+        <video id="scanVideo" autoplay playsinline muted></video>
+        <canvas id="scanCanvas" class="hidden"></canvas>
+        <div class="scan-vignette"></div>
+        <div class="scan-card-frame"><span></span></div>
+        <div class="scan-pulse"></div>
+      </div>
+      <div class="scan-footer">
+        <div><strong id="scanLiveStatus">Abrindo câmera...</strong><small>Mantenha a carta inteira dentro da moldura. A leitura acontece automaticamente.</small></div>
+        <button id="btnScanManual" class="btn btn-secondary" type="button">Busca manual</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="cardDialog" class="sheet-dialog card-inspector-dialog">
     <div class="dialog-shell inspector-shell">
       <button class="icon-only inspector-close" data-close="cardDialog" type="button">×</button>
@@ -182,7 +204,7 @@
             <div class="card-face card-back"><div class="pokeball-art"><span></span></div><b>POKÉMON</b></div>
           </div>
         </div>
-        <p class="showcase-help">Mova o mouse para inclinar · duplo clique para virar</p>
+        <p class="showcase-help">Arraste sobre a carta para inclinar · toque duas vezes para virar</p>
       </section>
       <section class="card-details-panel">
         <div class="details-head"><div><p class="kicker">Carta</p><h2 id="selectedTitle">Selecionada</h2><p id="selectedMeta" class="muted"></p></div><span id="selectedLangBadge" class="lang-badge"></span></div>
