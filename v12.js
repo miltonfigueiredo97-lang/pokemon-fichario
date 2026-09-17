@@ -1,12 +1,22 @@
-// Pokémon Binder BR — V12.0
+// Pokémon Binder BR — V12.1
 (function(){
   'use strict';
 
-  const APP_VERSION = 'V12.0';
+  const APP_VERSION = 'V12.1';
   const $q = (s,root=document)=>root.querySelector(s);
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
   const RELEASE_NOTES = [
+    {
+      version:'V12.1',
+      title:'Correspondência exata de carta e número completo',
+      items:[
+        'A Liga Pokémon agora recebe Nome (número/total), inclusive quando o banco antigo só tinha o numerador.',
+        'O total da coleção é recuperado pelo TCGdex e reutilizado para Liga e MYP.',
+        'A busca pública da MYP passou a considerar nome, número completo, coleção e idioma para evitar escolher a impressão errada.',
+        'Omanyte da coleção 151, por exemplo, é resolvido como 180/165 e não como outra impressão japonesa com o mesmo numerador.'
+      ]
+    },
     {
       version:'V12.0',
       title:'Preços MYP, links e notas da versão',
@@ -31,14 +41,40 @@
     try{return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v||0))}catch{return `R$ ${Number(v||0).toFixed(2)}`}
   }
 
-  function ligaQuery(card){
+  const fullNumberCache=new Map();
+
+  async function resolveFullNumber(card){
+    const raw=String(card?.number||'').trim();
+    if(/\d+\s*\/\s*\d+/.test(raw))return raw.replace(/\s/g,'');
+    if(!raw)return '';
+    const apiId=String(card?.apiId||card?.api_id||'').trim();
+    if(!apiId)return raw;
+    const key=`${apiId}|${raw}`;
+    if(fullNumberCache.has(key))return fullNumberCache.get(key);
+    try{
+      const r=await fetch(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(apiId)}`,{cache:'force-cache'});
+      if(r.ok){
+        const data=await r.json();
+        const total=Number(data?.set?.cardCount?.official||0);
+        if(total>0){
+          const full=`${Number(raw)}/${total}`;
+          fullNumberCache.set(key,full);
+          return full;
+        }
+      }
+    }catch(err){console.warn('Número completo TCGdex:',err)}
+    fullNumberCache.set(key,raw);
+    return raw;
+  }
+
+  function ligaQuery(card,numberOverride=''){
     const name=String(card?.name||card?.namePt||card?.market_name_pt||'').trim();
-    const number=String(card?.number||'').trim();
+    const number=String(numberOverride||card?.number||'').trim();
     return number?`${name} (${number})`:name;
   }
 
-  function ligaUrlV12(card){
-    return 'https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(ligaQuery(card));
+  function ligaUrlV12(card,numberOverride=''){
+    return 'https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(ligaQuery(card,numberOverride));
   }
 
   function isMypUrl(value){
@@ -61,11 +97,16 @@
     return null;
   }
 
-  function fixSourceLinks(){
+  async function fixSourceLinks(){
     const card=currentCardForLinks();
     if(!card)return;
     const liga=$q('#ligaSearchLink');
-    if(liga)liga.href=ligaUrlV12(card);
+    if(liga){
+      const fullNumber=await resolveFullNumber(card);
+      liga.href=ligaUrlV12(card,fullNumber);
+      const chip=$q('#detailNumber');
+      if(chip&&fullNumber)chip.textContent=`# ${fullNumber}`;
+    }
 
     const myp=$q('#mypcardsLink');
     if(myp){
@@ -87,10 +128,12 @@
     const name=String(card.namePt||card.market_name_pt||card.name||'').trim();
     if(!name)return null;
     const p=new URLSearchParams({name});
-    const number=String(card.number||'').trim();
-    const set=String(card.setId||card.set_id||card.setName||card.set_name||card.market_edition_pt||'').trim();
+    const number=await resolveFullNumber(card);
+    const set=String(card.setName||card.set_name||card.market_edition_pt||card.setId||card.set_id||'').trim();
     if(number)p.set('number',number);
     if(set)p.set('set',set);
+    const lang=String(card.languageCode||card.language_code||'').trim();
+    if(lang)p.set('lang',lang);
     const known=[card.price_br_link,card.myp_link,card.market?.link].find(isMypUrl);
     if(known)p.set('link',known);
     const r=await fetch(`/api/mypcards-public?${p.toString()}`,{cache:'no-store'});

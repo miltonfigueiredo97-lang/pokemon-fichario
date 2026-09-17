@@ -61,7 +61,7 @@ async function fetchText(url, timeout = 9000) {
     const response = await fetch(url, {
       headers: {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; PokemonBinderBR/12.0; +https://pokemon-fichario.vercel.app)'
+        'User-Agent': 'Mozilla/5.0 (compatible; PokemonBinderBR/12.1; +https://pokemon-fichario.vercel.app)'
       },
       redirect: 'follow',
       signal: controller.signal
@@ -193,7 +193,7 @@ function extractMarket(identity) {
   return { min, avg, max, availableQuantity, samples: usable.length };
 }
 
-async function resolvePage({ name, number, set, link }) {
+async function resolvePage({ name, number, set, link, lang }) {
   const direct = safeMypProductUrl(link);
   const urls = direct ? [direct] : await sitemapCandidates(name);
   let best = null;
@@ -204,9 +204,20 @@ async function resolvePage({ name, number, set, link }) {
       const identity = pageIdentity(html);
       if (!matchesWanted(identity, { name, number, set })) continue;
       const market = extractMarket(identity);
-      const score = (identity.number === String(number || '').replace(/\s/g, '') ? 500 : 0)
-        + (normalize(identity.name) === normalize(name) ? 300 : 0)
-        + (market.samples || 0);
+      const wantedNumber=String(number||'').replace(/\s/g,'');
+      const wantedSet=normalize(set);
+      const edition=normalize(identity.edition);
+      const code=normalize(identity.code);
+      const langNorm=normalize(lang);
+      let score = 0;
+      if(identity.number===wantedNumber)score+=1000;
+      else if(wantedNumber&&identity.number&&String(Number(identity.number.split('/')[0]))===String(Number(wantedNumber.split('/')[0])))score+=420;
+      if(normalize(identity.name)===normalize(name))score+=350;
+      if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
+      const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);
+      if(langNorm==='ja'&&japanese)score+=220;
+      if(langNorm&&langNorm!=='ja'&&japanese)score-=260;
+      score+=(market.samples||0);
       const candidate = { url, identity, market, score };
       if (!best || candidate.score > best.score) best = candidate;
       if (score >= 800) break;
@@ -224,14 +235,15 @@ module.exports = async function handler(req, res) {
   const number = String(req.query.number || '').trim();
   const set = String(req.query.set || '').trim();
   const link = String(req.query.link || '').trim();
+  const lang = String(req.query.lang || '').trim();
   if (!name) return res.status(400).json({ ok: false, error: 'name_required' });
 
-  const cacheKey = `market:${normalize(name)}|${number}|${normalize(set)}|${safeMypProductUrl(link)}`;
+  const cacheKey = `market:${normalize(name)}|${number}|${normalize(set)}|${normalize(lang)}|${safeMypProductUrl(link)}`;
   const cached = CACHE.get(cacheKey);
   if (cached && cached.expires > Date.now()) return res.status(200).json(cached.value);
 
   try {
-    const found = await resolvePage({ name, number, set, link });
+    const found = await resolvePage({ name, number, set, link, lang });
     if (!found) {
       const out = { ok: false, error: 'not_found', message: 'Carta não localizada no catálogo público da MYP.' };
       CACHE.set(cacheKey, { value: out, expires: Date.now() + 10 * 60 * 1000 });
