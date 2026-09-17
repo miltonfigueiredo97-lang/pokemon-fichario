@@ -1,4 +1,4 @@
-// Pokémon Binder BR — V11.4 surgical behavior fixes
+// Pokémon Binder BR — V11.5 surgical behavior fixes
 (function(){
   'use strict';
 
@@ -239,7 +239,7 @@
   }
 
   // ------------------------------------------------------------------
-  // RIGHT SUMMARY PANEL: explicit collapse/restore button
+  // RIGHT SUMMARY PANEL
   // ------------------------------------------------------------------
   function setSummaryCollapsed(collapsed){
     const workspace=$('.workspace');
@@ -364,7 +364,7 @@
   }
 
   // ------------------------------------------------------------------
-  // PROFILE SAVE: normalize @handle and show feedback INSIDE the modal
+  // PROFILE SAVE
   // ------------------------------------------------------------------
   function normalizeHandle(raw){
     return String(raw||'')
@@ -447,6 +447,251 @@
     },true);
   }
 
+  // ------------------------------------------------------------------
+  // CARD DETAILS: READ-ONLY FIRST, EDIT ONLY ON DEMAND
+  // ------------------------------------------------------------------
+  let editorSnapshot=null;
+
+  function injectCardDetailsStyles(){
+    if($('#v115CardDetailsStyles'))return;
+    const style=document.createElement('style');
+    style.id='v115CardDetailsStyles';
+    style.textContent=`
+      .card-details-panel{position:relative!important}
+      .v115-details-head-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+      .v115-edit-btn,.v115-cancel-btn{
+        height:34px;border-radius:999px;padding:0 13px;border:1px solid rgba(255,255,255,.14);
+        background:#171c20;color:#ece9df;font-size:10px;font-weight:900;cursor:pointer
+      }
+      .v115-edit-btn:hover,.v115-cancel-btn:hover{background:#22292f}
+      .v115-info-grid{
+        display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 10px
+      }
+      .v115-info-item{
+        min-height:56px;padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;
+        background:rgba(255,255,255,.025);display:flex;flex-direction:column;gap:4px
+      }
+      .v115-info-item span{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#7e878e;font-weight:900}
+      .v115-info-item strong{font-size:12px;color:#f1eee6;font-weight:850;line-height:1.25}
+      .v115-owned-view{
+        display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0 12px
+      }
+      .v115-owned-view .v115-wide{grid-column:1/-1}
+      .v115-status-pill{display:inline-flex;width:max-content;align-items:center;height:24px;padding:0 9px;border-radius:999px;font-size:9px;font-weight:950}
+      .v115-status-pill.owned{background:rgba(46,201,143,.14);color:#59e0af}
+      .v115-status-pill.wanted{background:rgba(255,194,73,.12);color:#ffd070}
+      .v115-status-pill.ordered{background:rgba(99,151,255,.14);color:#9dbdff}
+      .v115-status-pill.missing{background:rgba(255,255,255,.08);color:#c4c8ca}
+      .card-details-panel:not(.v115-editing) #statusPicker,
+      .card-details-panel:not(.v115-editing) .inspector-form,
+      .card-details-panel:not(.v115-editing) #cardNotes,
+      .card-details-panel:not(.v115-editing) #cardNotes + *,
+      .card-details-panel:not(.v115-editing) .dialog-actions{display:none!important}
+      .card-details-panel:not(.v115-editing) label:has(#cardNotes){display:none!important}
+      .card-details-panel.v115-editing #v115CardInfo,
+      .card-details-panel.v115-editing #v115OwnershipView{display:none!important}
+      .v115-location-field{display:none!important}
+      .card-details-panel.v115-editing .inspector-form{display:grid!important}
+      .card-details-panel.v115-editing .dialog-actions{display:flex!important}
+      .card-details-panel.v115-editing label:has(#cardNotes){display:block!important}
+      #btnSaveCard{min-width:150px}
+      @media(max-width:820px){
+        .v115-info-grid,.v115-owned-view{grid-template-columns:1fr 1fr}
+        .v115-info-item{min-height:50px;padding:9px 10px}
+        .v115-details-head-actions{position:absolute;top:0;right:0}
+      }
+      @media(max-width:520px){
+        .v115-info-grid,.v115-owned-view{grid-template-columns:1fr}
+        .v115-owned-view .v115-wide{grid-column:auto}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function savedCardForEditor(){
+    try{return editingCardId?collection.find(c=>c.id===editingCardId)||null:null}catch(_e){return null}
+  }
+
+  function statusLabel(status){
+    try{return STATUS?.[status]||status||'—'}catch(_e){return status||'—'}
+  }
+
+  function detailValue(value){
+    return value===null||value===undefined||String(value).trim()===''?'—':String(value);
+  }
+
+  function renderCardReadOnly(){
+    const panel=$('.card-details-panel');
+    const info=$('#v115CardInfo');
+    const own=$('#v115OwnershipView');
+    if(!panel||!info||!own)return;
+
+    const c=typeof selectedCard!=='undefined'&&selectedCard?selectedCard:{};
+    const saved=savedCardForEditor();
+    const status=(saved?.collection_status||selectedStatus||'owned');
+    const setName=c.setName||c.set_name||saved?.set_name||'';
+    const number=c.number||saved?.number||'';
+    const rarity=c.rarity||saved?.rarity||'';
+    const type=c.type||c.card_type||saved?.card_type||'';
+    const lang=c.language||saved?.language||'';
+    const quantity=saved?.quantity??$('#cardQuantity')?.value??0;
+    const condition=saved?.condition||$('#cardCondition')?.value||'';
+    const finish=saved?.finish||$('#cardFinish')?.value||'';
+    const notes=saved?.notes||$('#cardNotes')?.value||'';
+    const page=saved?.binder_page||$('#cardPage')?.value||'';
+    const slot=saved?.binder_slot||$('#cardSlot')?.value||'';
+
+    info.innerHTML=`
+      <div class="v115-info-item"><span>Coleção</span><strong>${esc(detailValue(setName))}</strong></div>
+      <div class="v115-info-item"><span>Número</span><strong>${esc(detailValue(number))}</strong></div>
+      <div class="v115-info-item"><span>Tipo</span><strong>${esc(detailValue(type))}</strong></div>
+      <div class="v115-info-item"><span>Raridade</span><strong>${esc(detailValue(rarity))}</strong></div>
+      <div class="v115-info-item"><span>Idioma</span><strong>${esc(detailValue(lang))}</strong></div>
+      <div class="v115-info-item"><span>Local no fichário</span><strong>${page&&slot?`Página ${esc(page)} · Bolso ${esc(slot)}`:'—'}</strong></div>`;
+
+    own.innerHTML=`
+      <div class="v115-info-item"><span>Status</span><strong><i class="v115-status-pill ${esc(status)}">${esc(statusLabel(status))}</i></strong></div>
+      <div class="v115-info-item"><span>Quantidade</span><strong>${esc(detailValue(quantity))}</strong></div>
+      <div class="v115-info-item"><span>Condição</span><strong>${esc(detailValue(condition))}</strong></div>
+      <div class="v115-info-item"><span>Acabamento</span><strong>${esc(detailValue(finish))}</strong></div>
+      ${notes?`<div class="v115-info-item v115-wide"><span>Observações</span><strong>${esc(notes)}</strong></div>`:''}`;
+  }
+
+  function takeEditorSnapshot(){
+    editorSnapshot={
+      status:typeof selectedStatus!=='undefined'?selectedStatus:'owned',
+      quantity:$('#cardQuantity')?.value||'1',
+      condition:$('#cardCondition')?.value||'Nova',
+      finish:$('#cardFinish')?.value||'Normal',
+      notes:$('#cardNotes')?.value||''
+    };
+  }
+
+  function restoreEditorSnapshot(){
+    if(!editorSnapshot)return;
+    if($('#cardQuantity'))$('#cardQuantity').value=editorSnapshot.quantity;
+    if($('#cardCondition'))$('#cardCondition').value=editorSnapshot.condition;
+    if($('#cardFinish'))$('#cardFinish').value=editorSnapshot.finish;
+    if($('#cardNotes'))$('#cardNotes').value=editorSnapshot.notes;
+    try{setSelectedStatus(editorSnapshot.status)}catch(_e){}
+  }
+
+  function setCardEditMode(editing){
+    const panel=$('.card-details-panel');
+    if(!panel)return;
+    const btnEdit=$('#v115EditCard');
+    const btnCancel=$('#v115CancelEdit');
+    const btnSave=$('#btnSaveCard');
+    const isExisting=!!(typeof editingCardId!=='undefined'&&editingCardId);
+
+    panel.classList.toggle('v115-editing',!!editing);
+    if(btnEdit)btnEdit.hidden=editing||!isExisting;
+    if(btnCancel)btnCancel.hidden=!editing;
+    if(btnSave){
+      btnSave.hidden=!editing;
+      btnSave.textContent=isExisting?'Salvar alterações':'Salvar no fichário';
+    }
+    if(editing)takeEditorSnapshot();
+    else renderCardReadOnly();
+  }
+
+  function installCardDetailsMode(){
+    injectCardDetailsStyles();
+    const panel=$('.card-details-panel');
+    const head=$('.card-details-panel .details-head');
+    const chips=$('.card-details-panel .detail-chips');
+    const market=$('.card-details-panel .market-board');
+    if(!panel||!head||!chips||!market)return;
+
+    $('#cardPage')?.closest('label')?.classList.add('v115-location-field');
+    $('#cardSlot')?.closest('label')?.classList.add('v115-location-field');
+
+    if(!$('#v115DetailsHeadActions')){
+      const actions=document.createElement('div');
+      actions.id='v115DetailsHeadActions';
+      actions.className='v115-details-head-actions';
+      actions.innerHTML='<button id="v115EditCard" class="v115-edit-btn" type="button">Editar</button><button id="v115CancelEdit" class="v115-cancel-btn" type="button" hidden>Cancelar</button>';
+      head.appendChild(actions);
+      $('#v115EditCard')?.addEventListener('click',()=>setCardEditMode(true));
+      $('#v115CancelEdit')?.addEventListener('click',()=>{
+        if(!(typeof editingCardId!=='undefined'&&editingCardId)){
+          try{closeDialog('cardDialog')}catch(_e){}
+          return;
+        }
+        restoreEditorSnapshot();
+        setCardEditMode(false);
+      });
+    }
+
+    if(!$('#v115CardInfo')){
+      const info=document.createElement('div');
+      info.id='v115CardInfo';
+      info.className='v115-info-grid';
+      chips.insertAdjacentElement('afterend',info);
+    }
+
+    if(!$('#v115OwnershipView')){
+      const own=document.createElement('div');
+      own.id='v115OwnershipView';
+      own.className='v115-owned-view';
+      market.insertAdjacentElement('afterend',own);
+    }
+
+    // Existing card: open in read-only mode and NEVER refresh price merely by opening details.
+    try{
+      openExistingCard=function(c,focus3d=false){
+        editingCardId=c.id;
+        selectedStatus=c.collection_status||'owned';
+        selectedMarket={
+          min:+c.price_min||0,avg:+c.price_avg||0,max:+c.price_max||0,
+          link:c.price_br_link||c.price_link||'',source:c.price_br_source||c.price_source||'',
+          internalCode:c.market_internal_code,namePt:c.market_name_pt,editionPt:c.market_edition_pt,
+          imagePt:c.market_image_pt,imageEn:c.market_image_en
+        };
+        selectedCard={
+          source:c.api_source||'saved',apiId:c.api_id||'',name:c.name,
+          languageCode:c.language_code,language:c.language,setName:c.set_name,setId:c.set_id,
+          number:c.number,rarity:c.rarity,type:c.card_type,imageUrl:c.image_url,
+          pricing:null,marketInternalCode:c.market_internal_code
+        };
+        pendingPosition={page:c.binder_page||1,slot:c.binder_slot||1};
+        fillInspector(selectedCard,{
+          page:c.binder_page,slot:c.binder_slot,quantity:c.quantity,
+          condition:c.condition,finish:c.finish,notes:c.notes,status:selectedStatus
+        });
+        setPrices(c.price_min,c.price_avg,c.price_max);
+        if(selectedMarket.link){
+          $('#mypcardsLink').href=selectedMarket.link;
+          $('#mypcardsLink').classList.remove('hidden');
+        }
+        $('#marketStatus').textContent=+c.price_avg?`Última cotação: ${c.price_br_source||c.price_source||'mercado BR'}`:'Sem cotação BR salva';
+        openDialog('cardDialog');
+        setTimeout(()=>setCardEditMode(false),0);
+      };
+    }catch(err){console.warn('Modo leitura da carta:',err)}
+
+    // New card can still open directly in edit mode; price lookup on ADD remains allowed.
+    try{
+      const originalChoose=chooseCatalogCard;
+      chooseCatalogCard=async function(c){
+        await originalChoose(c);
+        setCardEditMode(true);
+      };
+    }catch(_e){}
+
+    const dialog=$('#cardDialog');
+    if(dialog){
+      new MutationObserver(()=>{
+        if(dialog.open){
+          setTimeout(()=>{
+            const existing=!!(typeof editingCardId!=='undefined'&&editingCardId);
+            setCardEditMode(!existing);
+          },0);
+        }
+      }).observe(dialog,{attributes:true,attributeFilter:['open']});
+    }
+  }
+
   function install(){
     installMypGuard();
     installClearLogout();
@@ -457,6 +702,7 @@
     installSummaryCollapse();
     installVisualControls();
     installProfileSaveFix();
+    installCardDetailsMode();
     refitSoon();
   }
 
