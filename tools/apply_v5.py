@@ -254,3 +254,5 @@ document.addEventListener('click',e=>{
 sw = sw_path.read_text(encoding='utf-8')
 sw = sw.replace("pokemon-binder-v4", "pokemon-binder-v5").replace("pokemon-binder-v3", "pokemon-binder-v5")
 sw_path.write_text(sw, encoding='utf-8')
+
+# trigger: 2026-09-17
