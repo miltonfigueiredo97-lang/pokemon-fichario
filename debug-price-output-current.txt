@@ -1,0 +1,136 @@
+UTC: 2026-09-18T02:32:06Z
+
+===== MYP direct card =====
+URL: https://mypcards.com/pokemon/produto/38909/lugia-ex
+HTTP: 403
+BYTES: 5685
+--- first 1200 chars ---
+<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-1bUvYVFznWf1cJEKVgK0fu&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
+--- matching lines ---
+cITimeS: '1789698727',cN: '1bUvYVFznWf1cJEKVgK0fu',cRay: 'a3ccf033dc9f000a',cTplB: '0',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:"/pokemon/produto/38909/lugia-ex?__cf_chl_tk=3YEijq.D5GicA.ONguSQEdFu8n3d3yesuSUW5afw1lg-1789698727-1.0.1.1-ZoUs1jcDfEa.Dv8El90N4LccFnizo_AKJNUMDRLPR2Y",cvId: '3',cZone: 'mypcards.com',fa:"/po
+kemon/produto/38909/lugia-ex?__cf_chl_f_tk=3YEijq.D5GicA.ONguSQEdFu8n3d3yesuSUW5afw1lg-1789698727-1.0.1.1-ZoUs1jcDfEa.Dv8El90N4LccFnizo_AKJNUMDRLPR2Y",md: 'MJM5bKKtz7B4HUpMscj63vGv2ZgCsXdZ
+replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,"/pokemon/produto/38909/lugia-ex?__cf_chl_rt_tk=3YEijq.D5GicA.ONguSQEdFu8n3d3yesuSUW5afw1lg-1789698727-1.0.1.1-ZoUs1jcDfEa.Dv8El90N4LccFnizo_AKJNUMDRLPR2Y"+ window._cf_chl_opt.cOgUHash);a.onlo
+
+===== MYP sitemap =====
+URL: https://mypcards.com/sitemap.xml
+HTTP: 403
+BYTES: 5607
+--- first 1200 chars ---
+<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-xBFoTZxY1LOFKmbUdRuYmI&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
+--- matching lines ---
+
+===== Liga search =====
+URL: https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)
+HTTP: 403
+BYTES: 17
+--- first 1200 chars ---
+error code: 1005
+
+--- matching lines ---
+
+===== App MYP endpoint Lugia =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM
+HTTP: 200
+BYTES: 105
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","message":"Carta/variante não localizada no catálogo público da MYP."}
+--- matching lines ---
+
+===== App Liga endpoint Lugia =====
+URL: https://pokemon-fichario.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM
+HTTP: 200
+BYTES: 330
+--- first 1200 chars ---
+{"ok":true,"source":"Liga Pokémon","provider":"Reader","name":"Lugia-EX","number":"134/135","finish":"Foil","condition":"DM","link":"https://www.ligapokemon.com.br/?view=cards%2Fsearch&card=Lugia-EX+%28134%2F135%29","min":0,"avg":0,"max":0,"samples":0,"exactVariant":false,"complete":false,"checkedAt":"2026-09-18T02:31:17.071Z"}
+--- matching lines ---
+{"ok":true,"source":"Liga Pokémon","provider":"Reader","name":"Lugia-EX","number":"134/135","finish":"Foil","condition":"DM","link":"https://www.ligapokemon.com.br/?view=cards%2Fsearch&card=Lugia-EX+%28134%2F135%29","min":0,"avg":0,"max":0,"samples":
+
+===== App official MYP proxy Lugia =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma
+HTTP: 200
+BYTES: 120
+--- first 1200 chars ---
+{"ok":false,"needsToken":true,"upstreamStatus":403,"message":"A API do MYP Cards exige X-Api-Token para esta consulta."}
+--- matching lines ---
+
+===== App MYP endpoint Omanyte =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova
+HTTP: 200
+BYTES: 105
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","message":"Carta/variante não localizada no catálogo público da MYP."}
+--- matching lines ---
+
+===== App Liga endpoint Omanyte =====
+URL: https://pokemon-fichario.vercel.app/api/liga-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova
+HTTP: 200
+BYTES: 322
+--- first 1200 chars ---
+{"ok":true,"source":"Liga Pokémon","provider":"Reader","name":"Omanyte","number":"180","finish":"Normal","condition":"Nova","link":"https://www.ligapokemon.com.br/?view=cards%2Fsearch&card=Omanyte+%28180%29","min":0,"avg":0,"max":0,"samples":0,"exactVariant":false,"complete":false,"checkedAt":"2026-09-18T02:31:24.605Z"}
+--- matching lines ---
+
+===== App official MYP proxy Omanyte =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards?name=Omanyte&number=180&set=151
+HTTP: 200
+BYTES: 120
+--- first 1200 chars ---
+{"ok":false,"needsToken":true,"upstreamStatus":403,"message":"A API do MYP Cards exige X-Api-Token para esta consulta."}
+--- matching lines ---
+
+===== MYP official API no token =====
+URL: https://mypcards.com/api/v1/pokemon/carta/Lugia-EX
+HTTP: 403
+BYTES: 5682
+--- first 1200 chars ---
+<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-0ElXsAUF2V49fRqkc0mp99&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
+--- matching lines ---
+,cITimeS: '1789698730',cN: '0ElXsAUF2V49fRqkc0mp99',cRay: 'a3ccf0492b30ae29',cTplB: '0',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:"/api/v1/pokemon/carta/Lugia-EX?__cf_chl_tk=Bm37XC4HHBD78oH80Vrr.lJ.qZUWxv4VEHJDFAY1CP0-1789698730-1.0.1.1-.WsB6kYKuoJ8Apin6t9X9ZYoct2ohfcX2o_9WUYj8X8",cvId: '3',cZone: 'mypcards.com',fa:"/ap
+i/v1/pokemon/carta/Lugia-EX?__cf_chl_f_tk=Bm37XC4HHBD78oH80Vrr.lJ.qZUWxv4VEHJDFAY1CP0-1789698730-1.0.1.1-.WsB6kYKuoJ8Apin6t9X9ZYoct2ohfcX2o_9WUYj8X8",md: 'y5fcSy_w3r3OXqvT6rzfiuGRjz_Z5SPK
+.replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,"/api/v1/pokemon/carta/Lugia-EX?__cf_chl_rt_tk=Bm37XC4HHBD78oH80Vrr.lJ.qZUWxv4VEHJDFAY1CP0-1789698730-1.0.1.1-.WsB6kYKuoJ8Apin6t9X9ZYoct2ohfcX2o_9WUYj8X8"+ window._cf_chl_opt.cOgUHash);a.onlo
+
+===== Jina MYP card =====
+URL: https://r.jina.ai/https://mypcards.com/pokemon/produto/38909/lugia-ex
+HTTP: 200
+BYTES: 474
+--- first 1200 chars ---
+Title: Just a moment...
+
+URL Source: https://mypcards.com/pokemon/produto/38909/lugia-ex
+
+Warning: This page maybe requiring CAPTCHA, please make sure you are authorized to access this page.
+
+Markdown Content:
+![Image 1: Icon for mypcards.com](https://mypcards.com/favicon.ico)
+
+## mypcards.com
+
+## Performing security verification
+
+This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot.
+
+--- matching lines ---
+URL Source: https://mypcards.com/pokemon/produto/38909/lugia-ex
+
+===== Jina Liga search =====
+URL: https://r.jina.ai/https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)
+HTTP: 200
+BYTES: 528
+--- first 1200 chars ---
+Title: Just a moment...
+
+URL Source: https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134/135)
+
+Warning: This page maybe requiring CAPTCHA, please make sure you are authorized to access this page.
+
+Markdown Content:
+![Image 1: Icon for www.ligapokemon.com.br](https://www.ligapokemon.com.br/favicon.ico)
+
+## www.ligapokemon.com.br
+
+## Performing security verification
+
+This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot.
+
+--- matching lines ---
+URL Source: https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134/135)
+
