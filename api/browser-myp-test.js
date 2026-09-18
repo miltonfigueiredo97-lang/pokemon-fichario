@@ -1,8 +1,5 @@
 'use strict';
 
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
-
 function parseBRL(v){
   const s=String(v||'').replace(/R\$/gi,'').trim().replace(/\./g,'').replace(',','.');
   const n=Number(s);
@@ -26,6 +23,13 @@ module.exports=async function handler(req,res){
   }
   let browser;
   try{
+    let chromium,puppeteer;
+    try{
+      chromium=require('@sparticuz/chromium');
+      puppeteer=require('puppeteer-core');
+    }catch(e){
+      return res.status(200).json({ok:false,stage:'require',error:e?.stack||e?.message||String(e)});
+    }
     browser=await puppeteer.launch({
       args:chromium.args,
       defaultViewport:{width:1365,height:900},
