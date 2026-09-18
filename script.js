@@ -52,12 +52,82 @@ function renderPagesGrid(){const g=$("pagesGrid");if(!g)return;g.innerHTML="";fo
 function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{page,slot}:freePositions(page,1)[0];catalogSelection.clear();updateSelectionTray();$("searchName").value="";$("searchNumber").value="";$("searchSet").value="";$("resultsList").innerHTML="";$("searchStatus").textContent=`Primeira carta irá para página ${pendingPosition.page}, bolso ${pendingPosition.slot}.`;openDialog("addDialog");setTimeout(()=>$("searchName").focus(),100)}
 async function searchMypCards(name,number,setHint){if(!name)return{cards:[],needsToken:false};try{const p=new URLSearchParams({name});if(number)p.set("number",number);if(setHint)p.set("set",setHint);const r=await fetch(`/api/mypcards?${p}`,{cache:"no-store"}),j=await r.json();return j.ok?{cards:(j.cards||[]).map(mapMyp),needsToken:false}:{cards:[],needsToken:!!j.needsToken,message:j.message||""}}catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}}
 function mapMyp(c){return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.namePt||c.nameEn||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:c.imagePt?"pt-br":"en",language:c.imagePt?"Português":"Inglês",setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:c.imagePt||c.imageEn||"",imagePt:c.imagePt||"",imageEn:c.imageEn||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
-async function searchTCGdex(lang,name,number){const n=numParts(number).n,queries=[];if(name&&n)queries.push({name,localId:n});if(name)queries.push({name});if(n)queries.push({localId:n});const out=[];for(const q of queries){const p=new URLSearchParams();if(q.name)p.set("name",q.name);if(q.localId)p.set("localId",q.localId);p.set("pagination:itemsPerPage","40");try{const r=await fetch(`${TCGDEX_BASE}/${lang}/cards?${p}`);if(!r.ok)continue;const a=await r.json();if(!Array.isArray(a))continue;const d=await Promise.all(a.slice(0,24).map(x=>fetchTCGdexCard(lang,x.id,x)));out.push(...d.filter(Boolean))}catch(e){console.warn(e)}}return out}
-async function fetchTCGdexCard(lang,id,fallback=null){try{const r=await fetch(`${TCGDEX_BASE}/${lang}/cards/${encodeURIComponent(id)}`);if(!r.ok)return fallback?mapTCG(fallback,lang):null;return mapTCG(await r.json(),lang)}catch{return fallback?mapTCG(fallback,lang):null}}
+function tcgApiLang(lang){return lang==="pt-br"?"pt":lang}
+function tcgNameVariants(value){
+  const raw=String(value||"").trim();
+  if(!raw)return[];
+  const clean=raw.replace(/[-_]+/g," ").replace(/\s+/g," ").trim();
+  const words=clean.split(/\s+/).filter(Boolean);
+  const broad=words.length>1?words[0]:"";
+  return [...new Set([raw,clean,broad].filter(Boolean))];
+}
+async function searchTCGdex(lang,name,number){
+  const apiLang=tcgApiLang(lang),n=numParts(number).n,queries=[];
+  const names=tcgNameVariants(name);
+  // Busca progressiva: mais específica primeiro, depois relaxa o nome.
+  for(const candidate of names){
+    if(n)queries.push({name:candidate,localId:n});
+    queries.push({name:candidate});
+  }
+  if(n)queries.push({localId:n});
+  const seenQueries=new Set,out=[];
+  for(const q of queries){
+    const qKey=(q.name||"")+"|"+(q.localId||"");
+    if(seenQueries.has(qKey))continue;
+    seenQueries.add(qKey);
+    const p=new URLSearchParams();
+    if(q.name)p.set("name",q.name);
+    if(q.localId)p.set("localId",q.localId);
+    p.set("pagination:itemsPerPage","60");
+    try{
+      const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards?${p}`);
+      if(!r.ok)continue;
+      const a=await r.json();
+      if(!Array.isArray(a))continue;
+      const d=await Promise.all(a.slice(0,36).map(x=>fetchTCGdexCard(lang,x.id,x)));
+      out.push(...d.filter(Boolean));
+    }catch(e){console.warn("TCGdex",apiLang,q,e)}
+  }
+  return out;
+}
+async function fetchTCGdexCard(lang,id,fallback=null){
+  const apiLang=tcgApiLang(lang);
+  try{
+    const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards/${encodeURIComponent(id)}`);
+    if(!r.ok)return fallback?mapTCG(fallback,lang):null;
+    return mapTCG(await r.json(),lang);
+  }catch{return fallback?mapTCG(fallback,lang):null}
+}
 function mapTCG(c,lang){const s=c.set||{};return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId:s.id||"",number:String(c.localId||""),printedTotal:String(s.cardCount?.official||""),rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",imageUrl:c.image||"",pricing:c.pricing||null}}
 function rank(cards,q){const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);return [...cards].sort((a,b)=>score(b)-score(a));function score(c){let s=0,cn=norm(c.name),cs=norm(c.setName),ci=norm(c.setId),nn=numParts(c.number).n;if(c.source==="MYP Cards")s+=140+(+c.marketScore||0)*.15;if(c.languageCode==="pt-br")s+=320;else if(c.languageCode==="en")s+=100;else if(c.languageCode==="ja")s+=70;if(q.language!=="all"&&c.languageCode===q.language)s+=250;if(qn){if(cn===qn)s+=360;else if(cn.includes(qn)||qn.includes(cn))s+=180;else s-=140}if(num.n){if(nn===num.n)s+=430;else s-=240;if(num.d&&(numParts(c.number).d===num.d||c.printedTotal===num.d))s+=220}if(set&&(cs.includes(set)||ci.includes(set)))s+=240;if(c.market?.avg||c.market?.min)s+=70;if(c.imageUrl)s+=15;return s}}
 function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.apiId,c.languageCode,c.name,c.number,c.setId].join("|");if(seen.has(k))return false;seen.add(k);return true})}
-async function searchCards(){let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;if(!raw&&!number){toast("Digite nome ou número.");return}const inline=raw.match(/^(.*?)(?:\s+)(\d{1,4})(?:\/(\d{1,4}))?$/);if(inline&&!number){raw=inline[1].trim();number=inline[2]+(inline[3]?`/${inline[3]}`:"")}const b=$("btnSearchCards");busy(b,true,"Buscando...");$("searchStatus").textContent="Buscando catálogo multilíngue e mercado BR...";try{const langs=language==="all"?["pt-br","en","ja"]:[language];const[myp,...groups]=await Promise.all([searchMypCards(raw,number,setHint),...langs.map(l=>searchTCGdex(l,raw,number))]);catalogResults=rank(dedupe([...(myp.cards||[]),...groups.flat()]),{name:raw,number,setHint,language}).slice(0,60);populateRarityFilter();renderCatalog();const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;$("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${myp.needsToken?" · MYP Cards aguardando chave API":""}.`}catch(e){console.error(e);$("searchStatus").textContent="Erro ao buscar."}finally{busy(b,false)}}
+async function searchCards(){
+  let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
+  if(!raw&&!number){toast("Digite nome ou número.");return}
+  const inline=raw.match(/^(.*?)(?:\s+)(\d{1,4})(?:\/(\d{1,4}))?$/);
+  if(inline&&!number){raw=inline[1].trim();number=inline[2]+(inline[3]?`/${inline[3]}`:"")}
+  const b=$("btnSearchCards");
+  busy(b,true,"Buscando...");
+  $("searchStatus").textContent="Procurando as opções mais próximas...";
+  try{
+    const langs=language==="all"?["pt-br","en","ja"]:[language];
+    // O catálogo vem do TCGdex. MYP é usada depois, para preço da carta escolhida;
+    // a pesquisa do catálogo não depende de token da MYP.
+    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number)));
+    let results=dedupe(groups.flat());
+    // Idioma selecionado é filtro real, não apenas bônus de ranking.
+    if(language!=="all")results=results.filter(c=>c.languageCode===language);
+    catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,80);
+    populateRarityFilter();
+    renderCatalog();
+    const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
+    const refinement=[number&&`nº ${number}`,setHint&&`coleção "${setHint}"`].filter(Boolean).join(" · ");
+    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${refinement?` · priorizando ${refinement}`:""}.`;
+  }catch(e){
+    console.error(e);
+    $("searchStatus").textContent="Erro ao buscar.";
+  }finally{busy(b,false)}
+}
 function populateRarityFilter(){const sel=$("resultRarityFilter"),current=sel.value;const rs=[...new Set(catalogResults.map(c=>c.rarity).filter(Boolean))].sort();sel.innerHTML='<option value="all">Todas as raridades</option>'+rs.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");if(rs.includes(current))sel.value=current}
 function renderCatalog(){const g=$("resultsList"),rar=$("resultRarityFilter").value;g.innerHTML="";catalogResults.filter(c=>rar==="all"||c.rarity===rar).forEach(c=>{const key=cardKey(c),sel=catalogSelection.has(key),el=document.createElement("button");el.type="button";el.className="catalog-card"+(sel?" selected":"");const img=cardImage(c),p=c.market?.avg||c.market?.min||0;el.innerHTML=`<span class="catalog-check">✓</span>${img?`<img src="${esc(img)}" loading="lazy">`:""}<h3>${esc(c.name)}</h3><p>${esc(c.setName||"-")} · ${esc(c.number||"-")}</p><div class="catalog-tags"><span>${esc(c.language||"-")}</span>${c.languageCode==="pt-br"?'<span class="br">PT-BR</span>':""}${c.rarity?`<span>${esc(c.rarity)}</span>`:""}${p?`<span class="br">${money(p)}</span>`:""}</div>`;el.onclick=()=>toggleCatalogCard(c);g.appendChild(el)})}
 function toggleCatalogCard(c){const k=cardKey(c);catalogSelection.has(k)?catalogSelection.delete(k):catalogSelection.set(k,c);renderCatalog();updateSelectionTray()}
