@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.0';
+  const APP_VERSION='V13.1';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.1',title:'Leitura real e gratuita da MYP',items:[
+      'MYP Cards agora é lida pela própria página pública em Chromium no backend, sem Apify e sem depender do navegador do usuário.',
+      'Acabamento e condição são filtrados diretamente nas ofertas reais dos vendedores.',
+      'Quando existe apenas uma oferta, mínimo é exibido e médio/máximo permanecem vazios; o valor principal da carta usa essa oferta como referência.',
+      'Falhas continuam preservando qualquer cotação anterior salva.'
+    ]},
     {version:'V12.9',title:'Preços reais e fichário maior',items:[
       'Corrigido o erro que transformava um único preço mínimo em mínimo, médio e máximo iguais.',
       'MYP e Liga agora continuam para o fallback quando a primeira fonte retorna cotação parcial, em vez de encerrar a busca cedo demais.',
@@ -228,7 +234,10 @@
       liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,liga_price_link:liga.link||oldLiga.link||null,liga_price_checked_at:liga.checkedAt||oldLiga.checkedAt||null,
       myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,myp_price_link:myp.link||oldMyp.link||null,myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
       price_min:gotNew?(+primary?.min||0):oldPrimary.min,
-      price_avg:gotNew?(+primary?.avg||0):oldPrimary.avg,
+      // O painel de mercado mantém média vazia quando existe só uma oferta,
+      // mas o valor principal do fichário precisa continuar útil: usa média
+      // quando existe e, na falta dela, a única/mínima oferta disponível.
+      price_avg:gotNew?(+primary?.avg||+primary?.min||+primary?.max||0):oldPrimary.avg,
       price_max:gotNew?(+primary?.max||0):oldPrimary.max,
       currency:'BRL',
       price_source:gotNew?source:oldPrimary.source,
