@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.7';
+  const APP_VERSION='V12.8';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.8',title:'MYP sempre visível e cotações salvas',items:[
+      'O link MYP Cards não desaparece mais: ele fica sempre visível e é atualizado para a página exata assim que a carta é resolvida.',
+      'Quando a página exata da MYP é encontrada, o link é salvo no banco para as próximas consultas.',
+      'Corrigido o carregamento do preço salvo nos detalhes, usando MYP como fallback visual quando a Liga ainda não tem cotação.'
+    ]},
     {version:'V12.7',title:'Leitura de preços atrás do Cloudflare',items:[
       'MYP Cards e Liga agora usam Jina Reader como fallback quando o acesso direto do servidor é bloqueado pelo Cloudflare.',
       'Se o conector Apify falhar ou não retornar cotação, a consulta continua automaticamente no fallback em vez de encerrar com preço zero.',
@@ -259,25 +264,53 @@
     if(!card)return;
     const full=await resolveFullNumber(card);
     const liga=$v('#ligaSearchLink');
-    if(liga)liga.href=card.liga_price_link||ligaSearchUrl(card,full);
+    if(liga){
+      liga.href=card.liga_price_link||ligaSearchUrl(card,full);
+      liga.classList.remove('hidden');
+    }
+
     const myp=$v('#mypcardsLink');
-    if(myp){
-      let u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'';
-      if(!u){
-        try{
-          const resolved=await querySource('/api/mypcards-public','myp',card,normalizeFinish(card.finish||'Normal'),card.condition||'Nova');
-          u=resolved?.link||'';
-        }catch{}
-      }
-      if(u){myp.href=u;myp.classList.remove('hidden')}
-      else{myp.removeAttribute('href');myp.classList.add('hidden')}
+    if(!myp)return;
+
+    // Nunca esconder o acesso à MYP. Enquanto a página exata não estiver resolvida,
+    // o link leva ao catálogo Pokémon da própria MYP.
+    let u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'https://mypcards.com/pokemon';
+    myp.href=u;
+    myp.classList.remove('hidden');
+
+    if(!card.myp_price_link){
+      try{
+        const resolved=await querySource('/api/mypcards-public','myp',card,normalizeFinish(card.finish||'Normal'),card.condition||'Nova');
+        if(resolved?.link&&isMypUrl(resolved.link)){
+          u=resolved.link;
+          myp.href=u;
+          card.myp_price_link=u;
+          if(card.id&&typeof db!=='undefined'&&typeof currentUser!=='undefined'&&currentUser){
+            db.from('pokemon_cards')
+              .update({myp_price_link:u})
+              .eq('id',card.id)
+              .eq('user_id',currentUser.id)
+              .then(()=>{})
+              .catch(()=>{});
+          }
+        }
+      }catch{}
     }
   }
 
   function installExistingCardMarketView(){
     ensureMarketBoard();
     const dialog=$v('#cardDialog');if(!dialog)return;
-    new MutationObserver(()=>{if(!dialog.open)return;setTimeout(()=>{let saved=null;try{saved=editingCardId?collection.find(c=>c.id===editingCardId):null}catch{};if(saved){const dual=savedDual(saved);renderDualMarket(dual,saved);fixLinks(saved)}},30)}).observe(dialog,{attributes:true,attributeFilter:['open']});
+    new MutationObserver(()=>{if(!dialog.open)return;setTimeout(async()=>{
+      let saved=null;
+      try{saved=editingCardId?collection.find(c=>c.id===editingCardId):null}catch{}
+      if(saved){
+        const dual=savedDual(saved);
+        renderDualMarket(dual,saved);
+        await fixLinks(saved);
+        renderDualMarket(savedDual(saved),saved);
+      }
+    },30)}).observe(dialog,{attributes:true,attributeFilter:['open']});
   }
 
   async function persistDual(card,dual){const patch=marketPatch(card,dual);const{error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);if(error)throw error;Object.assign(card,patch);return true}
