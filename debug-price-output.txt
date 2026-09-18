@@ -1,34 +1,32 @@
-UTC: 2026-09-18T00:55:23Z
+UTC: 2026-09-18T01:02:31Z
 
 ===== MYP direct card =====
 URL: https://mypcards.com/pokemon/produto/38909/lugia-ex
 HTTP: 403
 BYTES: 5685
 --- first 1200 chars ---
-<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-vFlGdG5jnSdo8GS1dJyiLB&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
+<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-4ixexeYatFdAjxtOoaKGcq&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
 --- matching lines ---
-cITimeS: '1789692923',cN: 'vFlGdG5jnSdo8GS1dJyiLB',cRay: 'a3cc6283b9558e53',cTplB: '0',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:"/pokemon/produto/38909/lugia-ex?__cf_chl_tk=L71JLWucvC32dzXqhrj7bDGfBlPJ1gpHF3fPA37cX48-1789692923-1.0.1.1-0XLvMBPXa.p.0kCoKAoOe4uLIKPf_p6ugyOKFrZLxnA",cvId: '3',cZone: 'mypcards.com',fa:"/po
-kemon/produto/38909/lugia-ex?__cf_chl_f_tk=L71JLWucvC32dzXqhrj7bDGfBlPJ1gpHF3fPA37cX48-1789692923-1.0.1.1-0XLvMBPXa.p.0kCoKAoOe4uLIKPf_p6ugyOKFrZLxnA",md: 'mHzhYFqlwtUFqGJXWJyKAjM4gSlvS3Bi
-replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,"/pokemon/produto/38909/lugia-ex?__cf_chl_rt_tk=L71JLWucvC32dzXqhrj7bDGfBlPJ1gpHF3fPA37cX48-1789692923-1.0.1.1-0XLvMBPXa.p.0kCoKAoOe4uLIKPf_p6ugyOKFrZLxnA"+ window._cf_chl_opt.cOgUHash);a.onlo
+cITimeS: '1789693351',cN: '4ixexeYatFdAjxtOoaKGcq',cRay: 'a3cc6cf999345585',cTplB: '0',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:"/pokemon/produto/38909/lugia-ex?__cf_chl_tk=T2Iucwjj90BZmkhaeTVXdVeStx0pwcW1HihrOJnioGg-1789693351-1.0.1.1-g8zxvmxLxlAFZhKfly8YJWOOqywNELL3xeE.0ky_ZUE",cvId: '3',cZone: 'mypcards.com',fa:"/po
+kemon/produto/38909/lugia-ex?__cf_chl_f_tk=T2Iucwjj90BZmkhaeTVXdVeStx0pwcW1HihrOJnioGg-1789693351-1.0.1.1-g8zxvmxLxlAFZhKfly8YJWOOqywNELL3xeE.0ky_ZUE",md: 'tW9pkU_M1ndABM5BP.21j_JeINIQkeF8
+replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,"/pokemon/produto/38909/lugia-ex?__cf_chl_rt_tk=T2Iucwjj90BZmkhaeTVXdVeStx0pwcW1HihrOJnioGg-1789693351-1.0.1.1-g8zxvmxLxlAFZhKfly8YJWOOqywNELL3xeE.0ky_ZUE"+ window._cf_chl_opt.cOgUHash);a.onlo
 
 ===== MYP sitemap =====
 URL: https://mypcards.com/sitemap.xml
 HTTP: 403
 BYTES: 5607
 --- first 1200 chars ---
-<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-i1sNSCylgju2B6GmPzSCBw&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
+<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-kfBBhYsTK2GrDEQ81zTlTy&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
 --- matching lines ---
 
 ===== Liga search =====
 URL: https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)
 HTTP: 403
-BYTES: 5709
+BYTES: 17
 --- first 1200 chars ---
-<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39;nonce-dX68w6x641Puo2y5wAHwAv&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"}body{displa
+error code: 1005
+
 --- matching lines ---
-: '1789692924',cN: 'dX68w6x641Puo2y5wAHwAv',cRay: 'a3cc62899e8d1eec',cTplB: '0',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:"/?view=cards/search\u0026card=Lugia-EX%20(134%2F135)\u0026__cf_chl_tk=5O1rITrUkfH_YPXzdjgvR2aLPo9ljiZGdl13hFTYID4-1789692924-1.0.1.1-2hoqyof0qMWeJcoTug38gMei8m.30AaNcUSP8Ma8rIE",cvId: '3',cZone: 'ww
-w.ligapokemon.com.br',fa:"/?view=cards/search\u0026card=Lugia-EX%20(134%2F135)\u0026__cf_chl_f_tk=5O1rITrUkfH_YPXzdjgvR2aLPo9ljiZGdl13hFTYID4-1789692924-1.0.1.1-2hoqyof0qMWeJcoTug38gMei8m.30AaNcUSP8Ma8rIE",md: 'XUpy5fSNdFaEf
-State) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,"/?view=cards/search\u0026card=Lugia-EX%20(134%2F135)\u0026__cf_chl_rt_tk=5O1rITrUkfH_YPXzdjgvR2aLPo9ljiZGdl13hFTYID4-1789692924-1.0.1.1-2hoqyof0qMWeJcoTug38gMei8m.30AaNcUSP8Ma8rIE"+ window._cf_chl_o
 
 ===== PrecoTCG Lugia =====
 URL: https://www.precotcg.com.br/card/bw8-134
@@ -39,7 +37,7 @@ The deployment could not be found on Vercel.
 
 DEPLOYMENT_NOT_FOUND
 
-iad1::nwkf6-1789692925171-4ce11c45264e
+sfo1::qpvc9-1789693353331-5e810dd90d73
 
 --- matching lines ---
 
@@ -52,7 +50,7 @@ The deployment could not be found on Vercel.
 
 DEPLOYMENT_NOT_FOUND
 
-iad1::dhlnn-1789692925474-5ca8a6df0a56
+sfo1::8v2f5-1789693353477-bd6d728538ef
 
 --- matching lines ---
 
@@ -67,8 +65,8 @@ BYTES: 105
 ===== App Liga endpoint =====
 URL: https://pokemon-fichario.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&finish=Foil&condition=DM
 HTTP: 200
-BYTES: 101
+BYTES: 135
 --- first 1200 chars ---
-{"ok":false,"error":"upstream_error","message":"Não foi possível consultar a Liga Pokémon agora."}
+{"ok":false,"error":"cloudflare_blocked","needsApifyToken":true,"message":"Liga bloqueou a leitura automática direta via Cloudflare."}
 --- matching lines ---
 
