@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.3';
+  const APP_VERSION='V12.4';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.4',title:'Virada de página flexível em 3D',items:[
+      'A animação de troca de página foi refeita: a folha agora dobra em várias faixas 3D em vez de girar como uma placa rígida.',
+      'A curvatura progride da borda externa até a lombada, com profundidade, sombra e brilho de plástico.',
+      'A duração aumentou para cerca de 1,65 s e o retorno de página usa o movimento inverso para parecer um livro/fichário real.'
+    ]},
     {version:'V12.3',title:'Planilha simples, detalhes limpos e mercado visível',items:[
       'O modelo de importação agora contém somente os campos que a pessoa realmente preenche; IDs, imagem, posição automática e preços ficam a cargo do app.',
       'A importação aceita tanto o modelo simples quanto uma planilha completa exportada pelo próprio fichário.',
