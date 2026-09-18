@@ -39,6 +39,8 @@ jobs:
           probe "MYP direct card" "https://mypcards.com/pokemon/produto/38909/lugia-ex"
           probe "MYP sitemap" "https://mypcards.com/sitemap.xml"
           probe "Liga search" "https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)"
+          probe "PrecoTCG Lugia" "https://www.precotcg.com.br/card/bw8-134"
+          probe "PrecoTCG Omanyte" "https://www.precotcg.com.br/card/sv03.5-180"
           probe "App MYP endpoint" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&finish=Foil&condition=DM"
           probe "App Liga endpoint" "https://pokemon-fichario.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&finish=Foil&condition=DM"
 
