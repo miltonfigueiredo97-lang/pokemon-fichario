@@ -87,9 +87,8 @@ module.exports=async function handler(req,res){
           samples:found.samples??null,exactVariant:found.exactVariant!==false,checkedAt:new Date().toISOString()
         });
       }
-      return res.status(200).json({ok:false,error:'not_found',provider:'Apify',message:'Carta/variante não localizada na Liga Pokémon.'});
     }catch(error){
-      return res.status(200).json({ok:false,error:error?.code||'apify_error',provider:'Apify',message:'O conector da Liga não conseguiu concluir a consulta.'});
+      console.warn('Liga Apify falhou; usando fallback Reader:',error?.code||error?.message);
     }
   }
 
