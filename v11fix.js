@@ -103,7 +103,7 @@
       #binderStage .v114-page-ghost.v114-next{
         transform-origin:left center!important;
         transform:perspective(1900px) rotateY(0deg)!important;
-        transition:transform .62s cubic-bezier(.22,.72,.17,1),opacity .56s ease,filter .56s ease!important;
+        transition:transform 1.05s cubic-bezier(.22,.72,.17,1),opacity .92s ease,filter .92s ease!important;
       }
       #binderStage .v114-page-ghost.v114-next.v114-run{
         transform:perspective(1900px) rotateY(-168deg)!important;
@@ -113,7 +113,7 @@
       #binderStage .binder-sheet-wrap.v114-in-next{
         opacity:.64!important;
         transform:perspective(1900px) translateX(3px) scale(.994)!important;
-        transition:opacity .56s ease,transform .56s ease!important;
+        transition:opacity .92s ease,transform .92s ease!important;
       }
       #binderStage .binder-sheet-wrap.v114-in-next.v114-run{
         opacity:1!important;
@@ -122,7 +122,7 @@
       #binderStage .v114-page-ghost.v114-prev{
         transform:none!important;
         opacity:1!important;
-        transition:opacity .55s ease,filter .55s ease!important;
+        transition:opacity .92s ease,filter .92s ease!important;
       }
       #binderStage .v114-page-ghost.v114-prev.v114-run{
         opacity:.20!important;
@@ -132,7 +132,7 @@
         transform-origin:left center!important;
         transform:perspective(1900px) rotateY(-168deg)!important;
         opacity:.10!important;
-        transition:transform .62s cubic-bezier(.22,.72,.17,1),opacity .52s ease!important;
+        transition:transform 1.05s cubic-bezier(.22,.72,.17,1),opacity .92s ease!important;
         will-change:transform,opacity!important;
       }
       #binderStage .binder-sheet-wrap.v114-in-prev.v114-run{
@@ -205,7 +205,7 @@
       stage.classList.remove('v114-page-flipping');
       pageFlipBusy=false;
       refitSoon();
-    },690);
+    },1120);
   }
 
   function installPageTurn(){
@@ -520,6 +520,18 @@
     return value===null||value===undefined||String(value).trim()===''?'—':String(value);
   }
 
+  function conditionLabel(value){
+    const v=String(value||'').trim().toUpperCase();
+    return ({
+      'NOVA':'Nova',
+      'NM':'Near Mint (NM)',
+      'SP':'Slightly Played (SP)',
+      'MP':'Moderately Played (MP)',
+      'HP':'Heavily Played (HP)',
+      'DM':'Damaged (DM)'
+    })[v]||detailValue(value);
+  }
+
   function renderCardReadOnly(){
     const panel=$('.card-details-panel');
     const info=$('#v115CardInfo');
@@ -538,21 +550,18 @@
     const condition=saved?.condition||$('#cardCondition')?.value||'';
     const finish=saved?.finish||$('#cardFinish')?.value||'';
     const notes=saved?.notes||$('#cardNotes')?.value||'';
-    const page=saved?.binder_page||$('#cardPage')?.value||'';
-    const slot=saved?.binder_slot||$('#cardSlot')?.value||'';
 
     info.innerHTML=`
       <div class="v115-info-item"><span>Coleção</span><strong>${esc(detailValue(setName))}</strong></div>
       <div class="v115-info-item"><span>Número</span><strong>${esc(detailValue(number))}</strong></div>
       <div class="v115-info-item"><span>Tipo</span><strong>${esc(detailValue(type))}</strong></div>
       <div class="v115-info-item"><span>Raridade</span><strong>${esc(detailValue(rarity))}</strong></div>
-      <div class="v115-info-item"><span>Idioma</span><strong>${esc(detailValue(lang))}</strong></div>
-      <div class="v115-info-item"><span>Local no fichário</span><strong>${page&&slot?`Página ${esc(page)} · Bolso ${esc(slot)}`:'—'}</strong></div>`;
+      <div class="v115-info-item"><span>Idioma</span><strong>${esc(detailValue(lang))}</strong></div>`;
 
     own.innerHTML=`
       <div class="v115-info-item"><span>Status</span><strong><i class="v115-status-pill ${esc(status)}">${esc(statusLabel(status))}</i></strong></div>
       <div class="v115-info-item"><span>Quantidade</span><strong>${esc(detailValue(quantity))}</strong></div>
-      <div class="v115-info-item"><span>Condição</span><strong>${esc(detailValue(condition))}</strong></div>
+      <div class="v115-info-item"><span>Condição</span><strong>${esc(conditionLabel(condition))}</strong></div>
       <div class="v115-info-item"><span>Acabamento</span><strong>${esc(detailValue(finish))}</strong></div>
       ${notes?`<div class="v115-info-item v115-wide"><span>Observações</span><strong>${esc(notes)}</strong></div>`:''}`;
   }
@@ -605,6 +614,21 @@
 
     $('#cardPage')?.closest('label')?.classList.add('v115-location-field');
     $('#cardSlot')?.closest('label')?.classList.add('v115-location-field');
+
+    const conditionSelect=$('#cardCondition');
+    if(conditionSelect){
+      const values=[
+        ['Nova','Nova'],
+        ['NM','Near Mint (NM)'],
+        ['SP','Slightly Played (SP)'],
+        ['MP','Moderately Played (MP)'],
+        ['HP','Heavily Played (HP)'],
+        ['DM','Damaged (DM)']
+      ];
+      const current=conditionSelect.value;
+      conditionSelect.innerHTML=values.map(([value,label])=>`<option value="${value}">${label}</option>`).join('');
+      conditionSelect.value=current||'Nova';
+    }
 
     if(!$('#v115DetailsHeadActions')){
       const actions=document.createElement('div');
