@@ -11,7 +11,19 @@ function parseMoney(v){let s=String(v||'').replace(/R\$/gi,'').trim().replace(/\
 function moneyMatches(text){return [...String(text||'').matchAll(/R\$\s*([0-9.]+(?:,[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/gi)].map(m=>parseMoney(m[1])).filter(v=>Number.isFinite(v)&&v>0&&v<1000000)}
 function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao foil'))return'normal';if(n.includes('master'))return'masterball';if(n.includes('poke')&&n.includes('ball'))return'pokeball';if(n.includes('reverse'))return'reverse';if(n.includes('full art'))return'fullart';if(n.includes('promo'))return'promo';if(n.includes('foil')||n.includes('holo'))return'foil';return'other'}
 function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);const hasAny=/masterball|master ball|pokeball|poke ball|reverse foil|full art|full-art|promo|foil|holo/.test(n);if(kind==='normal')return !hasAny||/\bnormal\b/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='fullart')return /full art|full-art/.test(n);if(kind==='promo')return /\bpromo\b/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
-function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
+function lineMatchesCondition(line,condition){
+  const raw=String(line||'').toUpperCase(),c=String(condition||'').toUpperCase().trim();
+  if(!c||c==='NOVA')return /\b(?:M|NM)\b|QUASE NOVA|NOVA/.test(raw)||!/\b(?:M|NM|SP|MP|HP|DM|D)\b/.test(raw);
+  const aliases=c==='DM'?['DM','D']:c==='D'?['D','DM']:[c];
+  return aliases.some(x=>new RegExp('\\b'+x.replace(/[^A-Z]/g,'')+'\\b').test(raw));
+}
+function hasAnyMarket(m){return !!(m&&(Number(m.min)||Number(m.avg)||Number(m.max)))}
+function completeMarket(m){return !!(m&&Number(m.min)>0&&Number(m.avg)>0&&Number(m.max)>0)}
+function mergeMarket(preferred,fallback){
+  const a=preferred||{},b=fallback||{};
+  const min=Number(a.min||b.min||0),avg=Number(a.avg||b.avg||0),max=Number(a.max||b.max||0);
+  return {min,avg,max,samples:a.samples??b.samples??null,exactVariant:a.exactVariant===true||(a.exactVariant==null&&b.exactVariant===true),complete:!!(min&&avg&&max)};
+}
 
 async function fetchJina(target,timeout=18000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
@@ -49,20 +61,66 @@ function candidateLinks(html,base,name,number){
   }
   return[...new Set(out)].slice(0,8)
 }
-function identityScore(text,name,number){const n=normalize(text),wn=normalize(name),parts=String(number||'').replace(/\s/g,'').split('/');let s=0;if(wn&&n.includes(wn))s+=300;if(parts[0]&&new RegExp(`\\b0*${Number(parts[0])}\\s*\\/`).test(n))s+=320;if(parts[1]&&new RegExp(`\\/\\s*0*${Number(parts[1])}\\b`).test(n))s+=220;return s}
+function identityScore(text,name,number,set){
+  const n=normalize(text),wn=normalize(name),parts=String(number||'').replace(/\s/g,'').split('/'),ws=normalize(set);
+  let s=0;
+  if(wn&&n.includes(wn))s+=300;
+  if(parts[0]&&new RegExp('\\b0*'+Number(parts[0])+'\\s*\\/').test(n))s+=320;
+  if(parts[1]&&new RegExp('\\/\\s*0*'+Number(parts[1])+'\\b').test(n))s+=220;
+  if(ws&&n.includes(ws))s+=180;
+  return s;
+}
 function labeled(text,re){const m=String(text||'').match(re);return m?parseMoney(m[1]):null}
-function extractMarket(text,finish,condition){const minLabel=labeled(text,/(?:menor|m[ií]nimo)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);const avgLabel=labeled(text,/(?:m[eé]dio|m[eé]dia|pre[cç]o\s*m[eé]dio)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);const maxLabel=labeled(text,/(?:maior|m[aá]ximo)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);if(minLabel&&avgLabel&&maxLabel&&!finish)return{min:minLabel,avg:avgLabel,max:maxLabel,samples:null};
+function extractMarket(text,finish,condition){
+  const minLabel=labeled(text,/(?:menor|m[ií]nimo)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);
+  const avgLabel=labeled(text,/(?:m[eé]dio|m[eé]dia|pre[cç]o\s*m[eé]dio)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);
+  const maxLabel=labeled(text,/(?:maior|m[aá]ximo)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);
+  if(minLabel&&avgLabel&&maxLabel)return{min:minLabel,avg:avgLabel,max:maxLabel,samples:null,exactVariant:true};
+
   const lines=String(text||'').split(/\n+/).map(x=>x.trim()).filter(x=>x.includes('R$'));
-  let chosen=lines.filter(x=>lineMatchesFinish(x,finish)&&lineMatchesCondition(x,condition));
-  if(!chosen.length)chosen=lines.filter(x=>lineMatchesFinish(x,finish));
+  const byCondition=lines.filter(x=>lineMatchesCondition(x,condition));
+  const exact=byCondition.filter(x=>lineMatchesFinish(x,finish));
+  let chosen=[];
+  let exactVariant=false;
+  if(exact.length>=2){chosen=exact;exactVariant=true}
+  else if(byCondition.length>=2){chosen=byCondition}
+  else if(exact.length){chosen=exact;exactVariant=true}
+  else if(byCondition.length){chosen=byCondition}
+  else{
+    const byFinish=lines.filter(x=>lineMatchesFinish(x,finish));
+    chosen=byFinish.length?byFinish:lines;
+    exactVariant=byFinish.length>=2;
+  }
+
   const prices=chosen.flatMap(moneyMatches).filter(Number.isFinite).sort((a,b)=>a-b);
-  if(prices.length){return{min:prices[0],avg:prices.reduce((a,b)=>a+b,0)/prices.length,max:prices[prices.length-1],samples:prices.length}}
-  if(minLabel||avgLabel||maxLabel)return{min:minLabel||0,avg:avgLabel||minLabel||maxLabel||0,max:maxLabel||0,samples:null};
-  const all=moneyMatches(text).sort((a,b)=>a-b);if(!all.length)return{min:0,avg:0,max:0,samples:0};return{min:all[0],avg:all.reduce((a,b)=>a+b,0)/all.length,max:all[all.length-1],samples:all.length};
+  if(prices.length>=2)return{min:prices[0],avg:prices.reduce((a,b)=>a+b,0)/prices.length,max:prices[prices.length-1],samples:prices.length,exactVariant};
+  if(prices.length===1)return{min:prices[0],avg:avgLabel||0,max:maxLabel||0,samples:1,exactVariant};
+
+  // Labels independentes continuam independentes: não copiar mínimo para média.
+  if(minLabel||avgLabel||maxLabel)return{min:minLabel||0,avg:avgLabel||0,max:maxLabel||0,samples:null,exactVariant:false};
+
+  const all=moneyMatches(text).sort((a,b)=>a-b);
+  if(!all.length)return{min:0,avg:0,max:0,samples:0,exactVariant:false};
+  if(all.length===1)return{min:all[0],avg:0,max:0,samples:1,exactVariant:false};
+  return{min:all[0],avg:all.reduce((a,b)=>a+b,0)/all.length,max:all[all.length-1],samples:all.length,exactVariant:false};
 }
 
-async function resolve({name,number,finish,condition}){const q=number?`${name} (${number})`:name;const search=new URL(ROOT);search.searchParams.set('view','cards/search');search.searchParams.set('card',q);const first=await fetchPage(search.toString());const docs=[first];for(const link of candidateLinks(first.html,first.url,name,number)){try{docs.push(await fetchPage(link))}catch{}}
-  let best=null;for(const d of docs){const text=stripTags(d.html);const score=identityScore(text,name,number);if(score<300)continue;const market=extractMarket(text,finish,condition);const cand={url:d.url,text,market,score:score+(market.samples||0)};if(!best||cand.score>best.score)best=cand}return best}
+async function resolve({name,number,set,finish,condition}){
+  const q=number?`${name} (${number})`:name;
+  const search=new URL(ROOT);search.searchParams.set('view','cards/search');search.searchParams.set('card',q);
+  const first=await fetchPage(search.toString());
+  const docs=[first];
+  for(const link of candidateLinks(first.html,first.url,name,number)){try{docs.push(await fetchPage(link))}catch{}}
+  let best=null;
+  for(const d of docs){
+    const text=stripTags(d.html),score=identityScore(text,name,number,set);
+    if(score<300)continue;
+    const market=extractMarket(text,finish,condition);
+    const cand={url:d.url,text,market,score:score+(market.samples||0)};
+    if(!best||cand.score>best.score)best=cand;
+  }
+  return best;
+}
 
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');
@@ -77,14 +135,16 @@ module.exports=async function handler(req,res){
   const lang=String(req.query.lang||'').trim();
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
+  let apifyFound=null;
   if(process.env.APIFY_API_TOKEN){
     try{
       const found=await queryLiga({name,number,set,lang,finish,condition});
-      if(found&&(found.min||found.avg||found.max)){
+      if(hasAnyMarket(found))apifyFound=found;
+      if(completeMarket(found)){
         return res.status(200).json({
           ok:true,source:'Liga Pokémon',provider:'Apify',name,number,finish,condition,
           link:found.link||'',min:Number(found.min||0),avg:Number(found.avg||0),max:Number(found.max||0),
-          samples:found.samples??null,exactVariant:found.exactVariant!==false,checkedAt:new Date().toISOString()
+          samples:found.samples??null,exactVariant:found.exactVariant!==false,complete:true,checkedAt:new Date().toISOString()
         });
       }
     }catch(error){
@@ -92,17 +152,30 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const key=[normalize(name),number,normalize(finish),condition.toUpperCase()].join('|');
+  const key=[normalize(name),number,normalize(set),normalize(lang),normalize(finish),condition.toUpperCase()].join('|');
   const cached=CACHE.get(key);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
-    const found=await resolve({name,number,finish,condition});
+    const found=await resolve({name,number,set,finish,condition});
     if(!found){
+      if(apifyFound){
+        const partial=mergeMarket(apifyFound,null);
+        const out={ok:true,source:'Liga Pokémon',provider:'Apify',name,number,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()};
+        CACHE.set(key,{value:out,expires:Date.now()+8*60*1000});
+        return res.status(200).json(out);
+      }
       const out={ok:false,error:'not_found',message:'Carta/variante não localizada na Liga.'};
-      CACHE.set(key,{value:out,expires:Date.now()+8*60*1000});return res.status(200).json(out);
+      CACHE.set(key,{value:out,expires:Date.now()+8*60*1000});
+      return res.status(200).json(out);
     }
-    const out={ok:true,source:'Liga Pokémon',provider:'direct',name,number,finish,condition,link:found.url,min:Number(found.market.min||0),avg:Number(found.market.avg||0),max:Number(found.market.max||0),samples:found.market.samples??null,checkedAt:new Date().toISOString()};
-    CACHE.set(key,{value:out,expires:Date.now()+25*60*1000});return res.status(200).json(out);
+    const market=mergeMarket(found.market,apifyFound);
+    const out={ok:true,source:'Liga Pokémon',provider:apifyFound?'Reader + Apify':'Reader',name,number,finish,condition,link:found.url,...market,checkedAt:new Date().toISOString()};
+    CACHE.set(key,{value:out,expires:Date.now()+25*60*1000});
+    return res.status(200).json(out);
   }catch(error){
+    if(apifyFound){
+      const partial=mergeMarket(apifyFound,null);
+      return res.status(200).json({ok:true,source:'Liga Pokémon',provider:'Apify',name,number,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()});
+    }
     const code=error?.code==='cloudflare_blocked'?'cloudflare_blocked':(error?.name==='AbortError'?'timeout':'upstream_error');
     return res.status(200).json({ok:false,error:code,needsApifyToken:code==='cloudflare_blocked',message:code==='cloudflare_blocked'?'Liga bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a Liga Pokémon agora.'});
   }
