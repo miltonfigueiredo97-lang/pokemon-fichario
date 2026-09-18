@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.2';
+  const APP_VERSION='V12.3';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,14 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.3',title:'Planilha simples, detalhes limpos e mercado visível',items:[
+      'O modelo de importação agora contém somente os campos que a pessoa realmente preenche; IDs, imagem, posição automática e preços ficam a cargo do app.',
+      'A importação aceita tanto o modelo simples quanto uma planilha completa exportada pelo próprio fichário.',
+      'Condição passou a aparecer por extenso nos detalhes, mantendo a sigla entre parênteses.',
+      'Local no fichário (Página/Bolso) foi removido dos detalhes da carta.',
+      'A virada de página ficou mais lenta para parecer uma folha física.',
+      'O painel de mercado passa a sincronizar também o preço principal e tenta resolver o link da MYP mesmo quando ainda não existe link salvo.'
+    ]},
     {version:'V12.2',title:'Variantes, dois mercados e Excel',items:[
       'Acabamento/variante passou a fazer parte da consulta de preço: Normal, Foil, Reverse Foil, Poké Ball Foil, Master Ball Foil, Full-Art, Promo e Especial.',
       'Depois de um scan, o acabamento precisa ser confirmado antes de adicionar a carta quando o scanner não puder distinguir o efeito físico.',
@@ -199,9 +207,34 @@
     board.appendChild(wrap);
   }
   function renderSource(key,m){const box=$v(`[data-market-source="${key}"]`);if(!box)return;['min','avg','max'].forEach(k=>{const el=box.querySelector(`[data-price="${k}"]`);if(el)el.textContent=Number(m?.[k]||0)?fmt(m[k]):'—'});box.classList.toggle('no-data',!hasPrice(m))}
-  function renderDualMarket(dual,card){ensureMarketBoard();renderSource('liga',dual?.liga);renderSource('myp',dual?.myp);const status=$v('#marketStatus');if(status)status.textContent=hasPrice(dual?.liga)?`Liga Pokémon · ${finishLabel(card?.finish||dual?.finish)}`:(hasPrice(dual?.myp)?`Liga sem cotação · usando MYP · ${finishLabel(card?.finish||dual?.finish)}`:'Sem cotação encontrada para esta variante')}
+  function renderDualMarket(dual,card){
+    ensureMarketBoard();
+    renderSource('liga',dual?.liga);
+    renderSource('myp',dual?.myp);
+    const primary=hasPrice(dual?.liga)?dual.liga:(hasPrice(dual?.myp)?dual.myp:null);
+    try{if(typeof setPrices==='function')setPrices(primary?.min||0,primary?.avg||0,primary?.max||0)}catch{}
+    const status=$v('#marketStatus');
+    if(status)status.textContent=hasPrice(dual?.liga)?`Liga Pokémon · ${finishLabel(card?.finish||dual?.finish)}`:(hasPrice(dual?.myp)?`Liga sem cotação · usando MYP · ${finishLabel(card?.finish||dual?.finish)}`:'Sem cotação encontrada para esta variante');
+  }
 
-  async function fixLinks(card){if(!card)return;const full=await resolveFullNumber(card);const liga=$v('#ligaSearchLink');if(liga)liga.href=card.liga_price_link||ligaSearchUrl(card,full);const myp=$v('#mypcardsLink');if(myp){const u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'';if(u){myp.href=u;myp.classList.remove('hidden')}else{myp.removeAttribute('href');myp.classList.add('hidden')}}}
+  async function fixLinks(card){
+    if(!card)return;
+    const full=await resolveFullNumber(card);
+    const liga=$v('#ligaSearchLink');
+    if(liga)liga.href=card.liga_price_link||ligaSearchUrl(card,full);
+    const myp=$v('#mypcardsLink');
+    if(myp){
+      let u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'';
+      if(!u){
+        try{
+          const resolved=await querySource('/api/mypcards-public','myp',card,normalizeFinish(card.finish||'Normal'),card.condition||'Nova');
+          u=resolved?.link||'';
+        }catch{}
+      }
+      if(u){myp.href=u;myp.classList.remove('hidden')}
+      else{myp.removeAttribute('href');myp.classList.add('hidden')}
+    }
+  }
 
   function installExistingCardMarketView(){
     ensureMarketBoard();
@@ -229,12 +262,41 @@
 
   async function ensureXLSX(){if(window.XLSX)return true;return new Promise(resolve=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onload=()=>resolve(true);s.onerror=()=>resolve(false);document.head.appendChild(s)})}
   const XLS_HEADERS=['Nome','Número','Coleção','Idioma','Status','Quantidade','Condição','Acabamento','Página','Bolso','Observações','API ID','Set ID','Imagem URL','Liga Mínimo','Liga Médio','Liga Máximo','Link Liga','MYP Mínimo','MYP Médio','MYP Máximo','Link MYP','Preço do Fichário','Fonte principal','Última atualização'];
+  const IMPORT_HEADERS=['Nome','Número','Coleção','Idioma','Status','Quantidade','Condição','Acabamento','Observações'];
   const INSTRUCTIONS=[
-    ['Coluna','Como preencher','Obrigatório?'],['Nome','Nome da carta. Ex.: Lugia-EX','Sim'],['Número','Número completo. Ex.: 134/135','Sim'],['Coleção','Nome da coleção. Ex.: Tempestade de Plasma','Recomendado'],['Idioma','Português, Inglês ou Japonês','Não'],['Status','Tenho, Quero, Pedido ou Não tenho','Não'],['Quantidade','Número inteiro; para Tenho use 1 ou mais','Não'],['Condição','Nova, NM, SP, MP, HP ou DM','Não'],['Acabamento','Normal, Foil, Reverse Foil, Pokeball Foil, Masterball Foil, Full-Art, Promo ou Especial','Recomendado'],['Página / Bolso','Opcional. Se vazio, o app usa os próximos bolsos livres. Bolso vai de 1 a 9.','Não'],['API ID / Set ID / Imagem URL','Podem ficar vazios; o app tenta localizar a carta no TCGdex.','Não'],['Preços','São preenchidos pelo app ao exportar. Na importação, o app consulta Liga + MYP novamente.','Não']
+    ['Coluna','Como preencher','Obrigatório?'],
+    ['Nome','Nome da carta. Ex.: Lugia-EX','Sim'],
+    ['Número','Número completo. Ex.: 134/135','Sim'],
+    ['Coleção','Nome da coleção. Ex.: Tempestade de Plasma','Recomendado'],
+    ['Idioma','Português, Inglês ou Japonês','Não'],
+    ['Status','Tenho, Quero, Pedido ou Não tenho','Não'],
+    ['Quantidade','Número inteiro; para Tenho use 1 ou mais','Não'],
+    ['Condição','Nova, Near Mint (NM), Slightly Played (SP), Moderately Played (MP), Heavily Played (HP) ou Damaged (DM)','Não'],
+    ['Acabamento','Normal, Foil, Reverse Foil, Pokeball Foil, Masterball Foil, Full-Art, Promo ou Especial','Recomendado'],
+    ['Observações','Texto livre. Pode ficar vazio.','Não'],
+    ['O app preenche sozinho','Página/bolso quando não vierem de um backup, API ID, Set ID, imagem, links e preços de Liga/MYP. Não coloque essas colunas no modelo simples.','Automático'],
+    ['Importação','Aceita tanto este modelo simples quanto o arquivo completo gerado por “Baixar meu fichário em Excel”.','—']
   ];
   function rowsForExcel(){return collection.map(c=>({Nome:c.name||'',Número:c.number||'',Coleção:c.set_name||'',Idioma:c.language||'',Status:internalToStatus(c.collection_status),Quantidade:+c.quantity||0,Condição:c.condition||'Nova',Acabamento:normalizeFinish(c.finish),Página:+c.binder_page||'',Bolso:+c.binder_slot||'',Observações:c.notes||'','API ID':c.api_id||'','Set ID':c.set_id||'','Imagem URL':c.image_url||'','Liga Mínimo':+c.liga_price_min||0,'Liga Médio':+c.liga_price_avg||0,'Liga Máximo':+c.liga_price_max||0,'Link Liga':c.liga_price_link||'','MYP Mínimo':+c.myp_price_min||0,'MYP Médio':+c.myp_price_avg||0,'MYP Máximo':+c.myp_price_max||0,'Link MYP':c.myp_price_link||'','Preço do Fichário':+c.price_avg||0,'Fonte principal':c.price_source||'','Última atualização':c.price_checked_at||''}))}
-  function buildWorkbook(rows,template=false){const wb=XLSX.utils.book_new(),data=template?[Object.fromEntries(XLS_HEADERS.map(h=>[h,'']))]:rows;const ws=XLSX.utils.json_to_sheet(data,{header:XLS_HEADERS});ws['!cols']=XLS_HEADERS.map(h=>({wch:Math.min(30,Math.max(11,h.length+3))}));ws['!autofilter']={ref:`A1:Y${Math.max(2,data.length+1)}`};XLSX.utils.book_append_sheet(wb,ws,'Fichário');const ins=XLSX.utils.aoa_to_sheet(INSTRUCTIONS);ins['!cols']=[{wch:20},{wch:75},{wch:14}];XLSX.utils.book_append_sheet(wb,ins,'Instruções');return wb}
-  async function exportExcel(template=false){if(!await ensureXLSX())return toast('Não consegui carregar o módulo de Excel.');const wb=buildWorkbook(template?[]:rowsForExcel(),template);XLSX.writeFile(wb,template?'modelo-pokemon-fichario.xlsx':'pokemon-fichario.xlsx')}
+  function buildWorkbook(rows,template=false){
+    const wb=XLSX.utils.book_new();
+    const headers=template?IMPORT_HEADERS:XLS_HEADERS;
+    const data=template?[Object.fromEntries(headers.map(h=>[h,'']))]:rows;
+    const ws=XLSX.utils.json_to_sheet(data,{header:headers});
+    ws['!cols']=headers.map(h=>({wch:Math.min(30,Math.max(11,h.length+3))}));
+    const lastCol=XLSX.utils.encode_col(headers.length-1);
+    ws['!autofilter']={ref:`A1:${lastCol}${Math.max(2,data.length+1)}`};
+    XLSX.utils.book_append_sheet(wb,ws,'Fichário');
+    const ins=XLSX.utils.aoa_to_sheet(INSTRUCTIONS);
+    ins['!cols']=[{wch:22},{wch:82},{wch:16}];
+    XLSX.utils.book_append_sheet(wb,ins,'Instruções');
+    return wb;
+  }
+  async function exportExcel(template=false){
+    if(!await ensureXLSX())return toast('Não consegui carregar o módulo de Excel.');
+    const wb=buildWorkbook(template?[]:rowsForExcel(),template);
+    XLSX.writeFile(wb,template?'modelo-importacao-pokemon.xlsx':'meu-fichario-pokemon-completo.xlsx');
+  }
   function rowValue(row,...names){const keys=Object.keys(row);for(const name of names){const wanted=norm(name);const k=keys.find(x=>norm(x)===wanted);if(k!=null&&row[k]!=null)return row[k]}return''}
   async function resolveImportCard(row){const name=String(rowValue(row,'Nome')).trim(),number=String(rowValue(row,'Número')).trim(),setName=String(rowValue(row,'Coleção')).trim(),language=String(rowValue(row,'Idioma')).trim()||'Português',code=langCode(language),apiId=String(rowValue(row,'API ID')).trim(),setId=String(rowValue(row,'Set ID')).trim(),image=String(rowValue(row,'Imagem URL')).trim();let card=null;
     try{if(apiId&&typeof fetchTCGdexCard==='function')card=await fetchTCGdexCard(code,apiId)}catch{}
@@ -259,7 +321,19 @@
     try{for(let i=0;i<valid.length;i++){if(i>0)await sleep(1350);const row=valid[i];if(status)status.textContent=`Importando ${i+1}/${valid.length} · ${rowValue(row,'Nome')}`;try{const card=await resolveImportCard(row),finish=normalizeFinish(rowValue(row,'Acabamento')),condition=normalizeCondition(rowValue(row,'Condição')),st=statusToInternal(rowValue(row,'Status')),quantity=st==='owned'?Math.max(1,Number(rowValue(row,'Quantidade'))||1):0,pos=desiredPosition(row,used);maxPage=Math.max(maxPage,pos.page);const dual=await queryBothMarkets(card,finish,condition);dual.finishConfirmed=true;const payload=cardPayload(card,{page:pos.page,slot:pos.slot,status:st,quantity,condition,finish,finishConfirmed:true,notes:String(rowValue(row,'Observações')||'')},dual);const{data:existing}=await db.from('pokemon_cards').select('id,quantity').eq('user_id',currentUser.id).eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).maybeSingle();if(existing){const patch={quantity:st==='owned'?(+existing.quantity||0)+quantity:0,collection_status:st,finish_confirmed:true,...marketPatch(card,dual)};const{error}=await db.from('pokemon_cards').update(patch).eq('id',existing.id).eq('user_id',currentUser.id);if(error)throw error}else{const{error}=await db.from('pokemon_cards').insert(payload);if(error)throw error}added++}catch(e){console.error('Importação:',e);failed++}}
       if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);await loadCards(false);if(status)status.textContent=`Importação concluída: ${added} carta(s) · ${failed} erro(s).`;toast(`Importação concluída: ${added}/${valid.length}.`)
     }finally{bulkBusy=false}}
-  function installExcelActions(){const actions=$v('#summaryPanel .action-grid');if(!actions||$v('#v122ExportExcel'))return;const mk=(id,text)=>{const b=document.createElement('button');b.id=id;b.type='button';b.className='action-btn';b.textContent=text;return b};const exp=mk('v122ExportExcel','Exportar Excel'),tpl=mk('v122TemplateExcel','Baixar modelo Excel'),imp=mk('v122ImportExcel','Importar Excel');const input=document.createElement('input');input.type='file';input.accept='.xlsx,.xls';input.className='hidden';input.id='v122ExcelInput';actions.prepend(imp);actions.prepend(tpl);actions.prepend(exp);actions.appendChild(input);exp.onclick=()=>exportExcel(false);tpl.onclick=()=>exportExcel(true);imp.onclick=()=>input.click();input.onchange=async()=>{const f=input.files?.[0];input.value='';if(f)await importExcelFile(f)}}
+  function installExcelActions(){
+    const actions=$v('#summaryPanel .action-grid');if(!actions||$v('#v122ExportExcel'))return;
+    const mk=(id,text,title)=>{const b=document.createElement('button');b.id=id;b.type='button';b.className='action-btn';b.textContent=text;b.title=title;return b};
+    const exp=mk('v122ExportExcel','Baixar meu fichário em Excel','Backup completo: inclui suas cartas, posições, links e preços salvos.');
+    const tpl=mk('v122TemplateExcel','Baixar modelo para importar','Modelo simples: só os campos que você preenche; o app completa o restante.');
+    const imp=mk('v122ImportExcel','Importar planilha Excel','Aceita o modelo simples ou um Excel completo exportado pelo fichário.');
+    const input=document.createElement('input');input.type='file';input.accept='.xlsx,.xls';input.className='hidden';input.id='v122ExcelInput';
+    actions.prepend(imp);actions.prepend(tpl);actions.prepend(exp);actions.appendChild(input);
+    const help=document.createElement('p');help.className='v123-excel-help';help.innerHTML='<strong>Meu fichário:</strong> backup completo com preços e links.<br><strong>Modelo:</strong> somente o que você precisa preencher para importar.';
+    actions.insertAdjacentElement('afterend',help);
+    exp.onclick=()=>exportExcel(false);tpl.onclick=()=>exportExcel(true);imp.onclick=()=>input.click();
+    input.onchange=async()=>{const f=input.files?.[0];input.value='';if(f)await importExcelFile(f)};
+  }
 
   function install(){
     installCoreOverrides();
