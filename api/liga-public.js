@@ -13,18 +13,42 @@ function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao
 function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);const hasAny=/masterball|master ball|pokeball|poke ball|reverse foil|full art|full-art|promo|foil|holo/.test(n);if(kind==='normal')return !hasAny||/\bnormal\b/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='fullart')return /full art|full-art/.test(n);if(kind==='promo')return /\bpromo\b/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
 function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
 
+async function fetchJina(target,timeout=18000){
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const r=await fetch('https://r.jina.ai/'+target,{headers:{'Accept':'text/plain','X-Timeout':'12','X-Engine':'browser','X-No-Cache':'true'},signal:controller.signal});
+    const text=await r.text();
+    if(!r.ok){const e=new Error('Jina HTTP '+r.status);e.code='jina_http';throw e}
+    return text;
+  }finally{clearTimeout(timer)}
+}
 async function fetchPage(url,timeout=11000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
   try{
-    const r=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,*/*;q=.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.6; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
+    const r=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,*/*;q=.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.7; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
     const html=await r.text();
-    if(r.status===403&&/just a moment|cf-chl|cloudflare/i.test(html)){const e=new Error('Cloudflare bloqueou a leitura direta');e.code='cloudflare_blocked';throw e}
+    if(r.ok&&!/just a moment|cf-chl|cloudflare/i.test(html))return{html,url:r.url};
+    if(r.status===403||/just a moment|cf-chl|cloudflare/i.test(html)){
+      try{return{html:await fetchJina(url),url}}catch{}
+      const e=new Error('Cloudflare bloqueou a leitura direta');e.code='cloudflare_blocked';throw e;
+    }
     if(!r.ok){const e=new Error('HTTP '+r.status);e.code='upstream_http';throw e}
     return{html,url:r.url};
   }finally{clearTimeout(timer)}
 }
 function absUrl(href,base){try{const u=new URL(decodeHtml(href),base||ROOT);if(!/(^|\.)ligapokemon\.com\.br$/i.test(u.hostname))return'';return u.toString()}catch{return''}}
-function candidateLinks(html,base,name,number){const out=[];const wn=normalize(name),num=String(number||'').split('/')[0];for(const m of String(html||'').matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)){const href=absUrl(m[1],base);if(!href)continue;const text=normalize(stripTags(m[2]));if((wn&&text.includes(wn))||(num&&text.includes(num))){if(!/view=cards\/search/i.test(href))out.push(href)}}return[...new Set(out)].slice(0,8)}
+function candidateLinks(html,base,name,number){
+  const out=[];const wn=normalize(name),num=String(number||'').split('/')[0],raw=String(html||'');
+  for(const m of raw.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)){
+    const href=absUrl(m[1],base);if(!href)continue;const text=normalize(stripTags(m[2]));
+    if((wn&&text.includes(wn))||(num&&text.includes(num))){if(!/view=cards\/search/i.test(href))out.push(href)}
+  }
+  for(const m of raw.matchAll(/\[([^\]]{1,180})\]\((https?:\/\/[^)]+)\)/g)){
+    const href=absUrl(m[2],base);if(!href)continue;const text=normalize(m[1]);
+    if((wn&&text.includes(wn))||(num&&text.includes(num))){if(!/view=cards\/search/i.test(href))out.push(href)}
+  }
+  return[...new Set(out)].slice(0,8)
+}
 function identityScore(text,name,number){const n=normalize(text),wn=normalize(name),parts=String(number||'').replace(/\s/g,'').split('/');let s=0;if(wn&&n.includes(wn))s+=300;if(parts[0]&&new RegExp(`\\b0*${Number(parts[0])}\\s*\\/`).test(n))s+=320;if(parts[1]&&new RegExp(`\\/\\s*0*${Number(parts[1])}\\b`).test(n))s+=220;return s}
 function labeled(text,re){const m=String(text||'').match(re);return m?parseMoney(m[1]):null}
 function extractMarket(text,finish,condition){const minLabel=labeled(text,/(?:menor|m[ií]nimo)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);const avgLabel=labeled(text,/(?:m[eé]dio|m[eé]dia|pre[cç]o\s*m[eé]dio)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);const maxLabel=labeled(text,/(?:maior|m[aá]ximo)[^\nR$]{0,45}R\$\s*([0-9.,]+)/i);if(minLabel&&avgLabel&&maxLabel&&!finish)return{min:minLabel,avg:avgLabel,max:maxLabel,samples:null};
