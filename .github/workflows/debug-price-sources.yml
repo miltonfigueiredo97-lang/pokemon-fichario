@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-tcgdex-search.txt
+          OUT=debug-tcgdex-search-v132.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,15 +36,14 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "TCGdex pt-br Lugia" "https://api.tcgdex.net/v2/pt-br/cards?name=Lugia&pagination%3AitemsPerPage=60"
-          probe "TCGdex pt Lugia" "https://api.tcgdex.net/v2/pt/cards?name=Lugia&pagination%3AitemsPerPage=60"
-          probe "TCGdex en Lugia" "https://api.tcgdex.net/v2/en/cards?name=Lugia&pagination%3AitemsPerPage=60"
-          probe "TCGdex pt-br Lugia V" "https://api.tcgdex.net/v2/pt-br/cards?name=Lugia%20V&pagination%3AitemsPerPage=60"
+          probe "TCGdex pt Lugia broad" "https://api.tcgdex.net/v2/pt/cards?name=Lugia&pagination%3AitemsPerPage=60"
+          probe "TCGdex pt Lugia V exact name" "https://api.tcgdex.net/v2/pt/cards?name=Lugia%20V&pagination%3AitemsPerPage=60"
+          probe "TCGdex pt Lugia V number 138" "https://api.tcgdex.net/v2/pt/cards?name=Lugia%20V&localId=138&pagination%3AitemsPerPage=60"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-tcgdex-search.txt
+          git add debug-tcgdex-search-v132.txt
           git commit -m "Debug price source responses" || exit 0
           git push
