@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-search-index-bridge.txt
+          OUT=debug-search-index-rss.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,15 +36,14 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "DDG exact Lugia" "https://html.duckduckgo.com/html/?q=%22Lugia-EX%22+%22134%2F135%22+site%3Amypcards.com%2Fpokemon%2Fproduto%2F38909"
-          probe "Bing exact Lugia" "https://www.bing.com/search?q=%22Lugia-EX%22+%22134%2F135%22+site%3Amypcards.com%2Fpokemon%2Fproduto%2F38909"
-          probe "DDG exact Omanyte" "https://html.duckduckgo.com/html/?q=%22Omanyte%22+%22180%2F165%22+site%3Amypcards.com%2Fpokemon%2Fproduto%2F206053"
-          probe "Bing exact Omanyte" "https://www.bing.com/search?q=%22Omanyte%22+%22180%2F165%22+site%3Amypcards.com%2Fpokemon%2Fproduto%2F206053"
+          probe "Bing RSS Lugia" "https://www.bing.com/search?format=rss&q=%22Lugia-EX%22+%22134%2F135%22+site%3Amypcards.com"
+          probe "Bing RSS Omanyte" "https://www.bing.com/search?format=rss&q=%22Omanyte%22+%22180%2F165%22+site%3Amypcards.com"
+          probe "Bing RSS exact URL Lugia" "https://www.bing.com/search?format=rss&q=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-search-index-bridge.txt
+          git add debug-search-index-rss.txt
           git commit -m "Debug price source responses" || exit 0
           git push
