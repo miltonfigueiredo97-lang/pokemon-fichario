@@ -1,0 +1,28 @@
+UTC: 2026-09-18T19:14:27Z
+
+===== TCGdex pt Lugia broad =====
+URL: https://api.tcgdex.net/v2/pt/cards?name=Lugia&pagination%3AitemsPerPage=60
+HTTP: 200
+BYTES: 2314
+--- first 1200 chars ---
+[{"id":"cel25-22","localId":"22","name":"Lugia","image":"https://assets.tcgdex.net/pt/swsh/cel25/22"},{"id":"30th-c-029","localId":"029","name":"Lugia"},{"id":"xy7-68","localId":"68","name":"Lugia EX","image":"https://assets.tcgdex.net/pt/xy/xy7/68"},{"id":"xy10-78","localId":"78","name":"Lugia","image":"https://assets.tcgdex.net/pt/xy/xy10/78"},{"id":"xy10-79","localId":"79","name":"Lugia TURBO","image":"https://assets.tcgdex.net/pt/xy/xy10/79"},{"id":"sv08.5-082","localId":"082","name":"Lugia ex","image":"https://assets.tcgdex.net/pt/sv/sv08.5/082"},{"id":"xy7-94","localId":"94","name":"Lugia EX","image":"https://assets.tcgdex.net/pt/xy/xy7/94"},{"id":"bw8-108","localId":"108","name":"Lugia-EX","image":"https://assets.tcgdex.net/pt/bw/bw8/108"},{"id":"sm9-131","localId":"131","name":"Lugia","image":"https://assets.tcgdex.net/pt/sm/sm9/131"},{"id":"swsh4-132","localId":"132","name":"Lugia","image":"https://assets.tcgdex.net/pt/swsh/swsh4/132"},{"id":"bw8-134","localId":"134","name":"Lugia-EX","image":"https://assets.tcgdex.net/pt/bw/bw8/134"},{"id":"swsh12-138","localId":"138","name":"Lugia V","image":"https://assets.tcgdex.net/pt/swsh/swsh12/138"},{"id":"swsh12-139","localId":"13
+--- matching lines ---
+et/pt/sv/sv08.5/082"},{"id":"xy7-94","localId":"94","name":"Lugia EX","image":"https://assets.tcgdex.net/pt/xy/xy7/94"},{"id":"bw8-108","localId":"108","name":"Lugia-EX","image":"https://assets.tcgdex.net/pt/bw/bw8/108"},{"id":"sm9-131","localId":"131","name":"Lugia","image":"https://assets.tcgdex.net/pt/sm/sm9/131"},{"id":"sw
+sh4-132","localId":"132","name":"Lugia","image":"https://assets.tcgdex.net/pt/swsh/swsh4/132"},{"id":"bw8-134","localId":"134","name":"Lugia-EX","image":"https://assets.tcgdex.net/pt/bw/bw8/134"},{"id":"swsh12-138","localId":"138","name":"Lugia V","image":"https://assets.tcgdex.net/pt/swsh/swsh12/138"}
+
+===== TCGdex pt Lugia V exact name =====
+URL: https://api.tcgdex.net/v2/pt/cards?name=Lugia%20V&pagination%3AitemsPerPage=60
+HTTP: 200
+BYTES: 727
+--- first 1200 chars ---
+[{"id":"swsh12-138","localId":"138","name":"Lugia V","image":"https://assets.tcgdex.net/pt/swsh/swsh12/138"},{"id":"swsh12-139","localId":"139","name":"Lugia V-ASTRO","image":"https://assets.tcgdex.net/pt/swsh/swsh12/139"},{"id":"swsh12-185","localId":"185","name":"Lugia V","image":"https://assets.tcgdex.net/pt/swsh/swsh12/185"},{"id":"swsh12-186","localId":"186","name":"Lugia V","image":"https://assets.tcgdex.net/pt/swsh/swsh12/186"},{"id":"swsh12-202","localId":"202","name":"Lugia V-ASTRO","image":"https://assets.tcgdex.net/pt/swsh/swsh12/202"},{"id":"swsh12-211","localId":"211","name":"Lugia V-ASTRO","image":"https://assets.tcgdex.net/pt/swsh/swsh12/211"},{"id":"swshp-SWSH301","localId":"SWSH301","name":"Lugia V"}]
+--- matching lines ---
+
+===== TCGdex pt Lugia V number 138 =====
+URL: https://api.tcgdex.net/v2/pt/cards?name=Lugia%20V&localId=138&pagination%3AitemsPerPage=60
+HTTP: 200
+BYTES: 109
+--- first 1200 chars ---
+[{"id":"swsh12-138","localId":"138","name":"Lugia V","image":"https://assets.tcgdex.net/pt/swsh/swsh12/138"}]
+--- matching lines ---
+
