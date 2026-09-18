@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-v13-production-2.txt
+          OUT=debug-v13-preview-131.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,18 +36,17 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "V13 MYP Lugia public" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
-          probe "V13 Liga Lugia" "https://pokemon-fichario.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
-          probe "V13 official MYP Lugia" "https://pokemon-fichario.vercel.app/api/mypcards?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma"
-          probe "V13 MYP Charizard" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Charizard%20ex&finish=Normal&condition=Nova"
-          probe "V13 Liga Charizard" "https://pokemon-fichario.vercel.app/api/liga-public?name=Charizard%20ex&finish=Normal&condition=Nova"
-          probe "V13 MYP Omanyte" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova"
-          probe "V13 Liga Omanyte" "https://pokemon-fichario.vercel.app/api/liga-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova"
+          probe "PREVIEW 13.1 MYP Lugia" "https://pokemon-fichario-git-fix-apify-matching-v13-1-test-mackmus.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
+          probe "PREVIEW 13.1 Liga Lugia" "https://pokemon-fichario-git-fix-apify-matching-v13-1-test-mackmus.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
+          probe "PREVIEW 13.1 MYP Omanyte" "https://pokemon-fichario-git-fix-apify-matching-v13-1-test-mackmus.vercel.app/api/mypcards-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova"
+          probe "PREVIEW 13.1 Liga Omanyte" "https://pokemon-fichario-git-fix-apify-matching-v13-1-test-mackmus.vercel.app/api/liga-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova"
+          probe "PREVIEW 13.1 MYP Charizard" "https://pokemon-fichario-git-fix-apify-matching-v13-1-test-mackmus.vercel.app/api/mypcards-public?name=Charizard%20ex&finish=Normal&condition=Nova"
+          probe "PREVIEW 13.1 Liga Charizard" "https://pokemon-fichario-git-fix-apify-matching-v13-1-test-mackmus.vercel.app/api/liga-public?name=Charizard%20ex&finish=Normal&condition=Nova"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-v13-production-2.txt
+          git add debug-v13-preview-131.txt
           git commit -m "Debug price source responses" || exit 0
           git push
