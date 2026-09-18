@@ -1,0 +1,8 @@
+{
+  "utc": "2026-09-18T17:57:23.058Z",
+  "status": 403,
+  "title": "Access denied | www.ligapokemon.com.br used Cloudflare to restrict access | www.ligapokemon.com.br | Cloudflare",
+  "error": "",
+  "text": "Error 1005 Ray ID: a3d23b476cf92590 • 2026-09-18 17:57:10 UTC\nAccess denied\nWhat happened?\n\nThe owner of this website (www.ligapokemon.com.br) has banned the autonomous system number (ASN) your IP address is in (8075) from accessing this website.\n\nPlease see https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1005/ for more details.\n\nWas this page helpful? Yes No\n\nCloudflare Ray ID: a3d23b476cf92590 • Your IP: Click to reveal • Performance & security by Cloudflare",
+  "sellerDom": "[]"
+}
