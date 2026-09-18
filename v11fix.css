@@ -64,11 +64,14 @@ body.v113-hide-status-badges .card-status-ribbon{
 /* Normal desktop: fixed, safe binder size with breathing room at top/bottom. */
 @media (min-width:821px){
   .binder-stage{
-    padding:46px 72px 30px!important;
+    padding:18px 46px 18px!important;
     place-items:center!important;
   }
   .binder-spread{
-    height:min(640px,calc(100dvh - 128px))!important;
+    /* V12.9: usar de fato a área disponível do desktop. O limite antigo
+       de 640px deixava as cartas minúsculas mesmo em monitores grandes. */
+    height:min(calc(100dvh - 92px),calc((100% - 20px) / 1.455))!important;
+    max-height:calc(100% - 8px)!important;
     width:auto!important;
     aspect-ratio:1.455 / 1!important;
     grid-template-columns:1fr 1fr!important;
@@ -79,6 +82,24 @@ body.v113-hide-status-badges .card-status-ribbon{
   .binder-cover,.binder-sheet-wrap{
     width:100%!important;
     height:100%!important;
+  }
+  .card-status-ribbon{
+    font-size:8px!important;
+    padding:4px 6px!important;
+  }
+  .card-value{
+    left:7px!important;
+    right:7px!important;
+    bottom:7px!important;
+    padding:6px 7px!important;
+    font-size:10px!important;
+    line-height:1.05!important;
+    letter-spacing:.01em!important;
+  }
+  .card-qty{
+    min-width:27px!important;
+    height:27px!important;
+    font-size:9px!important;
   }
 }
 
@@ -94,13 +115,14 @@ body.v113-hide-status-badges .card-status-ribbon{
 .binder-area.v11-fullscreen-fallback #binderStage{
   width:100vw!important;
   height:100dvh!important;
-  padding:54px 72px 54px!important;
+  padding:22px 54px 22px!important;
   background:#0b0e12!important;
   place-items:center!important;
 }
 .binder-area:fullscreen .binder-spread,
 .binder-area.v11-fullscreen-fallback .binder-spread{
-  height:min(720px,calc(100dvh - 110px))!important;
+  height:min(calc(100dvh - 48px),calc((100vw - 120px) / 1.455))!important;
+  max-height:calc(100dvh - 48px)!important;
   width:auto!important;
   aspect-ratio:1.455 / 1!important;
   grid-template-columns:1fr 1fr!important;
