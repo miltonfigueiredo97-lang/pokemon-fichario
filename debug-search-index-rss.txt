@@ -1,0 +1,30 @@
+UTC: 2026-09-18T11:46:35Z
+
+===== Bing RSS Lugia =====
+URL: https://www.bing.com/search?format=rss&q=%22Lugia-EX%22+%22134%2F135%22+site%3Amypcards.com
+HTTP: 200
+BYTES: 4800
+--- first 1200 chars ---
+<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel><title>Bing: "Lugia-EX" "134/135" site:mypcards.com</title><link>http://www.bing.com:80/search?q=%22Lugia-EX%22+%22134%2f135%22+site%3amypcards.com</link><description>Resultados da pesquisa</description><image><url>http://www.bing.com:80/s/a/rsslogo.gif</url><title>"Lugia-EX" "134/135" site:mypcards.com</title><link>http://www.bing.com:80/search?q=%22Lugia-EX%22+%22134%2f135%22+site%3amypcards.com</link></image><copyright>Copyright © 2026 Microsoft. Todos os direitos reservados. Estes resultados em XML não podem ser usados, reproduzidos nem transmitidos de qualquer modo ou para qualquer fim que não a renderização dos resultados do Bing em um agregador de RSS para seu uso pessoal e não comercial. Qualquer outro uso desses resultados requer a permissão expressa, por escrito, da Microsoft Corporation. Acessando esta página da Web ou usando estes resultados de qualquer modo, você concorda com as restrições descritas acima.</copyright><item><title>Lugia Pokédex: stats, moves, evolution &amp; locations</title><link>https://pokemondb.net/pokedex/lugia</link><description>Pokédex entry for #249 Lugia containing 
+--- matching lines ---
+<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel><title>Bing: "Lugia-EX" "134/135" site:mypcards.com</title><link>http://www.bing.com:80/search?q=%22Lugia-EX%22+%22134%2f135%22+site%3amypcards.com</link><description>Resultados da pesquisa</d
+escription><image><url>http://www.bing.com:80/s/a/rsslogo.gif</url><title>"Lugia-EX" "134/135" site:mypcards.com</title><link>http://www.bing.com:80/search?q=%22Lugia-EX%22+%22134%2f135%22+site%3amypcards.com</link></image><copyright>Copyright © 2026 Mi
+
+===== Bing RSS Omanyte =====
+URL: https://www.bing.com/search?format=rss&q=%22Omanyte%22+%22180%2F165%22+site%3Amypcards.com
+HTTP: 200
+BYTES: 3823
+--- first 1200 chars ---
+<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel><title>Bing: "Omanyte" "180/165" site:mypcards.com</title><link>http://www.bing.com:80/search?q=%22Omanyte%22+%22180%2f165%22+site%3amypcards.com</link><description>Resultados da pesquisa</description><image><url>http://www.bing.com:80/s/a/rsslogo.gif</url><title>"Omanyte" "180/165" site:mypcards.com</title><link>http://www.bing.com:80/search?q=%22Omanyte%22+%22180%2f165%22+site%3amypcards.com</link></image><copyright>Copyright © 2026 Microsoft. Todos os direitos reservados. Estes resultados em XML não podem ser usados, reproduzidos nem transmitidos de qualquer modo ou para qualquer fim que não a renderização dos resultados do Bing em um agregador de RSS para seu uso pessoal e não comercial. Qualquer outro uso desses resultados requer a permissão expressa, por escrito, da Microsoft Corporation. Acessando esta página da Web ou usando estes resultados de qualquer modo, você concorda com as restrições descritas acima.</copyright><item><title>Omanyte Pokédex: stats, moves, evolution &amp; locations</title><link>https://pokemondb.net/pokedex/omanyte</link><description>Pokédex entry for #138 Omanyte containin
+--- matching lines ---
+
+===== Bing RSS exact URL Lugia =====
+URL: https://www.bing.com/search?format=rss&q=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex
+HTTP: 200
+BYTES: 5447
+--- first 1200 chars ---
+<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel><title>Bing: https://mypcards.com/pokemon/produto/38909/lugia-ex</title><link>http://www.bing.com:80/search?q=https%3a%2f%2fmypcards.com%2fpokemon%2fproduto%2f38909%2flugia-ex</link><description>Resultados da pesquisa</description><image><url>http://www.bing.com:80/s/a/rsslogo.gif</url><title>https://mypcards.com/pokemon/produto/38909/lugia-ex</title><link>http://www.bing.com:80/search?q=https%3a%2f%2fmypcards.com%2fpokemon%2fproduto%2f38909%2flugia-ex</link></image><copyright>Copyright © 2026 Microsoft. Todos os direitos reservados. Estes resultados em XML não podem ser usados, reproduzidos nem transmitidos de qualquer modo ou para qualquer fim que não a renderização dos resultados do Bing em um agregador de RSS para seu uso pessoal e não comercial. Qualquer outro uso desses resultados requer a permissão expressa, por escrito, da Microsoft Corporation. Acessando esta página da Web ou usando estes resultados de qualquer modo, você concorda com as restrições descritas acima.</copyright><item><title>HTTPS - Wikipedia</title><link>https://en.wikipedia.org/wiki/HTTPS</link><description>HTTPS creates a secure 
+--- matching lines ---
+<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel><title>Bing: https://mypcards.com/pokemon/produto/38909/lugia-ex</title><link>http://www.bing.com:80/search?q=https%3a%2f%2fmypcards.com%2fpokemon%2fproduto%2f38909%2flugia-ex</link><description>Resultados da pesquisa</descr
+iption><image><url>http://www.bing.com:80/s/a/rsslogo.gif</url><title>https://mypcards.com/pokemon/produto/38909/lugia-ex</title><link>http://www.bing.com:80/search?q=https%3a%2f%2fmypcards.com%2fpokemon%2fproduto%2f38909%2flugia-ex</link></image><copyright>Copyright © 2026 Micros
+
