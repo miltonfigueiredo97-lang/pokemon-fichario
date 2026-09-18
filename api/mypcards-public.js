@@ -1,5 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
+const { scrapeMypBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -135,6 +136,61 @@ module.exports=async function handler(req,res){
   const finish=String(req.query.finish||'Normal').trim();
   const condition=String(req.query.condition||'NM').trim();
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
+
+  // Fonte principal gratuita: abrir a página pública real em Chromium.
+  // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
+  // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
+  const directLink=safeMypProductUrl(link);
+  if(directLink){
+    const browserKey='browser:'+normalize(name)+'|'+number+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+directLink;
+    const browserCached=CACHE.get(browserKey);
+    if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
+    try{
+      const market=await scrapeMypBrowser(directLink,{name,number,set,lang,finish,condition});
+      if(market?.ok&&hasAnyMarket(market)){
+        const out={
+          ok:true,
+          source:'MYP Cards',
+          provider:'Chromium',
+          mode:'browser-page',
+          name,
+          number,
+          edition:set,
+          finish,
+          condition,
+          link:directLink,
+          min:Number(market.min||0),
+          avg:Number(market.avg||0),
+          max:Number(market.max||0),
+          samples:market.samples??null,
+          availableQuantity:market.availableQuantity??null,
+          exactVariant:true,
+          complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+          checkedAt:new Date().toISOString()
+        };
+        CACHE.set(browserKey,{value:out,expires:Date.now()+10*60*1000});
+        return res.status(200).json(out);
+      }
+      if(market?.error==='variant_not_found'||market?.error==='wrong_product'){
+        const out={
+          ok:false,
+          error:market.error,
+          source:'MYP Cards',
+          provider:'Chromium',
+          mode:'browser-page',
+          link:directLink,
+          message:market.error==='variant_not_found'
+            ?'A página foi lida, mas não há oferta com este acabamento + condição.'
+            :'O link salvo não corresponde à carta consultada.'
+        };
+        CACHE.set(browserKey,{value:out,expires:Date.now()+3*60*1000});
+        return res.status(200).json(out);
+      }
+      console.warn('MYP Chromium falhou; tentando fallbacks:',market?.error||'unknown');
+    }catch(error){
+      console.warn('MYP Chromium lançou erro; tentando fallbacks:',error?.message||error);
+    }
+  }
 
   const apifyConfigured=!!process.env.APIFY_API_TOKEN;
   let apifyFound=null,apifyError='';
