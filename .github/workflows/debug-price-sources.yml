@@ -1,4 +1,5 @@
 name: Debug price sources
+# verify V12.6
 on:
   push:
     paths:
