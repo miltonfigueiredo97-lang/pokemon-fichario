@@ -149,22 +149,28 @@
     if(isMobile()){
       const h=Math.floor(Math.min(availH,availW/ratio));
       const w=Math.floor(h*ratio);
-      spread.style.gridTemplateColumns='none';
-      spread.style.width=w+'px';
-      spread.style.height=h+'px';
-      sheet.style.width=w+'px';
-      sheet.style.height=h+'px';
-      if(cover){cover.style.width='';cover.style.height=''}
+      spread.style.setProperty('grid-template-columns','none','important');
+      spread.style.setProperty('width',w+'px','important');
+      spread.style.setProperty('height',h+'px','important');
+      sheet.style.setProperty('width',w+'px','important');
+      sheet.style.setProperty('height',h+'px','important');
+      if(cover){cover.style.removeProperty('width');cover.style.removeProperty('height')}
     }else{
       const gap=12;
+      // O fichário deve ocupar o maior retângulo possível sem cortar nenhuma
+      // das duas folhas. O resultado é aplicado inline como !important porque
+      // as folhas de estilo antigas também usam !important.
       const h=Math.floor(Math.min(availH,(availW-gap)/(2*ratio)));
       const w=Math.floor(h*ratio);
-      spread.style.gridTemplateColumns=w+'px '+w+'px';
-      spread.style.width=(w*2+gap)+'px';
-      spread.style.height=h+'px';
-      sheet.style.width=w+'px';
-      sheet.style.height=h+'px';
-      if(cover){cover.style.width=w+'px';cover.style.height=h+'px'}
+      spread.style.setProperty('grid-template-columns',w+'px '+w+'px','important');
+      spread.style.setProperty('width',(w*2+gap)+'px','important');
+      spread.style.setProperty('height',h+'px','important');
+      sheet.style.setProperty('width',w+'px','important');
+      sheet.style.setProperty('height',h+'px','important');
+      if(cover){
+        cover.style.setProperty('width',w+'px','important');
+        cover.style.setProperty('height',h+'px','important');
+      }
     }
     requestAnimationFrame(positionPageControls);
   }
