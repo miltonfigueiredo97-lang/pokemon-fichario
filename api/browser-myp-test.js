@@ -25,8 +25,10 @@ module.exports=async function handler(req,res){
   try{
     let chromium,puppeteer;
     try{
-      chromium=require('@sparticuz/chromium');
-      puppeteer=require('puppeteer-core');
+      const chromiumModule=await import('@sparticuz/chromium');
+      chromium=chromiumModule.default||chromiumModule;
+      const puppeteerModule=await import('puppeteer-core');
+      puppeteer=puppeteerModule.default||puppeteerModule;
     }catch(e){
       return res.status(200).json({ok:false,stage:'require',error:e?.stack||e?.message||String(e)});
     }
