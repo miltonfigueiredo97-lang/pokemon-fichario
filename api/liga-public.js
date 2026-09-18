@@ -136,8 +136,9 @@ module.exports=async function handler(req,res){
   const lang=String(req.query.lang||'').trim();
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  let apifyFound=null;
-  if(process.env.APIFY_API_TOKEN){
+  const apifyConfigured=!!process.env.APIFY_API_TOKEN;
+  let apifyFound=null,apifyError='';
+  if(apifyConfigured){
     try{
       const found=await queryLiga({name,number,set,lang,finish,condition});
       if(hasAnyMarket(found))apifyFound=found;
@@ -149,7 +150,8 @@ module.exports=async function handler(req,res){
         });
       }
     }catch(error){
-      console.warn('Liga Apify falhou; usando fallback Reader:',error?.code||error?.message);
+      apifyError=error?.code||error?.message||'apify_error';
+      console.warn('Liga Apify falhou; usando fallback Reader:',apifyError);
     }
   }
 
@@ -164,11 +166,26 @@ module.exports=async function handler(req,res){
         CACHE.set(key,{value:out,expires:Date.now()+8*60*1000});
         return res.status(200).json(out);
       }
-      const out={ok:false,error:'not_found',message:'Carta/variante não localizada na Liga.'};
-      CACHE.set(key,{value:out,expires:Date.now()+8*60*1000});
+      const out={
+        ok:false,
+        error:apifyConfigured?'not_found':'price_connector_unavailable',
+        connector:'Apify',
+        apifyConfigured,
+        apifyError,
+        needsApifyToken:!apifyConfigured,
+        message:apifyConfigured
+          ?'O conector Apify não encontrou a carta na Liga.'
+          :'Liga bloqueia leitura automática; configure APIFY_API_TOKEN.'
+      };
+      CACHE.set(key,{value:out,expires:Date.now()+3*60*1000});
       return res.status(200).json(out);
     }
     const market=mergeMarket(found.market,apifyFound);
+    if(!hasAnyMarket(market)){
+      const out={ok:false,error:'no_price_data',source:'Liga Pokémon',provider:apifyFound?'Reader + Apify':'Reader',connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:'A Liga respondeu sem cotação utilizável para esta carta/variante.'};
+      CACHE.set(key,{value:out,expires:Date.now()+3*60*1000});
+      return res.status(200).json(out);
+    }
     const out={ok:true,source:'Liga Pokémon',provider:apifyFound?'Reader + Apify':'Reader',name,number,finish,condition,link:found.url,...market,checkedAt:new Date().toISOString()};
     CACHE.set(key,{value:out,expires:Date.now()+25*60*1000});
     return res.status(200).json(out);
@@ -178,7 +195,7 @@ module.exports=async function handler(req,res){
       return res.status(200).json({ok:true,source:'Liga Pokémon',provider:'Apify',name,number,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()});
     }
     const code=error?.code==='cloudflare_blocked'?'cloudflare_blocked':(error?.name==='AbortError'?'timeout':'upstream_error');
-    return res.status(200).json({ok:false,error:code,needsApifyToken:code==='cloudflare_blocked',message:code==='cloudflare_blocked'?'Liga bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a Liga Pokémon agora.'});
+    return res.status(200).json({ok:false,error:code,connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:code==='cloudflare_blocked'?'Liga bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a Liga Pokémon agora.'});
   }
 }
 module.exports.config={maxDuration:60};
