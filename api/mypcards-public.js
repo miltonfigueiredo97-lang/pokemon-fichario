@@ -136,8 +136,9 @@ module.exports=async function handler(req,res){
   const condition=String(req.query.condition||'NM').trim();
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  let apifyFound=null;
-  if(process.env.APIFY_API_TOKEN){
+  const apifyConfigured=!!process.env.APIFY_API_TOKEN;
+  let apifyFound=null,apifyError='';
+  if(apifyConfigured){
     try{
       const found=await queryMyp({name,number,set,lang,finish,condition});
       if(hasAnyMarket(found))apifyFound=found;
@@ -150,7 +151,8 @@ module.exports=async function handler(req,res){
         });
       }
     }catch(error){
-      console.warn('MYP Apify falhou; usando fallback Reader:',error?.code||error?.message);
+      apifyError=error?.code||error?.message||'apify_error';
+      console.warn('MYP Apify falhou; usando fallback Reader:',apifyError);
     }
   }
 
@@ -165,11 +167,26 @@ module.exports=async function handler(req,res){
         CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});
         return res.status(200).json(out);
       }
-      const out={ok:false,error:'not_found',message:'Carta/variante não localizada no catálogo público da MYP.'};
-      CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});
+      const out={
+        ok:false,
+        error:apifyConfigured?'not_found':'price_connector_unavailable',
+        connector:'Apify',
+        apifyConfigured,
+        apifyError,
+        needsApifyToken:!apifyConfigured,
+        message:apifyConfigured
+          ?'O conector Apify não encontrou a carta na MYP.'
+          :'MYP bloqueia leitura automática; configure APIFY_API_TOKEN ou MYPCARDS_API_TOKEN.'
+      };
+      CACHE.set(cacheKey,{value:out,expires:Date.now()+3*60*1000});
       return res.status(200).json(out);
     }
     const market=mergeMarket(found.market,apifyFound);
+    if(!hasAnyMarket(market)){
+      const out={ok:false,error:'no_price_data',source:'MYP Cards',provider:apifyFound?'Reader + Apify':'Reader',connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:'A MYP respondeu sem cotação utilizável para esta carta/variante.'};
+      CACHE.set(cacheKey,{value:out,expires:Date.now()+3*60*1000});
+      return res.status(200).json(out);
+    }
     const out={ok:true,source:'MYP Cards',provider:apifyFound?'Reader + Apify':'Reader',mode:'public-page',name:found.identity.name||name,number:found.identity.number||number,edition:found.identity.edition||set,finish,condition,link:found.url,...market,checkedAt:new Date().toISOString()};
     CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});
     return res.status(200).json(out);
@@ -179,7 +196,7 @@ module.exports=async function handler(req,res){
       return res.status(200).json({ok:true,source:'MYP Cards',provider:'Apify',mode:'apify-partial',name,number,edition:set,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()});
     }
     const code=error?.code==='cloudflare_blocked'?'cloudflare_blocked':(error?.name==='AbortError'?'timeout':'upstream_error');
-    return res.status(200).json({ok:false,error:code,needsApifyToken:code==='cloudflare_blocked',message:code==='cloudflare_blocked'?'MYP bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a página pública da MYP agora.'});
+    return res.status(200).json({ok:false,error:code,connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:code==='cloudflare_blocked'?'MYP bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a página pública da MYP agora.'});
   }
 }
 module.exports.config={maxDuration:60};
