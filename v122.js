@@ -184,7 +184,26 @@
       refreshMarket=async function(){
         if(!selectedCard)return;
         if(editingCardId){
-          const saved=collection.find(c=>c.id===editingCardId);const dual=savedDual(saved);selectedMarket=dual;setPrices(dual.min,dual.avg,dual.max);renderDualMarket(dual,saved);fixLinks(saved);return;
+          const saved=collection.find(c=>c.id===editingCardId);
+          if(!saved)return;
+          // Mostra o último valor instantaneamente, mas NÃO para aí:
+          // toda abertura de uma carta existente tenta atualizar Liga + MYP.
+          const cached=savedDual(saved);
+          selectedMarket=cached;
+          setPrices(cached.min,cached.avg,cached.max);
+          renderDualMarket(cached,saved);
+          fixLinks(saved);
+          const finish=normalizeFinish(saved.finish||$v('#cardFinish')?.value||'Normal');
+          const condition=saved.condition||$v('#cardCondition')?.value||'Nova';
+          const fresh=await queryBothMarkets(saved,finish,condition);
+          await persistDual(saved,fresh);
+          const updated=savedDual(saved);
+          selectedMarket=updated;
+          setPrices(updated.min,updated.avg,updated.max);
+          renderDualMarket(updated,saved);
+          await fixLinks(saved);
+          try{renderSummary()}catch{}
+          return;
         }
         const finish=normalizeFinish($v('#cardFinish')?.value||'Normal'),condition=$v('#cardCondition')?.value||'Nova';
         const dual=await queryBothMarkets(selectedCard,finish,condition);selectedMarket=dual;setPrices(dual.min,dual.avg,dual.max);renderDualMarket(dual,selectedCard);fixLinks({...selectedCard,...marketPatch(selectedCard,dual)});
