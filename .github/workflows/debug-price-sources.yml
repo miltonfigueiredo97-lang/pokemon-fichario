@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-free-html-bridge.txt
+          OUT=debug-vercel-chromium.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,15 +36,13 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "Google Translate proxy 1" "https://translate.google.com/translate?sl=pt&tl=en&u=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex"
-          probe "Google Translate proxy 2" "https://mypcards-com.translate.goog/pokemon/produto/38909/lugia-ex?_x_tr_sl=pt&_x_tr_tl=en&_x_tr_hl=en"
-          probe "Google Web Light legacy" "https://googleweblight.com/i?u=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex&hl=pt-BR"
-          probe "Yahoo cache/search exact" "https://search.yahoo.com/search?p=%22Lugia-EX%22+%22134%2F135%22+%22R%24+999%2C99%22"
+          probe "Vercel Chromium Lugia Foil DM" "https://pokemon-fichario.vercel.app/api/browser-myp-test?url=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex&finish=Foil&condition=DM"
+          probe "Vercel Chromium Lugia DM any finish" "https://pokemon-fichario.vercel.app/api/browser-myp-test?url=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex&condition=DM"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-free-html-bridge.txt
+          git add debug-vercel-chromium.txt
           git commit -m "Debug price source responses" || exit 0
           git push
