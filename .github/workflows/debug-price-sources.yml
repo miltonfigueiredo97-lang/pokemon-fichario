@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-search-index-rss.txt
+          OUT=debug-free-html-bridge.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,14 +36,15 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "Bing RSS Lugia" "https://www.bing.com/search?format=rss&q=%22Lugia-EX%22+%22134%2F135%22+site%3Amypcards.com"
-          probe "Bing RSS Omanyte" "https://www.bing.com/search?format=rss&q=%22Omanyte%22+%22180%2F165%22+site%3Amypcards.com"
-          probe "Bing RSS exact URL Lugia" "https://www.bing.com/search?format=rss&q=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex"
+          probe "Google Translate proxy 1" "https://translate.google.com/translate?sl=pt&tl=en&u=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex"
+          probe "Google Translate proxy 2" "https://mypcards-com.translate.goog/pokemon/produto/38909/lugia-ex?_x_tr_sl=pt&_x_tr_tl=en&_x_tr_hl=en"
+          probe "Google Web Light legacy" "https://googleweblight.com/i?u=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex&hl=pt-BR"
+          probe "Yahoo cache/search exact" "https://search.yahoo.com/search?p=%22Lugia-EX%22+%22134%2F135%22+%22R%24+999%2C99%22"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-search-index-rss.txt
+          git add debug-free-html-bridge.txt
           git commit -m "Debug price source responses" || exit 0
           git push
