@@ -88,9 +88,10 @@ function extractMarket(identity,finish,condition){
   const exact=byCondition.filter(x=>lineMatchesFinish(x,finish));
   let selected=[];
   let exactVariant=false;
-  if(exact.length>=2){selected=exact;exactVariant=true}
-  else if(byCondition.length>=2){selected=byCondition;exactVariant=false}
-  else if(exact.length){selected=exact;exactVariant=true}
+  // Se existe ao menos uma oferta que corresponde ao acabamento + condição,
+  // respeitamos essa variante estritamente. Uma única oferta gera apenas mínimo;
+  // não misturamos anúncios de outro acabamento para fabricar média/máximo.
+  if(exact.length){selected=exact;exactVariant=true}
   else if(byCondition.length){selected=byCondition}
   else{
     const byFinish=priceLines.filter(x=>lineMatchesFinish(x,finish));
