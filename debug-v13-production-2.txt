@@ -1,0 +1,61 @@
+UTC: 2026-09-18T11:35:55Z
+
+===== V13 MYP Lugia public =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM
+HTTP: 200
+BYTES: 175
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"O conector Apify não encontrou a carta na MYP."}
+--- matching lines ---
+
+===== V13 Liga Lugia =====
+URL: https://pokemon-fichario.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM
+HTTP: 200
+BYTES: 245
+--- first 1200 chars ---
+{"ok":false,"error":"no_price_data","source":"Liga Pokémon","provider":"Reader","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"A Liga respondeu sem cotação utilizável para esta carta/variante."}
+--- matching lines ---
+{"ok":false,"error":"no_price_data","source":"Liga Pokémon","provider":"Reader","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"A Liga responde
+
+===== V13 official MYP Lugia =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma
+HTTP: 200
+BYTES: 120
+--- first 1200 chars ---
+{"ok":false,"needsToken":true,"upstreamStatus":403,"message":"A API do MYP Cards exige X-Api-Token para esta consulta."}
+--- matching lines ---
+
+===== V13 MYP Charizard =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Charizard%20ex&finish=Normal&condition=Nova
+HTTP: 200
+BYTES: 175
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"O conector Apify não encontrou a carta na MYP."}
+--- matching lines ---
+
+===== V13 Liga Charizard =====
+URL: https://pokemon-fichario.vercel.app/api/liga-public?name=Charizard%20ex&finish=Normal&condition=Nova
+HTTP: 200
+BYTES: 245
+--- first 1200 chars ---
+{"ok":false,"error":"no_price_data","source":"Liga Pokémon","provider":"Reader","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"A Liga respondeu sem cotação utilizável para esta carta/variante."}
+--- matching lines ---
+{"ok":false,"error":"no_price_data","source":"Liga Pokémon","provider":"Reader","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"A Liga responde
+
+===== V13 MYP Omanyte =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova
+HTTP: 200
+BYTES: 175
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"O conector Apify não encontrou a carta na MYP."}
+--- matching lines ---
+
+===== V13 Liga Omanyte =====
+URL: https://pokemon-fichario.vercel.app/api/liga-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova
+HTTP: 200
+BYTES: 245
+--- first 1200 chars ---
+{"ok":false,"error":"no_price_data","source":"Liga Pokémon","provider":"Reader","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"A Liga respondeu sem cotação utilizável para esta carta/variante."}
+--- matching lines ---
+{"ok":false,"error":"no_price_data","source":"Liga Pokémon","provider":"Reader","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"A Liga responde
+
