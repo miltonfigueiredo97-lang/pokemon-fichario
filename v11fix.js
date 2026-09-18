@@ -72,84 +72,104 @@
   let pageFlipBusy=false;
 
   function injectPageFlipStyles(){
-    if($('#v114PageFlipStyles'))return;
+    if($('#v124PageFlipStyles'))return;
+    $('#v114PageFlipStyles')?.remove();
     const style=document.createElement('style');
-    style.id='v114PageFlipStyles';
+    style.id='v124PageFlipStyles';
     style.textContent=`
-      #binderStage.v114-page-flipping{perspective:1900px!important;overflow:hidden!important}
-      #binderStage .v114-page-ghost{
+      #binderStage.v124-page-flipping{
+        perspective:2600px!important;
+        perspective-origin:50% 48%!important;
+        overflow:hidden!important;
+      }
+      #binderStage .v124-curl-root{
         position:absolute!important;
-        z-index:96!important;
+        z-index:120!important;
         margin:0!important;
         pointer-events:none!important;
         transform-style:preserve-3d!important;
-        backface-visibility:hidden!important;
-        -webkit-backface-visibility:hidden!important;
-        will-change:transform,opacity,filter!important;
-        overflow:hidden!important;
-        box-shadow:0 24px 55px rgba(0,0,0,.34)!important;
+        overflow:visible!important;
+        isolation:isolate!important;
+        will-change:opacity!important;
       }
-      #binderStage .v114-page-ghost::after{
+      #binderStage .v124-curl-strip{
+        position:absolute!important;
+        top:0!important;
+        bottom:0!important;
+        overflow:hidden!important;
+        transform-style:preserve-3d!important;
+        backface-visibility:visible!important;
+        -webkit-backface-visibility:visible!important;
+        will-change:transform,filter,opacity!important;
+        transform-origin:left center!important;
+      }
+      #binderStage .v124-curl-strip::after{
         content:""!important;
         position:absolute!important;
         inset:0!important;
-        z-index:80!important;
+        z-index:30!important;
         pointer-events:none!important;
         background:
-          linear-gradient(90deg,rgba(0,0,0,.34),transparent 14%,transparent 72%,rgba(255,255,255,.08)),
-          linear-gradient(100deg,transparent 44%,rgba(255,255,255,.05) 50%,transparent 58%)!important;
-        opacity:.38!important;
+          linear-gradient(90deg,rgba(255,255,255,.16),rgba(255,255,255,.03) 24%,rgba(0,0,0,.16) 72%,rgba(0,0,0,.31))!important;
+        opacity:.30!important;
+        mix-blend-mode:soft-light!important;
       }
-      #binderStage .v114-page-ghost.v114-next{
-        transform-origin:left center!important;
-        transform:perspective(1900px) rotateY(0deg)!important;
-        transition:transform 1.05s cubic-bezier(.22,.72,.17,1),opacity .92s ease,filter .92s ease!important;
-      }
-      #binderStage .v114-page-ghost.v114-next.v114-run{
-        transform:perspective(1900px) rotateY(-168deg)!important;
-        opacity:.06!important;
-        filter:brightness(.68)!important;
-      }
-      #binderStage .binder-sheet-wrap.v114-in-next{
-        opacity:.64!important;
-        transform:perspective(1900px) translateX(3px) scale(.994)!important;
-        transition:opacity .92s ease,transform .92s ease!important;
-      }
-      #binderStage .binder-sheet-wrap.v114-in-next.v114-run{
-        opacity:1!important;
-        transform:perspective(1900px) translateX(0) scale(1)!important;
-      }
-      #binderStage .v114-page-ghost.v114-prev{
+      #binderStage .v124-strip-inner{
+        position:absolute!important;
+        top:0!important;
+        margin:0!important;
+        max-width:none!important;
+        max-height:none!important;
+        min-width:0!important;
+        min-height:0!important;
         transform:none!important;
+        filter:none!important;
         opacity:1!important;
-        transition:opacity .92s ease,filter .92s ease!important;
+        pointer-events:none!important;
       }
-      #binderStage .v114-page-ghost.v114-prev.v114-run{
-        opacity:.20!important;
+      #binderStage.v124-page-flipping::after{
+        content:""!important;
+        position:absolute!important;
+        z-index:118!important;
+        pointer-events:none!important;
+        left:50%!important;
+        top:7%!important;
+        bottom:7%!important;
+        width:38px!important;
+        transform:translateX(-12px)!important;
+        background:linear-gradient(90deg,rgba(0,0,0,.32),rgba(0,0,0,.08) 44%,rgba(255,255,255,.05) 72%,transparent)!important;
+        filter:blur(7px)!important;
+        opacity:.72!important;
+      }
+      #binderStage .binder-sheet-wrap.v124-under{
+        transition:
+          opacity 1.45s cubic-bezier(.16,.7,.18,1),
+          transform 1.45s cubic-bezier(.16,.7,.18,1),
+          filter 1.45s cubic-bezier(.16,.7,.18,1)!important;
+        will-change:opacity,transform,filter!important;
+      }
+      #binderStage .binder-sheet-wrap.v124-under.v124-next{
+        opacity:.42!important;
+        transform:translateX(5px) scale(.991)!important;
         filter:brightness(.72)!important;
       }
-      #binderStage .binder-sheet-wrap.v114-in-prev{
-        transform-origin:left center!important;
-        transform:perspective(1900px) rotateY(-168deg)!important;
-        opacity:.10!important;
-        transition:transform 1.05s cubic-bezier(.22,.72,.17,1),opacity .92s ease!important;
-        will-change:transform,opacity!important;
+      #binderStage .binder-sheet-wrap.v124-under.v124-prev{
+        opacity:.62!important;
+        transform:translateX(-3px) scale(.994)!important;
+        filter:brightness(.80)!important;
       }
-      #binderStage .binder-sheet-wrap.v114-in-prev.v114-run{
-        transform:perspective(1900px) rotateY(0deg)!important;
+      #binderStage .binder-sheet-wrap.v124-under.v124-under-run{
         opacity:1!important;
+        transform:translateX(0) scale(1)!important;
+        filter:brightness(1)!important;
       }
-      #binderStage.v114-page-flipping .binder-sheet-wrap,
-      #binderStage.v114-page-flipping .v114-page-ghost{transform-style:preserve-3d!important}
-      @media (max-width:820px){
-        #binderStage .v114-page-ghost.v114-next.v114-run{transform:perspective(1450px) rotateY(-166deg)!important}
-        #binderStage .binder-sheet-wrap.v114-in-prev{transform:perspective(1450px) rotateY(-166deg)!important}
-        #binderStage .binder-sheet-wrap.v114-in-prev.v114-run{transform:perspective(1450px) rotateY(0deg)!important}
+      @media(max-width:820px){
+        #binderStage.v124-page-flipping{perspective:1900px!important}
+        #binderStage.v124-page-flipping::after{width:26px!important;filter:blur(5px)!important}
       }
-      @media (prefers-reduced-motion:reduce){
-        #binderStage .v114-page-ghost,
-        #binderStage .binder-sheet-wrap.v114-in-next,
-        #binderStage .binder-sheet-wrap.v114-in-prev{transition:none!important}
+      @media(prefers-reduced-motion:reduce){
+        #binderStage .v124-curl-root{display:none!important}
+        #binderStage .binder-sheet-wrap.v124-under{transition:none!important}
       }
     `;
     document.head.appendChild(style);
@@ -164,48 +184,170 @@
     });
   }
 
+  function pageCurlPhases(count){
+    const phaseAngles=(fn)=>Array.from({length:count},(_,i)=>{
+      const t=count===1?1:i/(count-1);
+      return fn(t);
+    });
+    return [
+      {offset:0,angles:phaseAngles(()=>0)},
+      {offset:.22,angles:phaseAngles(t=>-(3+48*Math.pow(t,1.55)))},
+      {offset:.50,angles:phaseAngles(t=>-(16+98*Math.pow(t,1.18)))},
+      {offset:.77,angles:phaseAngles(t=>-(52+116*Math.pow(t,.84)))},
+      {offset:1,angles:phaseAngles(()=>-178)}
+    ];
+  }
+
+  function phaseGeometry(angles,stripWidth,depthScale=.30){
+    const out=[];
+    let x=0,z=0;
+    for(let i=0;i<angles.length;i++){
+      const originalX=i*stripWidth;
+      const angle=angles[i];
+      const rad=angle*Math.PI/180;
+      out.push({
+        x:x-originalX,
+        z:z*depthScale,
+        angle
+      });
+      x+=stripWidth*Math.cos(rad);
+      z+=-stripWidth*Math.sin(rad);
+    }
+    return out;
+  }
+
+  function createCurlRoot(stage,wrap){
+    const stageRect=stage.getBoundingClientRect();
+    const wrapRect=wrap.getBoundingClientRect();
+    if(!wrapRect.width||!wrapRect.height)return null;
+
+    const root=document.createElement('div');
+    root.className='v124-curl-root';
+    root.style.setProperty('left',`${wrapRect.left-stageRect.left}px`,'important');
+    root.style.setProperty('top',`${wrapRect.top-stageRect.top}px`,'important');
+    root.style.setProperty('width',`${wrapRect.width}px`,'important');
+    root.style.setProperty('height',`${wrapRect.height}px`,'important');
+    stage.appendChild(root);
+
+    const count=window.matchMedia?.('(max-width:820px)').matches?12:16;
+    const stripWidth=wrapRect.width/count;
+    const strips=[];
+
+    for(let i=0;i<count;i++){
+      const strip=document.createElement('div');
+      strip.className='v124-curl-strip';
+      const left=i*stripWidth;
+      strip.style.setProperty('left',`${left}px`,'important');
+      strip.style.setProperty('width',`${stripWidth+1.4}px`,'important');
+
+      const inner=wrap.cloneNode(true);
+      cleanCloneIds(inner);
+      inner.classList.remove('v124-under','v124-next','v124-prev','v124-under-run');
+      inner.classList.add('v124-strip-inner');
+      inner.style.setProperty('left',`${-left}px`,'important');
+      inner.style.setProperty('width',`${wrapRect.width}px`,'important');
+      inner.style.setProperty('height',`${wrapRect.height}px`,'important');
+
+      strip.appendChild(inner);
+      root.appendChild(strip);
+      strips.push(strip);
+    }
+
+    return {root,strips,count,stripWidth};
+  }
+
+  function animateCurl(curl,direction){
+    const {root,strips,count,stripWidth}=curl;
+    const phases=pageCurlPhases(count);
+    const geometries=phases.map(p=>phaseGeometry(p.angles,stripWidth));
+    const ordered=direction==='prev'?[...phases].reverse():phases;
+    const orderedGeo=direction==='prev'?[...geometries].reverse():geometries;
+    const offsets=phases.map(p=>p.offset);
+    const duration=1650;
+
+    strips.forEach((strip,i)=>{
+      const t=count===1?1:i/(count-1);
+      const keyframes=ordered.map((phase,pIndex)=>{
+        const g=orderedGeo[pIndex][i];
+        const bend=Math.sin(Math.PI*t);
+        const rx=(direction==='next'?1:-1)*bend*Math.min(2.4,Math.abs(g.angle)/70);
+        const shade=Math.max(.58,1-Math.abs(g.angle)/330-(.10*t));
+        const opacity=pIndex===ordered.length-1&&direction==='next'?.06:1;
+        return {
+          offset:offsets[pIndex],
+          transform:`translate3d(${g.x.toFixed(2)}px,0,${g.z.toFixed(2)}px) rotateY(${g.angle.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg)`,
+          filter:`brightness(${shade.toFixed(3)}) saturate(${(1-.12*Math.abs(g.angle)/180).toFixed(3)})`,
+          opacity
+        };
+      });
+      strip.animate(keyframes,{
+        duration,
+        easing:'cubic-bezier(.18,.66,.12,1)',
+        fill:'forwards'
+      });
+    });
+
+    root.animate(
+      direction==='next'
+        ?[
+          {offset:0,opacity:1},
+          {offset:.72,opacity:1},
+          {offset:.90,opacity:.78},
+          {offset:1,opacity:.03}
+        ]
+        :[
+          {offset:0,opacity:.08},
+          {offset:.12,opacity:.62},
+          {offset:.28,opacity:1},
+          {offset:1,opacity:1}
+        ],
+      {duration,easing:'cubic-bezier(.18,.66,.12,1)',fill:'forwards'}
+    );
+
+    return duration;
+  }
+
   function startPageFlip(direction){
     if(pageFlipBusy)return;
     if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+
     const stage=$('#binderStage');
     const wrap=stage?.querySelector('.binder-sheet-wrap');
     if(!stage||!wrap)return;
 
-    const stageRect=stage.getBoundingClientRect();
-    const wrapRect=wrap.getBoundingClientRect();
-    if(!wrapRect.width||!wrapRect.height)return;
-
-    const ghost=wrap.cloneNode(true);
-    cleanCloneIds(ghost);
-    ghost.classList.remove('v114-in-next','v114-in-prev','v114-run');
-    ghost.classList.add('v114-page-ghost',direction==='prev'?'v114-prev':'v114-next');
-    ghost.style.setProperty('left',`${wrapRect.left-stageRect.left}px`,'important');
-    ghost.style.setProperty('top',`${wrapRect.top-stageRect.top}px`,'important');
-    ghost.style.setProperty('width',`${wrapRect.width}px`,'important');
-    ghost.style.setProperty('height',`${wrapRect.height}px`,'important');
-    ghost.style.setProperty('min-width','0','important');
-    ghost.style.setProperty('min-height','0','important');
-    ghost.style.setProperty('max-width','none','important');
-    ghost.style.setProperty('max-height','none','important');
-
     pageFlipBusy=true;
-    wrap.classList.remove('v114-in-next','v114-in-prev','v114-run');
-    wrap.classList.add(direction==='prev'?'v114-in-prev':'v114-in-next');
-    stage.classList.add('v114-page-flipping');
-    stage.appendChild(ghost);
+    stage.classList.add('v124-page-flipping');
+    wrap.classList.remove('v124-under','v124-next','v124-prev','v124-under-run');
+    wrap.classList.add('v124-under',direction==='prev'?'v124-prev':'v124-next');
 
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      ghost.classList.add('v114-run');
-      wrap.classList.add('v114-run');
-    }));
+    let curl=null;
+    let duration=1650;
+
+    if(direction==='next'){
+      curl=createCurlRoot(stage,wrap);
+      if(curl)duration=animateCurl(curl,'next');
+      requestAnimationFrame(()=>requestAnimationFrame(()=>wrap.classList.add('v124-under-run')));
+    }else{
+      // For "voltar", the page that should move is the NEW page.
+      // The click handler below runs in capture phase; two frames later the app has
+      // already rendered the previous page, so we bend that new sheet from left to right.
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const fresh=stage.querySelector('.binder-sheet-wrap');
+        curl=createCurlRoot(stage,fresh);
+        if(curl)duration=animateCurl(curl,'prev');
+        fresh.classList.add('v124-under','v124-prev');
+        requestAnimationFrame(()=>fresh.classList.add('v124-under-run'));
+      }));
+    }
 
     setTimeout(()=>{
-      ghost.remove();
-      wrap.classList.remove('v114-in-next','v114-in-prev','v114-run');
-      stage.classList.remove('v114-page-flipping');
+      curl?.root?.remove();
+      const fresh=stage.querySelector('.binder-sheet-wrap');
+      fresh?.classList.remove('v124-under','v124-next','v124-prev','v124-under-run');
+      stage.classList.remove('v124-page-flipping');
       pageFlipBusy=false;
       refitSoon();
-    },1120);
+    },1780);
   }
 
   function installPageTurn(){
