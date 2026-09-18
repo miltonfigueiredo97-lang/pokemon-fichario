@@ -24,6 +24,20 @@ function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao
 function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);const hasAny=/masterball|master ball|pokeball|poke ball|reverse foil|full art|full-art|promo|foil|holo/.test(n);if(kind==='normal')return !hasAny||/\bnormal\b/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='fullart')return /full art|full-art/.test(n);if(kind==='promo')return /\bpromo\b/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
 function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
 
+function hasAnyMarket(m){return !!(m&&(Number(m.min)||Number(m.avg)||Number(m.max)))}
+function completeMarket(m){return !!(m&&Number(m.min)>0&&Number(m.avg)>0&&Number(m.max)>0)}
+function mergeMarket(preferred,fallback){
+  const a=preferred||{},b=fallback||{};
+  const min=Number(a.min||b.min||0),avg=Number(a.avg||b.avg||0),max=Number(a.max||b.max||0);
+  return {
+    min,avg,max,
+    samples:a.samples??b.samples??null,
+    availableQuantity:a.availableQuantity??b.availableQuantity??null,
+    exactVariant:a.exactVariant===true||(a.exactVariant==null&&b.exactVariant===true),
+    complete:!!(min&&avg&&max)
+  };
+}
+
 async function fetchJina(target,timeout=18000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
   try{
@@ -65,31 +79,44 @@ function extractMarket(identity,finish,condition){
   const lines=sellerText.split(/\n+/).map(x=>x.trim()).filter(Boolean);
   const priceLines=lines.filter(x=>x.includes('R$'));
 
-  let selected=priceLines.filter(x=>lineMatchesFinish(x,finish)&&lineMatchesCondition(x,condition));
-  let exactVariant=selected.length>0;
-  if(!selected.length)selected=priceLines.filter(x=>lineMatchesFinish(x,finish));
-  if(!selected.length)selected=priceLines.filter(x=>lineMatchesCondition(x,condition));
-
-  let usable=selected.flatMap(moneyMatches);
-  if(!usable.length){
-    selected=priceLines;
-    usable=priceLines.flatMap(moneyMatches);
-    exactVariant=false;
+  // A página do produto já identifica a carta. O campo de acabamento dos
+  // anúncios é preenchido de forma inconsistente pelos vendedores; exigir
+  // esse texto em todos os anúncios fazia uma única oferta representar todo
+  // o mercado. Usamos acabamento exato quando há amostra suficiente e,
+  // caso contrário, a condição da carta dentro da mesma página do produto.
+  const byCondition=priceLines.filter(x=>lineMatchesCondition(x,condition));
+  const exact=byCondition.filter(x=>lineMatchesFinish(x,finish));
+  let selected=[];
+  let exactVariant=false;
+  if(exact.length>=2){selected=exact;exactVariant=true}
+  else if(byCondition.length>=2){selected=byCondition;exactVariant=false}
+  else if(exact.length){selected=exact;exactVariant=true}
+  else if(byCondition.length){selected=byCondition}
+  else{
+    const byFinish=priceLines.filter(x=>lineMatchesFinish(x,finish));
+    selected=byFinish.length?byFinish:priceLines;
+    exactVariant=byFinish.length>=2;
   }
 
+  const usable=selected.flatMap(moneyMatches)
+    .filter(v=>Number.isFinite(v)&&v>0&&v<1000000)
+    .sort((a,b)=>a-b);
   const quantities=selected.flatMap(x=>[...x.matchAll(/(\d+)\s*un\./gi)].map(m=>Number(m[1]))).filter(Number.isFinite);
   const availableQuantity=quantities.reduce((a,b)=>a+b,0)||null;
-  usable=usable.filter(v=>Number.isFinite(v)&&v>0&&v<1000000).sort((a,b)=>a-b);
 
-  if(!usable.length){
-    const beforeSellers=sellerStart>=0?text.slice(0,sellerStart):text;
-    const summary=moneyMatches(beforeSellers).filter(v=>v>0).slice(0,3).sort((a,b)=>a-b);
-    if(summary.length){
-      return{min:summary[0],avg:summary.length>=3?summary[1]:(summary.reduce((a,b)=>a+b,0)/summary.length),max:summary[summary.length-1],availableQuantity,samples:summary.length,exactVariant:false};
-    }
-    return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
+  if(usable.length>=2){
+    return{min:usable[0],avg:usable.reduce((a,b)=>a+b,0)/usable.length,max:usable[usable.length-1],availableQuantity,samples:usable.length,exactVariant};
   }
-  return{min:usable[0],avg:usable.reduce((a,b)=>a+b,0)/usable.length,max:usable[usable.length-1],availableQuantity,samples:usable.length,exactVariant};
+  if(usable.length===1){
+    // Uma oferta só informa mínimo; não existe média/máximo confiável.
+    return{min:usable[0],avg:0,max:0,availableQuantity,samples:1,exactVariant};
+  }
+
+  const beforeSellers=sellerStart>=0?text.slice(0,sellerStart):text;
+  const summary=moneyMatches(beforeSellers).filter(v=>v>0).slice(0,3).sort((a,b)=>a-b);
+  if(summary.length>=3)return{min:summary[0],avg:summary[1],max:summary[summary.length-1],availableQuantity,samples:null,exactVariant:false};
+  if(summary.length)return{min:summary[0]||0,avg:summary[1]||0,max:summary[2]||0,availableQuantity,samples:null,exactVariant:false};
+  return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
 }
 
 async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(identity.number===wantedNumber)score+=1000;else if(wantedNumber&&identity.number&&String(Number(identity.number.split('/')[0]))===String(Number(wantedNumber.split('/')[0])))score+=420;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
@@ -108,15 +135,17 @@ module.exports=async function handler(req,res){
   const condition=String(req.query.condition||'NM').trim();
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
+  let apifyFound=null;
   if(process.env.APIFY_API_TOKEN){
     try{
       const found=await queryMyp({name,number,set,lang,finish,condition});
-      if(found&&(found.min||found.avg||found.max)){
+      if(hasAnyMarket(found))apifyFound=found;
+      if(completeMarket(found)){
         return res.status(200).json({
           ok:true,source:'MYP Cards',provider:'Apify',mode:'apify',
           name,number,edition:set,finish,condition,link:found.link||'',
           min:Number(found.min||0),avg:Number(found.avg||0),max:Number(found.max||0),
-          samples:found.samples??null,exactVariant:found.exactVariant!==false,checkedAt:new Date().toISOString()
+          samples:found.samples??null,exactVariant:found.exactVariant!==false,complete:true,checkedAt:new Date().toISOString()
         });
       }
     }catch(error){
@@ -129,12 +158,25 @@ module.exports=async function handler(req,res){
   try{
     const found=await resolvePage({name,number,set,link,lang,finish,condition});
     if(!found){
+      if(apifyFound){
+        const partial=mergeMarket(apifyFound,null);
+        const out={ok:true,source:'MYP Cards',provider:'Apify',mode:'apify-partial',name,number,edition:set,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()};
+        CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});
+        return res.status(200).json(out);
+      }
       const out={ok:false,error:'not_found',message:'Carta/variante não localizada no catálogo público da MYP.'};
-      CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});return res.status(200).json(out);
+      CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});
+      return res.status(200).json(out);
     }
-    const out={ok:true,source:'MYP Cards',provider:'direct',mode:'public-page',name:found.identity.name||name,number:found.identity.number||number,edition:found.identity.edition||set,finish,condition,link:found.url,min:Number(found.market.min||0),avg:Number(found.market.avg||0),max:Number(found.market.max||0),availableQuantity:found.market.availableQuantity,samples:found.market.samples||0,exactVariant:found.market.exactVariant!==false,checkedAt:new Date().toISOString()};
-    CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});return res.status(200).json(out);
+    const market=mergeMarket(found.market,apifyFound);
+    const out={ok:true,source:'MYP Cards',provider:apifyFound?'Reader + Apify':'Reader',mode:'public-page',name:found.identity.name||name,number:found.identity.number||number,edition:found.identity.edition||set,finish,condition,link:found.url,...market,checkedAt:new Date().toISOString()};
+    CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});
+    return res.status(200).json(out);
   }catch(error){
+    if(apifyFound){
+      const partial=mergeMarket(apifyFound,null);
+      return res.status(200).json({ok:true,source:'MYP Cards',provider:'Apify',mode:'apify-partial',name,number,edition:set,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()});
+    }
     const code=error?.code==='cloudflare_blocked'?'cloudflare_blocked':(error?.name==='AbortError'?'timeout':'upstream_error');
     return res.status(200).json({ok:false,error:code,needsApifyToken:code==='cloudflare_blocked',message:code==='cloudflare_blocked'?'MYP bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a página pública da MYP agora.'});
   }
