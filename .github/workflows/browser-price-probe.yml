@@ -33,7 +33,7 @@ jobs:
           import { chromium } from 'playwright';
           import fs from 'node:fs';
 
-          const url='https://mypcards.com/pokemon/produto/38909/lugia-ex';
+          const url='https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)';
           const browser=await chromium.launch({headless:true});
           const context=await browser.newContext({
             locale:'pt-BR',
@@ -50,18 +50,11 @@ jobs:
           const text=(await page.locator('body').innerText().catch(()=> '')).slice(0,30000);
           let sellerDom='';
           try{
-            const loc=page.getByText('Deckzy',{exact:true}).first();
-            sellerDom=await loc.evaluate(el=>{
-              let cur=el;
-              for(let i=0;i<8&&cur;i++,cur=cur.parentElement){
-                const t=(cur.innerText||'');
-                if(t.includes('Deckzy')&&t.includes('R$ 999,99')) return cur.outerHTML;
-              }
-              return el.parentElement?.outerHTML||el.outerHTML;
-            });
+            const links=await page.locator('a').evaluateAll(as=>as.slice(0,200).map(a=>({text:(a.innerText||'').trim(),href:a.href})).filter(x=>/Lugia/i.test(x.text)||/134\/135/.test(x.text)||/cards\/card/i.test(x.href)));
+            sellerDom=JSON.stringify(links,null,2);
           }catch{}
           const result={utc:new Date().toISOString(),status,title,error,text,sellerDom};
-          fs.writeFileSync('browser-price-probe.json',JSON.stringify(result,null,2));
+          fs.writeFileSync('browser-liga-probe.json',JSON.stringify(result,null,2));
           await browser.close();
           EOF
           node probe.mjs
