@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-vercel-chromium4.txt
+          OUT=debug-myp-browser-final.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,14 +36,13 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "Vercel Chromium Lugia Foil DM" "https://pokemon-fichario.vercel.app/api/browser-myp-test?url=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex&finish=Foil&condition=DM"
-          probe "Vercel Chromium Lugia DM any finish" "https://pokemon-fichario.vercel.app/api/browser-myp-test?url=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex&condition=DM"
-          probe "Vercel Chromium Omanyte Normal Nova" "https://pokemon-fichario.vercel.app/api/browser-myp-test?url=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F206053%2Fomanyte&finish=Normal&condition=Nova"
+          probe "FINAL MYP Lugia via main endpoint" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM&link=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex"
+          probe "FINAL MYP Omanyte via main endpoint" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova&link=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F206053%2Fomanyte"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-vercel-chromium4.txt
+          git add debug-myp-browser-final.txt
           git commit -m "Debug price source responses" || exit 0
           git push
