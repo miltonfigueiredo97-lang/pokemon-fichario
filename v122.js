@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.8';
+  const APP_VERSION='V12.9';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.9',title:'Preços reais e fichário maior',items:[
+      'Corrigido o erro que transformava um único preço mínimo em mínimo, médio e máximo iguais.',
+      'MYP e Liga agora continuam para o fallback quando a primeira fonte retorna cotação parcial, em vez de encerrar a busca cedo demais.',
+      'A média da Liga continua sendo a referência; se a Liga não tiver média válida, a média da MYP vira fallback. Cotação parcial não é tratada como média.',
+      'O fichário desktop e a tela cheia passam a ocupar muito mais da área disponível e os valores sobre as cartas ficam maiores.'
+    ]},
     {version:'V12.8',title:'MYP sempre visível e cotações salvas',items:[
       'O link MYP Cards não desaparece mais: ele fica sempre visível e é atualizado para a página exata assim que a carta é resolvida.',
       'Quando a página exata da MYP é encontrada, o link é salvo no banco para as próximas consultas.',
@@ -74,6 +80,9 @@
   function fmt(v){try{return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v||0))}catch{return `R$ ${Number(v||0).toFixed(2)}`}}
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
   function hasPrice(m){return !!(m&&(Number(m.min)||Number(m.avg)||Number(m.max)))}
+  function hasAverage(m){return !!(m&&Number(m.avg)>0)}
+  function primaryMarket(liga,myp){return hasAverage(liga)?liga:(hasAverage(myp)?myp:(hasPrice(liga)?liga:(hasPrice(myp)?myp:null)))}
+  function primarySource(liga,myp){const p=primaryMarket(liga,myp);return p===liga?'Liga Pokémon':(p===myp?'MYP Cards':'Sem preço BR')}
   function finishLabel(v){return FINISHES.find(([value])=>value===v)?.[1]||v||'Normal / não foil'}
   function normalizeFinish(v){const n=norm(v);if(!n)return'Normal';if(n.includes('master'))return'Masterball Foil';if(n.includes('poke')&&n.includes('ball'))return'Pokeball Foil';if(n.includes('reverse'))return'Reverse Foil';if(n.includes('full art'))return'Full-Art';if(n.includes('promo'))return'Promo';if(n==='holo'||n.includes('holograf')||n==='foil')return'Foil';if(n.includes('especial'))return'Especial';return'Normal'}
   function normalizeCondition(v){const s=String(v||'Nova').trim().toUpperCase();return['NM','SP','MP','HP','DM'].includes(s)?s:(s==='NOVA'?'Nova':'Nova')}
@@ -113,7 +122,7 @@
     if(!j?.ok){
       return {source:j?.source||source,failed:true,error:j?.error||'unknown',message:j?.message||'',needsApifyToken:!!j?.needsApifyToken,provider:j?.provider||''};
     }
-    return {source:j.source||source,failed:false,provider:j.provider||'',min:Number(j.min||0),avg:Number(j.avg||0),max:Number(j.max||0),link:j.link||'',checkedAt:j.checkedAt||new Date().toISOString(),samples:j.samples??null,availableQuantity:j.availableQuantity??null,exactVariant:j.exactVariant!==false,namePt:j.name||card?.name||'',editionPt:j.edition||set,number:j.number||full,finish:finish||'Normal',condition:condition||'Nova'};
+    return {source:j.source||source,failed:false,provider:j.provider||'',min:Number(j.min||0),avg:Number(j.avg||0),max:Number(j.max||0),link:j.link||'',checkedAt:j.checkedAt||new Date().toISOString(),samples:j.samples??null,availableQuantity:j.availableQuantity??null,exactVariant:j.exactVariant!==false,complete:j.complete===true||(Number(j.min)>0&&Number(j.avg)>0&&Number(j.max)>0),namePt:j.name||card?.name||'',editionPt:j.edition||set,number:j.number||full,finish:finish||'Normal',condition:condition||'Nova'};
   }
 
   async function queryBothMarkets(card,finish='Normal',condition='Nova'){
@@ -121,8 +130,8 @@
       querySource('/api/liga-public','liga',card,finish,condition).catch(()=>null),
       querySource('/api/mypcards-public','myp',card,finish,condition).catch(()=>null)
     ]);
-    const primary=hasPrice(liga)?liga:(hasPrice(myp)?myp:null);
-    return {source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':'Sem preço BR'),min:Number(primary?.min||0),avg:Number(primary?.avg||0),max:Number(primary?.max||0),link:primary?.link||'',checkedAt:primary?.checkedAt||new Date().toISOString(),liga,myp,finish,condition};
+    const primary=primaryMarket(liga,myp);
+    return {source:primarySource(liga,myp),min:Number(primary?.min||0),avg:Number(primary?.avg||0),max:Number(primary?.max||0),link:primary?.link||'',checkedAt:primary?.checkedAt||new Date().toISOString(),liga,myp,finish,condition};
   }
   window.queryBothMarketsV122=queryBothMarkets;
 
@@ -130,8 +139,8 @@
     if(!card)return {source:'Sem preço BR',min:0,avg:0,max:0,link:'',liga:null,myp:null};
     const liga={source:'Liga Pokémon',min:+card.liga_price_min||0,avg:+card.liga_price_avg||0,max:+card.liga_price_max||0,link:card.liga_price_link||'',checkedAt:card.liga_price_checked_at||null};
     const myp={source:'MYP Cards',min:+card.myp_price_min||0,avg:+card.myp_price_avg||0,max:+card.myp_price_max||0,link:card.myp_price_link||'',checkedAt:card.myp_price_checked_at||null};
-    const primary=hasPrice(liga)?liga:(hasPrice(myp)?myp:null);
-    return {source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':'Sem preço BR'),min:+primary?.min||0,avg:+primary?.avg||0,max:+primary?.max||0,link:primary?.link||'',liga,myp,finish:card.finish||'Normal',condition:card.condition||'Nova'};
+    const primary=primaryMarket(liga,myp);
+    return {source:primarySource(liga,myp),min:+primary?.min||0,avg:+primary?.avg||0,max:+primary?.max||0,link:primary?.link||'',liga,myp,finish:card.finish||'Normal',condition:card.condition||'Nova'};
   }
 
   function marketPatch(card,dual){
@@ -141,15 +150,19 @@
     const mypFresh=dual?.myp&&!dual.myp.failed;
     const liga=ligaFresh?dual.liga:oldLiga;
     const myp=mypFresh?dual.myp:oldMyp;
-    const primary=hasPrice(liga)?liga:(hasPrice(myp)?myp:null);
+    const primary=primaryMarket(liga,myp);
+    const source=primarySource(liga,myp);
     const anyFresh=ligaFresh||mypFresh;
     return {
       liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,liga_price_link:liga.link||null,liga_price_checked_at:liga.checkedAt||null,
       myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,myp_price_link:myp.link||null,myp_price_checked_at:myp.checkedAt||null,
-      price_min:+primary?.min||(+card?.price_min||0),price_avg:+primary?.avg||(+card?.price_avg||0),price_max:+primary?.max||(+card?.price_max||0),currency:'BRL',
-      price_source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':(card?.price_source||'Sem preço BR')),
+      price_min:anyFresh?(+primary?.min||0):(+card?.price_min||0),
+      price_avg:anyFresh?(+primary?.avg||0):(+card?.price_avg||0),
+      price_max:anyFresh?(+primary?.max||0):(+card?.price_max||0),
+      currency:'BRL',
+      price_source:anyFresh?source:(card?.price_source||'Sem preço BR'),
       price_link:primary?.link||card?.price_link||ligaSearchUrl(card),
-      price_br_source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':(card?.price_br_source||null)),
+      price_br_source:anyFresh&&source!=='Sem preço BR'?source:(card?.price_br_source||null),
       price_br_link:primary?.link||card?.price_br_link||null,
       price_checked_at:anyFresh?(primary?.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
     };
@@ -249,12 +262,13 @@
     ensureMarketBoard();
     renderSource('liga',dual?.liga);
     renderSource('myp',dual?.myp);
-    const primary=hasPrice(dual?.liga)?dual.liga:(hasPrice(dual?.myp)?dual.myp:null);
+    const primary=primaryMarket(dual?.liga,dual?.myp);
     try{if(typeof setPrices==='function')setPrices(primary?.min||0,primary?.avg||0,primary?.max||0)}catch{}
     const status=$v('#marketStatus');
     if(!status)return;
-    if(hasPrice(dual?.liga))status.textContent=`Liga Pokémon · ${finishLabel(card?.finish||dual?.finish)}`;
-    else if(hasPrice(dual?.myp))status.textContent=`Liga sem cotação · usando MYP · ${finishLabel(card?.finish||dual?.finish)}`;
+    if(hasAverage(dual?.liga))status.textContent=`Liga Pokémon · média válida · ${finishLabel(card?.finish||dual?.finish)}`;
+    else if(hasAverage(dual?.myp))status.textContent=`Liga sem média válida · usando média MYP · ${finishLabel(card?.finish||dual?.finish)}`;
+    else if(hasPrice(dual?.liga)||hasPrice(dual?.myp))status.textContent=`Cotação parcial encontrada · campos ausentes ficam em branco · ${finishLabel(card?.finish||dual?.finish)}`;
     else if(dual?.liga?.needsApifyToken||dual?.myp?.needsApifyToken)status.textContent='Leitura direta bloqueada pelos sites · conector de preços não configurado';
     else if(dual?.liga?.failed||dual?.myp?.failed)status.textContent='Não foi possível atualizar as fontes agora';
     else status.textContent='Sem cotação encontrada para esta variante';
