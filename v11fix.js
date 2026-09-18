@@ -102,17 +102,21 @@
         -webkit-backface-visibility:visible!important;
         will-change:transform,filter,opacity!important;
         transform-origin:left center!important;
+        margin-left:-1px!important;
+        -webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.92) 1.8px,#000 4px,#000 calc(100% - 4px),rgba(0,0,0,.92) calc(100% - 1.8px),transparent 100%)!important;
+        mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.92) 1.8px,#000 4px,#000 calc(100% - 4px),rgba(0,0,0,.92) calc(100% - 1.8px),transparent 100%)!important;
       }
       #binderStage .v124-curl-strip::after{
         content:""!important;
         position:absolute!important;
-        inset:0!important;
+        inset:-1px!important;
         z-index:30!important;
         pointer-events:none!important;
         background:
-          linear-gradient(90deg,rgba(255,255,255,.16),rgba(255,255,255,.03) 24%,rgba(0,0,0,.16) 72%,rgba(0,0,0,.31))!important;
-        opacity:.30!important;
+          linear-gradient(90deg,rgba(255,255,255,.09),rgba(255,255,255,.025) 30%,rgba(0,0,0,.09) 74%,rgba(0,0,0,.18))!important;
+        opacity:.20!important;
         mix-blend-mode:soft-light!important;
+        filter:blur(.35px)!important;
       }
       #binderStage .v124-strip-inner{
         position:absolute!important;
@@ -229,7 +233,7 @@
     root.style.setProperty('height',`${wrapRect.height}px`,'important');
     stage.appendChild(root);
 
-    const count=window.matchMedia?.('(max-width:820px)').matches?12:16;
+    const count=window.matchMedia?.('(max-width:820px)').matches?16:22;
     const stripWidth=wrapRect.width/count;
     const strips=[];
 
@@ -238,7 +242,7 @@
       strip.className='v124-curl-strip';
       const left=i*stripWidth;
       strip.style.setProperty('left',`${left}px`,'important');
-      strip.style.setProperty('width',`${stripWidth+1.4}px`,'important');
+      strip.style.setProperty('width',`${stripWidth+3.2}px`,'important');
 
       const inner=wrap.cloneNode(true);
       cleanCloneIds(inner);
@@ -263,7 +267,7 @@
     const ordered=direction==='prev'?[...phases].reverse():phases;
     const orderedGeo=direction==='prev'?[...geometries].reverse():geometries;
     const offsets=phases.map(p=>p.offset);
-    const duration=1650;
+    const duration=1280;
 
     strips.forEach((strip,i)=>{
       const t=count===1?1:i/(count-1);
@@ -282,7 +286,7 @@
       });
       strip.animate(keyframes,{
         duration,
-        easing:'cubic-bezier(.18,.66,.12,1)',
+        easing:'cubic-bezier(.20,.72,.16,1)',
         fill:'forwards'
       });
     });
@@ -301,7 +305,7 @@
           {offset:.28,opacity:1},
           {offset:1,opacity:1}
         ],
-      {duration,easing:'cubic-bezier(.18,.66,.12,1)',fill:'forwards'}
+      {duration,easing:'cubic-bezier(.20,.72,.16,1)',fill:'forwards'}
     );
 
     return duration;
@@ -347,7 +351,7 @@
       stage.classList.remove('v124-page-flipping');
       pageFlipBusy=false;
       refitSoon();
-    },1780);
+    },1390);
   }
 
   function installPageTurn(){
