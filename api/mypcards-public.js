@@ -1,4 +1,5 @@
 const { URL } = require('url');
+const { queryMyp } = require('../lib/apify-prices');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -15,7 +16,16 @@ function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao
 function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);const hasAny=/masterball|master ball|pokeball|poke ball|reverse foil|full art|full-art|promo|foil|holo/.test(n);if(kind==='normal')return !hasAny||/\bnormal\b/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='fullart')return /full art|full-art/.test(n);if(kind==='promo')return /\bpromo\b/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
 function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
 
-async function fetchText(url,timeout=9000){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{const response=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.3; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});if(!response.ok)throw new Error(`HTTP ${response.status}`);return await response.text()}finally{clearTimeout(timer)}}
+async function fetchText(url,timeout=9000){
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const response=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.6; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
+    const html=await response.text();
+    if(response.status===403&&/just a moment|cf-chl|cloudflare/i.test(html)){const e=new Error('Cloudflare bloqueou a leitura direta');e.code='cloudflare_blocked';throw e}
+    if(!response.ok){const e=new Error('HTTP '+response.status);e.code='upstream_http';throw e}
+    return html;
+  }finally{clearTimeout(timer)}
+}
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
 
 async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cached=CACHE.get(key);if(cached&&cached.expires>Date.now())return cached.value;const wantedSlug=slugify(name),matches=[];let root;try{root=await fetchText(`${ROOT}/sitemap.xml`,12000)}catch{return[]}const first=xmlLocs(root);const accept=url=>{if(!/\/pokemon\/produto\/\d+\//i.test(url))return;const slug=url.split('/').filter(Boolean).pop()||'';if(!wantedSlug||slug===wantedSlug||slug.includes(wantedSlug)||wantedSlug.includes(slug))matches.push(url)};first.forEach(accept);if(!matches.length){const childMaps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));const preferred=[...childMaps.filter(x=>/pokemon|produto|product|card/i.test(x)),...childMaps.filter(x=>!/pokemon|produto|product|card/i.test(x))].slice(0,18);for(const mapUrl of preferred){try{const xml=await fetchText(mapUrl,12000);xmlLocs(xml).forEach(accept);if(matches.length>=18)break}catch{}}}const unique=[...new Set(matches)].slice(0,18);CACHE.set(key,{value:unique,expires:Date.now()+6*60*60*1000});return unique}
@@ -62,4 +72,50 @@ function extractMarket(identity,finish,condition){
 
 async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(identity.number===wantedNumber)score+=1000;else if(wantedNumber&&identity.number&&String(Number(identity.number.split('/')[0]))===String(Number(wantedNumber.split('/')[0])))score+=420;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
 
-module.exports=async function handler(req,res){res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','s-maxage=1200, stale-while-revalidate=14400');if(req.method!=='GET')return res.status(405).json({ok:false,error:'method_not_allowed'});const name=String(req.query.name||'').trim(),number=String(req.query.number||'').trim(),set=String(req.query.set||'').trim(),link=String(req.query.link||'').trim(),lang=String(req.query.lang||'').trim(),finish=String(req.query.finish||'Normal').trim(),condition=String(req.query.condition||'NM').trim();if(!name)return res.status(400).json({ok:false,error:'name_required'});const cacheKey=`market:${normalize(name)}|${number}|${normalize(set)}|${normalize(lang)}|${normalize(finish)}|${condition.toUpperCase()}|${safeMypProductUrl(link)}`;const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);try{const found=await resolvePage({name,number,set,link,lang,finish,condition});if(!found){const out={ok:false,error:'not_found',message:'Carta/variante não localizada no catálogo público da MYP.'};CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});return res.status(200).json(out)}const out={ok:true,source:'MYP Cards',mode:'public-page',name:found.identity.name||name,number:found.identity.number||number,edition:found.identity.edition||set,finish,condition,link:found.url,min:Number(found.market.min||0),avg:Number(found.market.avg||0),max:Number(found.market.max||0),availableQuantity:found.market.availableQuantity,samples:found.market.samples||0,exactVariant:found.market.exactVariant!==false,checkedAt:new Date().toISOString()};CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});return res.status(200).json(out)}catch(error){return res.status(200).json({ok:false,error:error?.name==='AbortError'?'timeout':'upstream_error',message:'Não foi possível consultar a página pública da MYP agora.'})}}
+module.exports=async function handler(req,res){
+  res.setHeader('Content-Type','application/json; charset=utf-8');
+  res.setHeader('Cache-Control','s-maxage=1200, stale-while-revalidate=14400');
+  if(req.method!=='GET')return res.status(405).json({ok:false,error:'method_not_allowed'});
+
+  const name=String(req.query.name||'').trim();
+  const number=String(req.query.number||'').trim();
+  const set=String(req.query.set||'').trim();
+  const link=String(req.query.link||'').trim();
+  const lang=String(req.query.lang||'').trim();
+  const finish=String(req.query.finish||'Normal').trim();
+  const condition=String(req.query.condition||'NM').trim();
+  if(!name)return res.status(400).json({ok:false,error:'name_required'});
+
+  if(process.env.APIFY_API_TOKEN){
+    try{
+      const found=await queryMyp({name,number,set,lang,finish,condition});
+      if(found&&(found.min||found.avg||found.max)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Apify',mode:'apify',
+          name,number,edition:set,finish,condition,link:found.link||'',
+          min:Number(found.min||0),avg:Number(found.avg||0),max:Number(found.max||0),
+          samples:found.samples??null,exactVariant:found.exactVariant!==false,checkedAt:new Date().toISOString()
+        });
+      }
+      return res.status(200).json({ok:false,error:'not_found',provider:'Apify',message:'Carta/variante não localizada na MYP Cards.'});
+    }catch(error){
+      return res.status(200).json({ok:false,error:error?.code||'apify_error',provider:'Apify',message:'O conector da MYP não conseguiu concluir a consulta.'});
+    }
+  }
+
+  const cacheKey='market:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
+  try{
+    const found=await resolvePage({name,number,set,link,lang,finish,condition});
+    if(!found){
+      const out={ok:false,error:'not_found',message:'Carta/variante não localizada no catálogo público da MYP.'};
+      CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});return res.status(200).json(out);
+    }
+    const out={ok:true,source:'MYP Cards',provider:'direct',mode:'public-page',name:found.identity.name||name,number:found.identity.number||number,edition:found.identity.edition||set,finish,condition,link:found.url,min:Number(found.market.min||0),avg:Number(found.market.avg||0),max:Number(found.market.max||0),availableQuantity:found.market.availableQuantity,samples:found.market.samples||0,exactVariant:found.market.exactVariant!==false,checkedAt:new Date().toISOString()};
+    CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});return res.status(200).json(out);
+  }catch(error){
+    const code=error?.code==='cloudflare_blocked'?'cloudflare_blocked':(error?.name==='AbortError'?'timeout':'upstream_error');
+    return res.status(200).json({ok:false,error:code,needsApifyToken:code==='cloudflare_blocked',message:code==='cloudflare_blocked'?'MYP bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a página pública da MYP agora.'});
+  }
+}
+module.exports.config={maxDuration:60};
