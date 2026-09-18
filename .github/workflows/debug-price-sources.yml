@@ -48,6 +48,9 @@ jobs:
           probe "MYP official API no token" "https://mypcards.com/api/v1/pokemon/carta/Lugia-EX"
           probe "Jina MYP card" "https://r.jina.ai/https://mypcards.com/pokemon/produto/38909/lugia-ex"
           probe "Jina Liga search" "https://r.jina.ai/https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)"
+          probe "App MYP broad Charizard ex" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Charizard%20ex&finish=Normal&condition=Nova"
+          probe "App Liga broad Charizard ex" "https://pokemon-fichario.vercel.app/api/liga-public?name=Charizard%20ex&finish=Normal&condition=Nova"
+          probe "App official MYP proxy Charizard ex" "https://pokemon-fichario.vercel.app/api/mypcards?name=Charizard%20ex"
 
       - name: Commit diagnostics
         run: |
