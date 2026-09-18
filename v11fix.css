@@ -70,8 +70,8 @@ body.v113-hide-status-badges .card-status-ribbon{
   .binder-spread{
     /* V12.9: usar de fato a área disponível do desktop. O limite antigo
        de 640px deixava as cartas minúsculas mesmo em monitores grandes. */
-    height:min(760px,calc(100dvh - 92px))!important;
-    max-height:calc(100% - 8px)!important;
+    height:min(710px,calc(100dvh - 116px))!important;
+    max-height:calc(100% - 28px)!important;
     width:auto!important;
     aspect-ratio:1.455 / 1!important;
     grid-template-columns:1fr 1fr!important;
@@ -121,8 +121,8 @@ body.v113-hide-status-badges .card-status-ribbon{
 }
 .binder-area:fullscreen .binder-spread,
 .binder-area.v11-fullscreen-fallback .binder-spread{
-  height:min(880px,calc(100dvh - 48px))!important;
-  max-height:calc(100dvh - 48px)!important;
+  height:min(820px,calc(100dvh - 72px))!important;
+  max-height:calc(100dvh - 72px)!important;
   width:auto!important;
   aspect-ratio:1.455 / 1!important;
   grid-template-columns:1fr 1fr!important;
