@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.4';
+  const APP_VERSION='V12.5';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.5',title:'Curvatura mais natural e virada mais ágil',items:[
+      'A folha passou a usar mais segmentos de curvatura com sobreposição e máscara suave para esconder as linhas entre as dobras.',
+      'O sombreamento entre segmentos ficou mais discreto para a página parecer uma superfície contínua.',
+      'A duração da virada foi reduzida de cerca de 1,65 s para aproximadamente 1,28 s.'
+    ]},
     {version:'V12.4',title:'Virada de página flexível em 3D',items:[
       'A animação de troca de página foi refeita: a folha agora dobra em várias faixas 3D em vez de girar como uma placa rígida.',
       'A curvatura progride da borda externa até a lombada, com profundidade, sombra e brilho de plástico.',
