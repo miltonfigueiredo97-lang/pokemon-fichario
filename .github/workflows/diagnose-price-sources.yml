@@ -1,0 +1,70 @@
+name: Diagnose production price sources
+
+on:
+  push:
+    branches:
+      - diagnose-price-source-20260917
+    paths:
+      - '.github/workflows/diagnose-price-sources.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe production and upstream price sources
+        shell: bash
+        run: |
+          set +e
+          OUT=price-diagnosis-current.txt
+          : > "$OUT"
+          echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
+          echo "Commit: $GITHUB_SHA" >> "$OUT"
+          echo >> "$OUT"
+
+          probe () {
+            NAME="$1"
+            URL="$2"
+            TMP="$(mktemp)"
+            HDR="$(mktemp)"
+            echo "===== $NAME =====" >> "$OUT"
+            echo "URL: $URL" >> "$OUT"
+            CODE=$(curl -L --max-time 70 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36'               -H 'Accept: application/json,text/plain,text/html,*/*'               -H 'Accept-Language: pt-BR,pt;q=0.9,en;q=0.6'               -sS -D "$HDR" -o "$TMP" -w '%{http_code}' "$URL")
+            echo "HTTP: $CODE" >> "$OUT"
+            echo "CONTENT-TYPE: $(grep -i '^content-type:' "$HDR" | tail -1 | tr -d '\r')" >> "$OUT"
+            echo "BYTES: $(wc -c < "$TMP")" >> "$OUT"
+            echo "--- BODY ---" >> "$OUT"
+            head -c 5000 "$TMP" >> "$OUT"
+            echo >> "$OUT"
+            echo >> "$OUT"
+          }
+
+          # Produção: exatamente os endpoints chamados pelo fichário.
+          probe "APP MYP Lugia" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
+          probe "APP LIGA Lugia" "https://pokemon-fichario.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
+          probe "APP MYP Omanyte" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova"
+          probe "APP LIGA Omanyte" "https://pokemon-fichario.vercel.app/api/liga-public?name=Omanyte&number=180&set=151&lang=en&finish=Normal&condition=Nova"
+
+          # Proxy antigo da API oficial MYP já existente no projeto.
+          probe "APP OFFICIAL MYP PROXY Lugia" "https://pokemon-fichario.vercel.app/api/mypcards?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma"
+          probe "APP OFFICIAL MYP PROXY Omanyte" "https://pokemon-fichario.vercel.app/api/mypcards?name=Omanyte&number=180&set=151"
+
+          # Fontes upstream sem segredo, para separar problema do app de bloqueio externo.
+          probe "MYP OFFICIAL API no token Lugia" "https://mypcards.com/api/v1/pokemon/carta/Lugia-EX"
+          probe "MYP PRODUCT Lugia" "https://mypcards.com/pokemon/produto/38909/lugia-ex"
+          probe "JINA MYP PRODUCT Lugia" "https://r.jina.ai/https://mypcards.com/pokemon/produto/38909/lugia-ex"
+          probe "LIGA SEARCH Lugia" "https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)"
+          probe "JINA LIGA SEARCH Lugia" "https://r.jina.ai/https://www.ligapokemon.com.br/?view=cards/search&card=Lugia-EX%20(134%2F135)"
+
+      - name: Commit diagnosis output
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add price-diagnosis-current.txt
+          git commit -m "Record current price source diagnosis" || exit 0
+          git push origin HEAD:diagnose-price-source-20260917
