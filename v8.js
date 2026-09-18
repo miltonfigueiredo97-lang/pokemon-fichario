@@ -157,10 +157,11 @@
       if(cover){cover.style.removeProperty('width');cover.style.removeProperty('height')}
     }else{
       const gap=12;
-      // O fichário deve ocupar o maior retângulo possível sem cortar nenhuma
-      // das duas folhas. O resultado é aplicado inline como !important porque
-      // as folhas de estilo antigas também usam !important.
-      const h=Math.floor(Math.min(availH,(availW-gap)/(2*ratio)));
+      // Mantém o fichário grande, mas nunca colado nas bordas da viewport.
+      // A reserva vertical evita o corte inferior visto em telas 16:9 / browser com barra.
+      const safeVertical=28;
+      const safeH=Math.max(160,availH-safeVertical);
+      const h=Math.floor(Math.min(safeH,(availW-gap)/(2*ratio)));
       const w=Math.floor(h*ratio);
       spread.style.setProperty('grid-template-columns',w+'px '+w+'px','important');
       spread.style.setProperty('width',(w*2+gap)+'px','important');
