@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-myp-browser-final.txt
+          OUT=debug-myp-browser-final2.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -25,7 +25,7 @@ jobs:
             TMP="$(mktemp)"
             echo "===== $NAME =====" >> "$OUT"
             echo "URL: $URL" >> "$OUT"
-            CODE=$(curl -L --max-time 25 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36' -H 'Accept-Language: pt-BR,pt;q=0.9,en;q=0.6' -sS -o "$TMP" -w '%{http_code}' "$URL")
+            CODE=$(curl -L --max-time 70 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36' -H 'Accept-Language: pt-BR,pt;q=0.9,en;q=0.6' -sS -o "$TMP" -w '%{http_code}' "$URL")
             echo "HTTP: $CODE" >> "$OUT"
             echo "BYTES: $(wc -c < "$TMP")" >> "$OUT"
             echo "--- first 1200 chars ---" >> "$OUT"
@@ -43,6 +43,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-myp-browser-final.txt
+          git add debug-myp-browser-final2.txt
           git commit -m "Debug price source responses" || exit 0
           git push
