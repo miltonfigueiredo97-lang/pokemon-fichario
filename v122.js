@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.5';
+  const APP_VERSION='V12.6';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.6',title:'Diagnóstico real das fontes de preço',items:[
+      'Confirmado em produção: MYP Cards e Liga Pokémon devolvem HTTP 403 com desafio Cloudflare para leituras automáticas vindas do servidor.',
+      'Adicionado suporte a um conector com proxy brasileiro via Apify para consultar as duas fontes sem depender do acesso direto bloqueado.',
+      'Falhas de fonte não apagam mais preços já salvos e o botão Atualizar preços agora distingue cotação, bloqueio e erro em vez de informar sucesso falso.',
+      'Liga converte Damaged (DM) para o código D usado pelo marketplace; MYP usa dm.'
+    ]},
     {version:'V12.5',title:'Curvatura mais natural e virada mais ágil',items:[
       'A folha passou a usar mais segmentos de curvatura com sobreposição e máscara suave para esconder as linhas entre as dobras.',
       'O sombreamento entre segmentos ficou mais discreto para a página parecer uma superfície contínua.',
@@ -94,8 +100,10 @@
       const known=[card?.myp_price_link,card?.price_br_link,card?.price_link].find(isMypUrl);if(known)p.set('link',known);
     }
     const r=await fetch(`${endpoint}?${p.toString()}`,{cache:'no-store'});const j=await r.json();
-    if(!j?.ok)return null;
-    return {source:j.source||source,min:Number(j.min||0),avg:Number(j.avg||0),max:Number(j.max||0),link:j.link||'',checkedAt:j.checkedAt||new Date().toISOString(),samples:j.samples??null,availableQuantity:j.availableQuantity??null,namePt:j.name||card?.name||'',editionPt:j.edition||set,number:j.number||full,finish:finish||'Normal',condition:condition||'Nova'};
+    if(!j?.ok){
+      return {source:j?.source||source,failed:true,error:j?.error||'unknown',message:j?.message||'',needsApifyToken:!!j?.needsApifyToken,provider:j?.provider||''};
+    }
+    return {source:j.source||source,failed:false,provider:j.provider||'',min:Number(j.min||0),avg:Number(j.avg||0),max:Number(j.max||0),link:j.link||'',checkedAt:j.checkedAt||new Date().toISOString(),samples:j.samples??null,availableQuantity:j.availableQuantity??null,exactVariant:j.exactVariant!==false,namePt:j.name||card?.name||'',editionPt:j.edition||set,number:j.number||full,finish:finish||'Normal',condition:condition||'Nova'};
   }
 
   async function queryBothMarkets(card,finish='Normal',condition='Nova'){
@@ -117,13 +125,23 @@
   }
 
   function marketPatch(card,dual){
-    const liga=dual?.liga||{},myp=dual?.myp||{},primary=hasPrice(liga)?liga:(hasPrice(myp)?myp:null),now=new Date().toISOString();
+    const oldLiga={min:+card?.liga_price_min||0,avg:+card?.liga_price_avg||0,max:+card?.liga_price_max||0,link:card?.liga_price_link||'',checkedAt:card?.liga_price_checked_at||null};
+    const oldMyp={min:+card?.myp_price_min||0,avg:+card?.myp_price_avg||0,max:+card?.myp_price_max||0,link:card?.myp_price_link||'',checkedAt:card?.myp_price_checked_at||null};
+    const ligaFresh=dual?.liga&&!dual.liga.failed;
+    const mypFresh=dual?.myp&&!dual.myp.failed;
+    const liga=ligaFresh?dual.liga:oldLiga;
+    const myp=mypFresh?dual.myp:oldMyp;
+    const primary=hasPrice(liga)?liga:(hasPrice(myp)?myp:null);
+    const anyFresh=ligaFresh||mypFresh;
     return {
       liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,liga_price_link:liga.link||null,liga_price_checked_at:liga.checkedAt||null,
       myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,myp_price_link:myp.link||null,myp_price_checked_at:myp.checkedAt||null,
-      price_min:+primary?.min||0,price_avg:+primary?.avg||0,price_max:+primary?.max||0,currency:'BRL',
-      price_source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':'Sem preço BR'),price_link:primary?.link||ligaSearchUrl(card),
-      price_br_source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':null),price_br_link:primary?.link||null,price_checked_at:primary?.checkedAt||now
+      price_min:+primary?.min||(+card?.price_min||0),price_avg:+primary?.avg||(+card?.price_avg||0),price_max:+primary?.max||(+card?.price_max||0),currency:'BRL',
+      price_source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':(card?.price_source||'Sem preço BR')),
+      price_link:primary?.link||card?.price_link||ligaSearchUrl(card),
+      price_br_source:hasPrice(liga)?'Liga Pokémon':(hasPrice(myp)?'MYP Cards':(card?.price_br_source||null)),
+      price_br_link:primary?.link||card?.price_br_link||null,
+      price_checked_at:anyFresh?(primary?.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
     };
   }
 
@@ -224,7 +242,12 @@
     const primary=hasPrice(dual?.liga)?dual.liga:(hasPrice(dual?.myp)?dual.myp:null);
     try{if(typeof setPrices==='function')setPrices(primary?.min||0,primary?.avg||0,primary?.max||0)}catch{}
     const status=$v('#marketStatus');
-    if(status)status.textContent=hasPrice(dual?.liga)?`Liga Pokémon · ${finishLabel(card?.finish||dual?.finish)}`:(hasPrice(dual?.myp)?`Liga sem cotação · usando MYP · ${finishLabel(card?.finish||dual?.finish)}`:'Sem cotação encontrada para esta variante');
+    if(!status)return;
+    if(hasPrice(dual?.liga))status.textContent=`Liga Pokémon · ${finishLabel(card?.finish||dual?.finish)}`;
+    else if(hasPrice(dual?.myp))status.textContent=`Liga sem cotação · usando MYP · ${finishLabel(card?.finish||dual?.finish)}`;
+    else if(dual?.liga?.needsApifyToken||dual?.myp?.needsApifyToken)status.textContent='Leitura direta bloqueada pelos sites · conector de preços não configurado';
+    else if(dual?.liga?.failed||dual?.myp?.failed)status.textContent='Não foi possível atualizar as fontes agora';
+    else status.textContent='Sem cotação encontrada para esta variante';
   }
 
   async function fixLinks(card){
@@ -255,13 +278,35 @@
   async function persistDual(card,dual){const patch=marketPatch(card,dual);const{error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);if(error)throw error;Object.assign(card,patch);return true}
   async function updateAllPrices(){
     if(bulkBusy)return;let cards=[];try{cards=[...collection]}catch{};if(!cards.length){toast('Seu fichário ainda não tem cartas.');return}
-    bulkBusy=true;const b=$v('#v12UpdatePrices'),status=$v('#v12PriceProgress');if(b)b.disabled=true;let ok=0,partial=0,none=0,fail=0;
+    bulkBusy=true;const b=$v('#v12UpdatePrices'),status=$v('#v12PriceProgress');if(b)b.disabled=true;
+    let both=0,one=0,unavailable=0,notFound=0,exceptions=0,needsConnector=false;
     try{
       for(let i=0;i<cards.length;i++){
-        if(i>0)await sleep(1350);const card=cards[i];if(b)b.textContent=`Atualizando ${i+1}/${cards.length}…`;if(status)status.textContent=`${card.name} · ${finishLabel(card.finish)} · Liga + MYP`;
-        try{const dual=await queryBothMarkets(card,normalizeFinish(card.finish),card.condition||'Nova');await persistDual(card,dual);if(hasPrice(dual.liga)&&hasPrice(dual.myp))ok++;else if(hasPrice(dual.liga)||hasPrice(dual.myp))partial++;else none++}catch(e){console.warn(e);fail++}
+        if(i>0)await sleep(1350);
+        const card=cards[i];
+        if(b)b.textContent=`Atualizando ${i+1}/${cards.length}…`;
+        if(status)status.textContent=`${card.name} · ${finishLabel(card.finish)} · consultando Liga + MYP…`;
+        try{
+          const dual=await queryBothMarkets(card,normalizeFinish(card.finish),card.condition||'Nova');
+          await persistDual(card,dual);
+          const ligaOk=hasPrice(dual.liga),mypOk=hasPrice(dual.myp);
+          if(ligaOk&&mypOk)both++;
+          else if(ligaOk||mypOk)one++;
+          else if(dual?.liga?.needsApifyToken||dual?.myp?.needsApifyToken){unavailable++;needsConnector=true}
+          else if(dual?.liga?.failed||dual?.myp?.failed){
+            const errors=[dual?.liga?.error,dual?.myp?.error].filter(Boolean);
+            if(errors.every(x=>x==='not_found'))notFound++;else unavailable++;
+          }else notFound++;
+        }catch(e){console.warn(e);exceptions++}
       }
-      await loadCards(false);if(status)status.textContent=`Concluído: ${ok} nos 2 mercados · ${partial} em 1 mercado · ${none} sem cotação${fail?` · ${fail} erro(s)`:''}.`;toast(`Preços atualizados: ${cards.length-fail}/${cards.length}.`)
+      await loadCards(false);
+      const updated=both+one;
+      if(status){
+        status.textContent=needsConnector
+          ?`Concluído: ${updated} com preço · ${unavailable} bloqueada(s) pelos sites. Configure o conector de preços.`
+          :`Concluído: ${both} nos 2 mercados · ${one} em 1 mercado · ${notFound} sem cotação · ${unavailable+exceptions} falha(s).`;
+      }
+      toast(needsConnector?'Os sites bloquearam a leitura direta. Falta ativar o conector de preços.':`Preços atualizados: ${updated}/${cards.length}.`);
     }finally{bulkBusy=false;if(b){b.disabled=false;b.textContent='↻ Atualizar preços · Liga + MYP'}}
   }
   function rewirePriceButton(){const old=$v('#v12UpdatePrices');if(!old||old.dataset.v122==='1')return;const b=old.cloneNode(true);b.dataset.v122='1';b.textContent='↻ Atualizar preços · Liga + MYP';old.replaceWith(b);b.addEventListener('click',updateAllPrices)}
