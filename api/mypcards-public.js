@@ -15,7 +15,7 @@ function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao
 function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);const hasAny=/masterball|master ball|pokeball|poke ball|reverse foil|full art|full-art|promo|foil|holo/.test(n);if(kind==='normal')return !hasAny||/\bnormal\b/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='fullart')return /full art|full-art/.test(n);if(kind==='promo')return /\bpromo\b/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
 function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
 
-async function fetchText(url,timeout=9000){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{const response=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.2; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});if(!response.ok)throw new Error(`HTTP ${response.status}`);return await response.text()}finally{clearTimeout(timer)}}
+async function fetchText(url,timeout=9000){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{const response=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.3; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});if(!response.ok)throw new Error(`HTTP ${response.status}`);return await response.text()}finally{clearTimeout(timer)}}
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
 
 async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cached=CACHE.get(key);if(cached&&cached.expires>Date.now())return cached.value;const wantedSlug=slugify(name),matches=[];let root;try{root=await fetchText(`${ROOT}/sitemap.xml`,12000)}catch{return[]}const first=xmlLocs(root);const accept=url=>{if(!/\/pokemon\/produto\/\d+\//i.test(url))return;const slug=url.split('/').filter(Boolean).pop()||'';if(!wantedSlug||slug===wantedSlug||slug.includes(wantedSlug)||wantedSlug.includes(slug))matches.push(url)};first.forEach(accept);if(!matches.length){const childMaps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));const preferred=[...childMaps.filter(x=>/pokemon|produto|product|card/i.test(x)),...childMaps.filter(x=>!/pokemon|produto|product|card/i.test(x))].slice(0,18);for(const mapUrl of preferred){try{const xml=await fetchText(mapUrl,12000);xmlLocs(xml).forEach(accept);if(matches.length>=18)break}catch{}}}const unique=[...new Set(matches)].slice(0,18);CACHE.set(key,{value:unique,expires:Date.now()+6*60*60*1000});return unique}
@@ -23,13 +23,46 @@ async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cach
 function pageIdentity(html){const text=stripTags(html);const titleMatch=text.match(/(?:^|\n)\s*([^\n]{1,120}?)\s*\((\d{1,4}\s*\/\s*\d{1,4})\)\s*(?:\n|$)/m);const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
 function matchesWanted(identity,wanted){const wn=normalize(wanted.name),pn=normalize(identity.name);if(wn&&pn&&wn!==pn&&!pn.includes(wn)&&!wn.includes(pn))return false;const wantedNumber=String(wanted.number||'').replace(/\s/g,'');if(wantedNumber&&identity.number){const[a,ad]=wantedNumber.split('/'),[b,bd]=identity.number.split('/');if(String(Number(a))!==String(Number(b)))return false;if(ad&&bd&&String(Number(ad))!==String(Number(bd)))return false}return true}
 
-function extractMarket(identity,finish,condition){const text=identity.text;let sellerText=text;const sellerStart=text.search(/Lojistas e Certificados|Demais vendedores/i);if(sellerStart>=0)sellerText=text.slice(sellerStart);const other=sellerText.search(/Outras Edições/i);if(other>=0)sellerText=sellerText.slice(0,other);const lines=sellerText.split(/\n+/).map(x=>x.trim()).filter(x=>x.includes('R$'));
-  let selected=lines.filter(x=>lineMatchesFinish(x,finish)&&lineMatchesCondition(x,condition));
-  if(!selected.length)selected=lines.filter(x=>lineMatchesFinish(x,finish));
+function extractMarket(identity,finish,condition){
+  const text=identity.text;
+  let sellerText=text;
+  const sellerStart=text.search(/Lojistas e Certificados|Demais vendedores/i);
+  if(sellerStart>=0)sellerText=text.slice(sellerStart);
+  const other=sellerText.search(/Outras Edições/i);
+  if(other>=0)sellerText=sellerText.slice(0,other);
+  const lines=sellerText.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const priceLines=lines.filter(x=>x.includes('R
+async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(identity.number===wantedNumber)score+=1000;else if(wantedNumber&&identity.number&&String(Number(identity.number.split('/')[0]))===String(Number(wantedNumber.split('/')[0])))score+=420;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
+
+module.exports=async function handler(req,res){res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','s-maxage=1200, stale-while-revalidate=14400');if(req.method!=='GET')return res.status(405).json({ok:false,error:'method_not_allowed'});const name=String(req.query.name||'').trim(),number=String(req.query.number||'').trim(),set=String(req.query.set||'').trim(),link=String(req.query.link||'').trim(),lang=String(req.query.lang||'').trim(),finish=String(req.query.finish||'Normal').trim(),condition=String(req.query.condition||'NM').trim();if(!name)return res.status(400).json({ok:false,error:'name_required'});const cacheKey=`market:${normalize(name)}|${number}|${normalize(set)}|${normalize(lang)}|${normalize(finish)}|${condition.toUpperCase()}|${safeMypProductUrl(link)}`;const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);try{const found=await resolvePage({name,number,set,link,lang,finish,condition});if(!found){const out={ok:false,error:'not_found',message:'Carta/variante não localizada no catálogo público da MYP.'};CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});return res.status(200).json(out)}const out={ok:true,source:'MYP Cards',mode:'public-page',name:found.identity.name||name,number:found.identity.number||number,edition:found.identity.edition||set,finish,condition,link:found.url,min:Number(found.market.min||0),avg:Number(found.market.avg||0),max:Number(found.market.max||0),availableQuantity:found.market.availableQuantity,samples:found.market.samples||0,exactVariant:found.market.exactVariant!==false,checkedAt:new Date().toISOString()};CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});return res.status(200).json(out)}catch(error){return res.status(200).json({ok:false,error:error?.name==='AbortError'?'timeout':'upstream_error',message:'Não foi possível consultar a página pública da MYP agora.'})}}
+));
+
+  let selected=priceLines.filter(x=>lineMatchesFinish(x,finish)&&lineMatchesCondition(x,condition));
+  let exactVariant=selected.length>0;
+  if(!selected.length)selected=priceLines.filter(x=>lineMatchesFinish(x,finish));
+  if(!selected.length)selected=priceLines.filter(x=>lineMatchesCondition(x,condition));
+
   let usable=selected.flatMap(moneyMatches);
-  if(!usable.length&&finishKind(finish)==='normal'){usable=lines.filter(x=>lineMatchesCondition(x,condition)&&lineMatchesFinish(x,'Normal')).flatMap(moneyMatches)}
-  const quantities=selected.flatMap(x=>[...x.matchAll(/(\d+)\s*un\./gi)].map(m=>Number(m[1]))).filter(Number.isFinite);const availableQuantity=quantities.reduce((a,b)=>a+b,0)||null;
-  if(!usable.length)return{min:0,avg:0,max:0,availableQuantity,samples:0};usable=usable.filter(v=>Number.isFinite(v)&&v>0&&v<1000000).sort((a,b)=>a-b);return{min:usable[0],avg:usable.reduce((a,b)=>a+b,0)/usable.length,max:usable[usable.length-1],availableQuantity,samples:usable.length}}
+  if(!usable.length){
+    selected=priceLines;
+    usable=priceLines.flatMap(moneyMatches);
+    exactVariant=false;
+  }
+
+  const quantities=selected.flatMap(x=>[...x.matchAll(/(\d+)\s*un\./gi)].map(m=>Number(m[1]))).filter(Number.isFinite);
+  const availableQuantity=quantities.reduce((a,b)=>a+b,0)||null;
+  usable=usable.filter(v=>Number.isFinite(v)&&v>0&&v<1000000).sort((a,b)=>a-b);
+
+  if(!usable.length){
+    const beforeSellers=sellerStart>=0?text.slice(0,sellerStart):text;
+    const summary=moneyMatches(beforeSellers).filter(v=>v>0).slice(0,3).sort((a,b)=>a-b);
+    if(summary.length){
+      return{min:summary[0],avg:summary.length>=3?summary[1]:(summary.reduce((a,b)=>a+b,0)/summary.length),max:summary[summary.length-1],availableQuantity,samples:summary.length,exactVariant:false};
+    }
+    return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
+  }
+  return{min:usable[0],avg:usable.reduce((a,b)=>a+b,0)/usable.length,max:usable[usable.length-1],availableQuantity,samples:usable.length,exactVariant};
+}
 
 async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(identity.number===wantedNumber)score+=1000;else if(wantedNumber&&identity.number&&String(Number(identity.number.split('/')[0]))===String(Number(wantedNumber.split('/')[0])))score+=420;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
 
