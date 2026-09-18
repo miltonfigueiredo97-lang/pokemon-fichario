@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.1';
+  const APP_VERSION='V13.2';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.2',title:'Busca de cartas progressiva',items:[
+      'Corrigido o idioma português do TCGdex: a API usa pt, enquanto o fichário internamente continua usando pt-br.',
+      'Nome, número e coleção agora refinam a busca em vez de exigir correspondência exata.',
+      'Lugia-V também tenta Lugia V e Lugia, mostrando alternativas próximas.',
+      'A busca do catálogo não exibe mais aviso de token da MYP; MYP fica responsável pelo preço após a escolha.'
+    ]},
     {version:'V13.1',title:'Leitura real e gratuita da MYP',items:[
       'MYP Cards agora é lida pela própria página pública em Chromium no backend, sem Apify e sem depender do navegador do usuário.',
       'Acabamento e condição são filtrados diretamente nas ofertas reais dos vendedores.',
