@@ -51,6 +51,9 @@ jobs:
           probe "App MYP broad Charizard ex" "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Charizard%20ex&finish=Normal&condition=Nova"
           probe "App Liga broad Charizard ex" "https://pokemon-fichario.vercel.app/api/liga-public?name=Charizard%20ex&finish=Normal&condition=Nova"
           probe "App official MYP proxy Charizard ex" "https://pokemon-fichario.vercel.app/api/mypcards?name=Charizard%20ex"
+          probe "V13 preview alias root" "https://pokemon-fichario-git-fix-price-pipeline-v13-test-mackmus.vercel.app/"
+          probe "V13 preview MYP Lugia" "https://pokemon-fichario-git-fix-price-pipeline-v13-test-mackmus.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
+          probe "V13 preview Liga Lugia" "https://pokemon-fichario-git-fix-price-pipeline-v13-test-mackmus.vercel.app/api/liga-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&lang=pt-br&finish=Foil&condition=DM"
 
       - name: Commit diagnostics
         run: |
