@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V12.6';
+  const APP_VERSION='V12.7';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V12.7',title:'Leitura de preços atrás do Cloudflare',items:[
+      'MYP Cards e Liga agora usam Jina Reader como fallback quando o acesso direto do servidor é bloqueado pelo Cloudflare.',
+      'Se o conector Apify falhar ou não retornar cotação, a consulta continua automaticamente no fallback em vez de encerrar com preço zero.',
+      'O leitor da MYP continua filtrando nome, número, acabamento e condição; o link localizado é salvo para as próximas atualizações ficarem mais rápidas.'
+    ]},
     {version:'V12.6',title:'Diagnóstico real das fontes de preço',items:[
       'Confirmado em produção: MYP Cards e Liga Pokémon devolvem HTTP 403 com desafio Cloudflare para leituras automáticas vindas do servidor.',
       'Adicionado suporte a um conector com proxy brasileiro via Apify para consultar as duas fontes sem depender do acesso direto bloqueado.',
