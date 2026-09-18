@@ -1,0 +1,9 @@
+{
+  "name": "pokemon-fichario",
+  "private": true,
+  "version": "13.1.0",
+  "dependencies": {
+    "@sparticuz/chromium": "latest",
+    "puppeteer-core": "latest"
+  }
+}
