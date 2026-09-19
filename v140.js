@@ -322,7 +322,7 @@
     g.innerHTML=p.entries.map((e,i)=>{
       const owned=p.owned.has(i),img=masterImage(e);
       return '<button type="button" class="v14-master-card '+(owned?'owned':'')+'" data-master-index="'+i+'">'+
-        (img?'<img src="'+esc(img)+'" loading="lazy" alt="'+esc(e.name)+'">':'<div class="v14-no-img">'+esc(e.name)+'</div>')+
+        (img?'<img src="'+esc(img)+'" loading="lazy" alt="'+esc(e.name)+'">':'<div class="v14-no-img" data-master-fallback="'+i+'">'+esc(e.name)+'</div>')+
         '<strong>'+esc(e.name)+'</strong><small>#'+esc(e.number)+' · '+esc(e.variantLabel)+'</small><span>'+(owned?'TENHO':'NÃO TENHO')+'</span>'+
       '</button>';
     }).join('');
@@ -334,6 +334,25 @@
       byId('v14OwnedCount').textContent=p.owned.size;
     });
     byId('v14OwnedCount').textContent=p.owned.size;
+    hydrateMasterPreviewImages();
+  }
+
+  function hydrateMasterPreviewImages(){
+    const p=V14.masterPreview;if(!p||p.set.languageCode!=='ja')return;
+    const nodes=[...document.querySelectorAll('[data-master-fallback]')];
+    const io=new IntersectionObserver(entries=>{
+      for(const ent of entries){
+        if(!ent.isIntersecting)continue;
+        io.unobserve(ent.target);
+        const i=+ent.target.dataset.masterFallback,e=p.entries[i];
+        japaneseImageFallback({...e,languageCode:'ja'}).then(url=>{
+          if(!url||!ent.target.isConnected)return;
+          const img=document.createElement('img');img.src=url;img.loading='lazy';img.alt=e.name||'Carta';
+          ent.target.replaceWith(img);e.imageUrl=url;
+        }).catch(()=>{});
+      }
+    },{root:byId('v14MasterGrid'),rootMargin:'250px'});
+    nodes.forEach(n=>io.observe(n));
   }
 
   async function createMasterBinder(){
