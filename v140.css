@@ -461,6 +461,28 @@ dialog.sheet-dialog:not([open]){
     pointer-events:auto!important;
     touch-action:manipulation!important;
   }
+  .v14-binder-dialog[open]{
+    display:block!important;
+    position:fixed!important;
+    inset:0!important;
+    z-index:1200!important;
+    width:100vw!important;
+    height:100dvh!important;
+    max-width:none!important;
+    max-height:none!important;
+    margin:0!important;
+    padding:0!important;
+    border:0!important;
+    background:#111418!important;
+    overflow:hidden!important;
+  }
+  .v14-binder-dialog[open]>.dialog-shell{
+    position:absolute!important;
+    inset:0!important;
+    width:100%!important;
+    height:100%!important;
+    overflow:auto!important;
+  }
   .v14-binder-dialog:not([open]){
     display:none!important;
     inset:auto!important;
