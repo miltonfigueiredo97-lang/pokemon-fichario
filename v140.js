@@ -167,14 +167,17 @@
     if(!area||!bar||!spread)return;
     if(window.matchMedia('(max-width:820px)').matches){
       bar.style.removeProperty('left');
+      bar.style.removeProperty('width');
       bar.style.removeProperty('max-width');
+      bar.style.removeProperty('transform');
       return;
     }
     const ar=area.getBoundingClientRect(),sr=spread.getBoundingClientRect();
     if(sr.width<20)return;
-    const desired=sr.left-ar.left+(sr.width/2);
-    bar.style.left=desired+'px';
-    bar.style.maxWidth=Math.max(520,sr.width-8)+'px';
+    bar.style.left=(sr.left-ar.left)+'px';
+    bar.style.width=sr.width+'px';
+    bar.style.maxWidth=sr.width+'px';
+    bar.style.transform='none';
   }
 
   function ensureUnifiedTopbar(){
@@ -999,7 +1002,12 @@
           .eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).maybeSingle();
         if(findErr)throw findErr;
         if(existing){
-          const {data,error}=await db.from('pokemon_cards').update({quantity:(+existing.quantity||0)+1,collection_status:'owned',price_pending:true})
+          const now=new Date().toISOString();
+          const {data,error}=await db.from('pokemon_cards').update({
+            quantity:(+existing.quantity||0)+1,collection_status:'owned',price_pending:true,
+            price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
+            price_attempts:0,price_priority:0,price_last_error:null
+          })
             .eq('id',existing.id).eq('user_id',currentUser.id).select('*').single();
           if(error)throw error;saved.push(data);
         }else{
@@ -1017,45 +1025,127 @@
     }catch(e){console.error(e);toast('Não consegui adicionar todas as cartas.');busy(b,false)}
   }
 
-  function queueBackgroundPrices(cards){
+  function uniquePriceCards(cards){
+    const seen=new Set(),out=[];
     for(const card of cards||[]){
-      if(!card?.id||V14.priceJobs.has(card.id)||V14.priceQueue.some(x=>x.id===card.id))continue;
-      V14.priceQueue.push(card);
-      V14.priceJobs.set(card.id,true);
+      if(!card?.id||seen.has(card.id))continue;
+      seen.add(card.id);out.push(card);
     }
+    return out;
+  }
+
+  function cardForPrice(card){
+    return {
+      ...card,
+      apiId:card.api_id,api_id:card.api_id,
+      name:card.name,number:card.number,setName:card.set_name,setId:card.set_id,
+      languageCode:card.language_code,finish:card.finish,condition:card.condition,
+      myp_price_link:card.myp_price_link,price_br_link:card.price_br_link,price_link:card.price_link
+    };
+  }
+
+  function pricePatchFromDual(card,dual){
+    const m=dual?.myp;
+    if(!(m&&(Number(m.min)||Number(m.avg)||Number(m.max))))return null;
+    const checked=m.checkedAt||new Date().toISOString();
+    return {
+      myp_price_min:+m.min||0,myp_price_avg:+m.avg||0,myp_price_max:+m.max||0,
+      myp_price_link:m.link||card.myp_price_link||null,myp_price_checked_at:checked,
+      price_min:+m.min||0,price_avg:+m.avg||+m.min||+m.max||0,price_max:+m.max||0,currency:'BRL',
+      price_source:'MYP Cards',price_link:m.link||card.price_link||'',
+      price_br_source:'MYP Cards',price_br_link:m.link||card.price_br_link||null,price_checked_at:checked,
+      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_last_error:null
+    };
+  }
+
+  function priceFailureCode(dual,error){
+    return String(dual?.myp?.error||dual?.error||error?.name||error?.message||'temporary_error');
+  }
+
+  function terminalPriceFailure(code){
+    return ['variant_not_found','wrong_product','product_not_found','no_price_data'].includes(String(code||''));
+  }
+
+  function applyLocalPricePatch(cardId,patch){
+    const target=V14.allCards.find(x=>x.id===cardId);if(target)Object.assign(target,patch);
+    const visible=collection.find(x=>x.id===cardId);if(visible)Object.assign(visible,patch);
+  }
+
+  async function markCardsForPrice(cards,priority=0){
+    const list=uniquePriceCards(cards);
+    if(!list.length)return [];
+    const now=new Date().toISOString();
+    const patch={
+      price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
+      price_attempts:0,price_priority:priority,price_last_error:null
+    };
+    for(let i=0;i<list.length;i+=150){
+      const ids=list.slice(i,i+150).map(x=>x.id);
+      const {error}=await db.from('pokemon_cards').update(patch).eq('user_id',currentUser.id).in('id',ids);
+      if(error)throw error;
+    }
+    for(const card of list){Object.assign(card,patch);applyLocalPricePatch(card.id,patch)}
+    return list;
+  }
+
+  function queueBackgroundPrices(cards,{front=false}={}){
+    const add=[];
+    for(const card of uniquePriceCards(cards)){
+      if(!card?.id||V14.priceJobs.has(card.id)||V14.priceQueue.some(x=>x.id===card.id))continue;
+      const retryAt=Date.parse(card.price_next_retry_at||0);
+      if(retryAt&&retryAt>Date.now())continue;
+      const processingAt=Date.parse(card.price_processing_at||0);
+      if(processingAt&&processingAt>Date.now()-5*60_000)continue;
+      add.push(card);V14.priceJobs.set(card.id,true);
+    }
+    V14.priceQueue=front?[...add,...V14.priceQueue]:[...V14.priceQueue,...add];
     while(V14.priceWorkers<2&&V14.priceQueue.length)runPriceWorker();
   }
+
+  async function finishPriceFailure(card,dual,error,attempts){
+    const code=priceFailureCode(dual,error);
+    const terminal=terminalPriceFailure(code)||attempts>=6;
+    const patch=terminal?{
+      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_last_error:code
+    }:{
+      price_pending:true,price_processing_at:null,
+      price_next_retry_at:new Date(Date.now()+Math.min(30,Math.pow(2,Math.min(attempts,4)))*60_000).toISOString(),
+      price_last_error:code
+    };
+    await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
+    applyLocalPricePatch(card.id,patch);
+    return {terminal,code};
+  }
+
   async function runPriceWorker(){
     V14.priceWorkers++;
     try{
       while(V14.priceQueue.length){
-        const card=V14.priceQueue.shift();
+        const queued=V14.priceQueue.shift();
+        const card=V14.allCards.find(x=>x.id===queued.id)||queued;
+        let dual=null;
+        const attempts=(+card.price_attempts||0)+1;
         try{
-          const cardForPrice={
-            ...card,
-            apiId:card.api_id,api_id:card.api_id,
-            name:card.name,number:card.number,setName:card.set_name,setId:card.set_id,
-            languageCode:card.language_code,finish:card.finish,condition:card.condition,
-            myp_price_link:card.myp_price_link,price_br_link:card.price_br_link,price_link:card.price_link
-          };
-          const dual=await window.queryBothMarketsV122(cardForPrice,card.finish||'Normal',card.condition||'Nova');
-          const m=dual?.myp;
-          const patch={price_pending:false};
-          if(m&&(Number(m.min)||Number(m.avg)||Number(m.max))){
-            Object.assign(patch,{
-              myp_price_min:+m.min||0,myp_price_avg:+m.avg||0,myp_price_max:+m.max||0,myp_price_link:m.link||card.myp_price_link||null,myp_price_checked_at:m.checkedAt||new Date().toISOString(),
-              price_min:+m.min||0,price_avg:+m.avg||+m.min||+m.max||0,price_max:+m.max||0,currency:'BRL',
-              price_source:'MYP Cards',price_link:m.link||card.price_link||'',price_br_source:'MYP Cards',price_br_link:m.link||card.price_br_link||null,price_checked_at:m.checkedAt||new Date().toISOString()
-            });
+          const now=new Date().toISOString();
+          await db.from('pokemon_cards').update({
+            price_pending:true,price_processing_at:now,price_attempts:attempts,
+            price_requested_at:card.price_requested_at||now,price_next_retry_at:now
+          }).eq('id',card.id).eq('user_id',currentUser.id);
+          Object.assign(card,{price_pending:true,price_processing_at:now,price_attempts:attempts,price_next_retry_at:now});
+
+          dual=await window.queryBothMarketsV122(cardForPrice(card),card.finish||'Normal',card.condition||'Nova');
+          const patch=pricePatchFromDual(card,dual);
+          if(patch){
+            const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
+            if(error)throw error;
+            applyLocalPricePatch(card.id,patch);
+          }else{
+            await finishPriceFailure(card,dual,null,attempts);
           }
-          const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
-          if(error)throw error;
-          const target=V14.allCards.find(x=>x.id===card.id);if(target)Object.assign(target,patch);
-          const visible=collection.find(x=>x.id===card.id);if(visible)Object.assign(visible,patch);
           try{renderBinder();renderSummary()}catch{}
         }catch(e){
           console.warn('[V14 preço em segundo plano]',card.name,e);
-          try{await db.from('pokemon_cards').update({price_pending:false}).eq('id',card.id).eq('user_id',currentUser.id)}catch{}
+          try{await finishPriceFailure(card,dual,e,attempts)}catch{}
         }finally{
           V14.priceJobs.delete(card.id);
           await sleep(450);
@@ -1065,6 +1155,107 @@
       V14.priceWorkers=Math.max(0,V14.priceWorkers-1);
       if(V14.priceQueue.length&&V14.priceWorkers<2)runPriceWorker();
     }
+  }
+
+  function visiblePriceTargetCards(){
+    const physical=physicalCollection();
+    let cards=[];
+    if(isGeneral()){
+      let groups=viewScopedCards(groupedVirtualCards(physical));
+      if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
+        groups=groups.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
+      }
+      const ids=new Set(groups.flatMap(c=>Array.isArray(c._group_ids)?c._group_ids:[c.id]));
+      cards=physical.filter(c=>ids.has(c.id));
+    }else{
+      cards=viewScopedCards(physical);
+      if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
+        cards=cards.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
+      }
+    }
+    return uniquePriceCards(cards);
+  }
+
+  async function updateVisiblePricesV14(){
+    const cards=visiblePriceTargetCards();
+    if(!cards.length)return toast('Nenhuma carta visível com os filtros atuais.');
+    const b=byId('v12UpdatePrices'),status=byId('v12PriceProgress');
+    busy(b,true,'Preparando fila…');
+    try{
+      await markCardsForPrice(cards,50);
+      queueBackgroundPrices(cards,{front:true});
+      if(status)status.textContent=cards.length+' carta(s) visível(is) na fila. A atualização continua mesmo com o app fechado.';
+      toast('Atualização iniciada para '+cards.length+' carta(s) visível(is).');
+      try{renderBinder();renderSummary()}catch{}
+    }catch(e){
+      console.error(e);
+      toast('Não consegui iniciar a atualização filtrada.');
+    }finally{busy(b,false)}
+  }
+
+  V14.updateVisiblePrices=updateVisiblePricesV14;
+
+  function rewireFilteredPriceButton(){
+    const old=byId('v12UpdatePrices');if(!old||old.dataset.v148==='1')return;
+    const b=old.cloneNode(true);
+    b.dataset.v148='1';
+    b.textContent='↻ Atualizar preços visíveis';
+    old.replaceWith(b);
+    b.addEventListener('click',updateVisiblePricesV14);
+  }
+
+  function syncSingleCardPriceButton(){
+    const b=byId('btnUpdateCardPrice');if(!b)return;
+    const visible=!!editingCardId&&!!V14.allCards.find(x=>x.id===editingCardId);
+    b.classList.toggle('hidden',!visible);
+    b.disabled=!visible;
+  }
+
+  async function updateEditingCardPriceNow(){
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    if(!card)return toast('Abra uma carta já salva para atualizar o preço.');
+    const b=byId('btnUpdateCardPrice');
+    busy(b,true,'Atualizando esta carta…');
+    let dual=null;
+    try{
+      const now=new Date().toISOString();
+      const pending={
+        price_pending:true,price_processing_at:now,price_requested_at:now,price_next_retry_at:now,
+        price_attempts:0,price_priority:100,price_last_error:null
+      };
+      await db.from('pokemon_cards').update(pending).eq('id',card.id).eq('user_id',currentUser.id);
+      Object.assign(card,pending);
+
+      dual=await window.queryBothMarketsV122(cardForPrice(card),card.finish||'Normal',card.condition||'Nova');
+      const patch=pricePatchFromDual(card,dual);
+      if(patch){
+        const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
+        if(error)throw error;
+        applyLocalPricePatch(card.id,patch);
+        selectedMarket=dual;
+        setPrices(patch.price_min,patch.price_avg,patch.price_max);
+        if(byId('marketStatus'))byId('marketStatus').textContent='MYP Cards · atualizado agora';
+        if(patch.myp_price_link){
+          byId('mypcardsLink').href=patch.myp_price_link;
+          byId('mypcardsLink').classList.remove('hidden');
+        }
+        renderBinder();renderSummary();
+        toast('Preço desta carta atualizado.');
+      }else{
+        const failure=await finishPriceFailure(card,dual,null,1);
+        if(failure.terminal){
+          if(byId('marketStatus'))byId('marketStatus').textContent='Sem oferta compatível agora';
+          toast('Não encontrei oferta compatível para esta carta.');
+        }else{
+          if(byId('marketStatus'))byId('marketStatus').textContent='Falhou agora · prioridade máxima na fila';
+          toast('Consulta falhou agora; esta carta ficou em primeiro na fila automática.');
+        }
+      }
+    }catch(e){
+      console.error(e);
+      try{await finishPriceFailure(card,dual,e,1)}catch{}
+      toast('Não consegui atualizar agora; a carta ficou na fila automática.');
+    }finally{busy(b,false);syncSingleCardPriceButton()}
   }
 
   async function saveSelectedCardV14(){
@@ -1369,6 +1560,9 @@
   function wireFastAdd(){
     const b=byId('btnAddSelected');if(b)b.onclick=addSelectedFast;
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
+    const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
+    syncSingleCardPriceButton();
+    rewireFilteredPriceButton();
   }
 
   async function bootV14(){
@@ -1387,6 +1581,11 @@
     }).observe(app,{attributes:true,attributeFilter:['class']});
     const add=byId('addDialog');
     if(add)new MutationObserver(()=>wireFastAdd()).observe(add,{attributes:true,attributeFilter:['open']});
+    const cardDialog=byId('cardDialog');
+    if(cardDialog)new MutationObserver(()=>{
+      wireFastAdd();
+      if(cardDialog.open)syncSingleCardPriceButton();
+    }).observe(cardDialog,{attributes:true,attributeFilter:['open']});
     const area=document.querySelector('.binder-area');
     const spread=document.querySelector('#binderStage .binder-spread');
     if(typeof ResizeObserver!=='undefined'){

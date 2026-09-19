@@ -5,6 +5,7 @@ on:
       - v140-production-fixes
     paths:
       - 'v140.js'
+      - 'v122.js'
       - 'v140.css'
       - 'index.html'
       - 'script.js'
@@ -13,6 +14,7 @@ on:
       - 'api/jp-card-image.js'
       - 'api/image-proxy.js'
       - 'sw.js'
+      - 'supabase/functions/pokemon-price-worker/index.ts'
       - '.github/workflows/v140-core-tests.yml'
   pull_request:
     branches:
@@ -42,6 +44,7 @@ jobs:
         run: |
           node --check script.js
           node --check v11fix.js
+          node --check v122.js
           node --check v140.js
           node --check api/master-set.js
           node --check api/card-image-fallback.js
@@ -103,9 +106,13 @@ jobs:
               binderViewScope:/binder_view_scope/.test(js)&&/v14BinderViewScope/.test(js)&&/Mostrar no fichário/.test(js),
               viewScopeCss:/v14-binder-view-scope/.test(css),
               rapidPageSkip:/cancelPageFlip/.test(pageJs)&&/pageFlipSuppressUntil/.test(pageJs)&&/rapidWindow/.test(pageJs)&&/pageFlipBusy/.test(pageJs),
-              topbarBinderCentered:/binder-spread/.test(js)&&/desired=sr\.left-ar\.left\+\(sr\.width\/2\)/.test(js),
+              topbarBinderEdges:/binder-spread/.test(js)&&/bar\.style\.left=\(sr\.left-ar\.left\)\+'px'/.test(js)&&/bar\.style\.width=sr\.width\+'px'/.test(js)&&/bar\.style\.transform='none'/.test(js),
               goStart:/v14GoStart/.test(js)&&/goToBinderStart/.test(js)&&/cancelBinderPageFlipV14/.test(pageJs),
-              binderSearch:/v14BinderSearch/.test(js)&&/binderSearchScore/.test(js)&&/goToBinderSearchCard/.test(js)&&/v14-binder-search/.test(css)
+              binderSearch:/v14BinderSearch/.test(js)&&/binderSearchScore/.test(js)&&/goToBinderSearchCard/.test(js)&&/v14-binder-search/.test(css),
+              filteredPriceRefresh:/visiblePriceTargetCards/.test(js)&&/updateVisiblePricesV14/.test(js)&&/Atualizar preços visíveis/.test(fs.readFileSync('v122.js','utf8')),
+              singleCardPrice:/btnUpdateCardPrice/.test(html)&&/updateEditingCardPriceNow/.test(js)&&/price_priority:100/.test(js),
+              persistentPriceState:/price_processing_at/.test(js)&&/price_next_retry_at/.test(js)&&/price_last_error/.test(js),
+              persistentWorkerSource:fs.existsSync('supabase/functions/pokemon-price-worker/index.ts')
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
