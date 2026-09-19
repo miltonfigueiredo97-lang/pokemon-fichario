@@ -96,7 +96,13 @@ function rawVariantsOf(card,lang){
 function synthesizeMissingSetBriefs(list,setId,expectedCount){
   const out=[...list];
   if(!expectedCount||out.length>=expectedCount)return out;
-  const localIds=out.map(x=>String(x?.localId||'')).filter(Boolean);
+  const localIds=out.map(x=>{
+    const explicit=String(x?.localId||'').trim();
+    if(explicit)return explicit;
+    const id=String(x?.id||'');
+    const prefix=String(setId||'')+'-';
+    return id.startsWith(prefix)?id.slice(prefix.length):'';
+  }).filter(Boolean);
   if(!localIds.length)return out;
 
   const prefixed=localIds.map(id=>id.match(/^([^0-9]+)(\d+)$/)).filter(Boolean);
@@ -116,7 +122,12 @@ function synthesizeMissingSetBriefs(list,setId,expectedCount){
   }
 
   if(!makeLocal)return out;
-  const seen=new Set(out.map(x=>String(x?.localId||'')));
+  const seen=new Set(out.map(x=>{
+    const explicit=String(x?.localId||'').trim();
+    if(explicit)return explicit;
+    const id=String(x?.id||''),prefix=String(setId||'')+'-';
+    return id.startsWith(prefix)?id.slice(prefix.length):'';
+  }).filter(Boolean));
   for(let n=1;n<=expectedCount;n++){
     const localId=makeLocal(n);
     if(seen.has(localId))continue;
