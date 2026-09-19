@@ -116,12 +116,13 @@ jobs:
               singleCardPrice:/btnUpdateCardPrice/.test(html)&&/updateEditingCardPriceNow/.test(js)&&/price_priority:100/.test(js),
               persistentPriceState:/price_processing_at/.test(js)&&/price_next_retry_at/.test(js)&&/price_last_error/.test(js),
               persistentWorkerSource:fs.existsSync('supabase/functions/pokemon-price-worker/index.ts'),
-              toolbarClearance:/bar\.style\.top=Math\.max\(6,sr\.top-ar\.top-barHeight-5\)\+'px'/.test(js)&&/padding:54px 46px 18px!important/.test(css),
+              toolbarClearance:/top:6px!important/.test(css)&&/padding:52px 18px 8px!important/.test(css)&&/place-items:start center!important/.test(css),
               summaryStatsRemoved:/#summaryPanel \.summary-grid\{[\s\S]*display:none!important/.test(css),
               compactSummaryActions:/#summaryPanel \.action-grid\{[\s\S]*repeat\(2,minmax\(0,1fr\)\)/.test(css)&&/#summaryPanel #v12UpdatePrices/.test(css)&&/#summaryPanel #v112Logout/.test(css),
-              usefulDesktopRail:/v149-useful-rail/.test(railJs)&&/dataset\.kind/.test(railJs)&&/Escanear carta/.test(railJs)&&/Abrir páginas/.test(railJs)&&!/Recolher menu/.test(railJs),
+              desktopRailRemoved:/document\.querySelectorAll\('\.v11-rail'\)\.forEach\(el=>el\.remove\(\)\)/.test(railJs)&&/\.v11-rail\{display:none!important\}/.test(css),
               filterSafety:/setStatusFilterV14/.test(js)&&/V14\.viewScope='all'/.test(js)&&/activeStatusFilter='all'/.test(js),
-              duplicateMarketRemoved:/\.v122-market-sources\{display:none!important\}/.test(css)
+              duplicateMarketRemoved:/\.v122-market-sources\{display:none!important\}/.test(css),
+              groupedSummaryActions:/organizeSummaryActionsV14/.test(js)&&/v1411Group_prices/.test(js)&&/v1411Group_excel/.test(js)&&/v1411Group_export/.test(js)&&/v1411Group_settings/.test(js)&&/v1411-action-group/.test(css)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
