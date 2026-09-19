@@ -31,6 +31,9 @@ async function fetchJina(target,timeout=18000){
     const r=await fetch('https://r.jina.ai/'+target,{headers:{'Accept':'text/plain','X-Timeout':'12','X-Engine':'browser','X-No-Cache':'true'},signal:controller.signal});
     const text=await r.text();
     if(!r.ok){const e=new Error('Jina HTTP '+r.status);e.code='jina_http';throw e}
+    if(/just a moment|performing security verification|cf-chl|cloudflare/i.test(text)){
+      const e=new Error('Cloudflare bloqueou a leitura da Liga');e.code='cloudflare_blocked';throw e;
+    }
     return text;
   }finally{clearTimeout(timer)}
 }
