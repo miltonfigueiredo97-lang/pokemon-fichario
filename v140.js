@@ -661,7 +661,8 @@
     const setId=card.setId||card.set_id||'';
     const local=String(card.number||'').match(/\d+/)?.[0]||'';
     if(setId&&local){
-      const exact='/api/jp-card-image?set='+encodeURIComponent(setId)+'&localId='+encodeURIComponent(local);
+      const p=new URLSearchParams({set:setId,localId:local,name:card.name||'',hp:String(card.hp||''),rarity:card.rarity||''});
+      const exact='/api/jp-card-image?'+p.toString();
       V14.jpImageCache.set(key,exact);
       return exact;
     }
