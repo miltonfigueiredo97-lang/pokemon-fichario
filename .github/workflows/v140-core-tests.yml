@@ -2,11 +2,15 @@ name: V14 core tests
 on:
   push:
     branches:
-      - v140-full-overhaul
+      - v140-production-fixes
     paths:
       - 'v140.js'
+      - 'v140.css'
+      - 'index.html'
+      - 'script.js'
       - 'api/master-set.js'
       - 'api/card-image-fallback.js'
+      - 'api/jp-card-image.js'
       - 'sw.js'
       - '.github/workflows/v140-core-tests.yml'
 permissions:
@@ -21,9 +25,11 @@ jobs:
         with: {node-version: 22}
       - name: Static syntax
         run: |
+          node --check script.js
           node --check v140.js
           node --check api/master-set.js
           node --check api/card-image-fallback.js
+          node --check api/jp-card-image.js
           node --check sw.js
       - name: API behavior
         run: |
@@ -51,13 +57,21 @@ jobs:
             const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
 
             const js=fs.readFileSync('v140.js','utf8');
+            const html=fs.readFileSync('index.html','utf8');
+            const css=fs.readFileSync('v140.css','utf8');
             const assertions={
               backgroundPrice:/queueBackgroundPrices/.test(js)&&/price_pending/.test(js)&&/Adicionando/.test(js),
               multiBinder:/pokemon_binders/.test(js)&&/Geral — todos os fichários/.test(js),
               sortGuard:/Movimentação só fica disponível/.test(js),
               scanner:/ocrCard/.test(js)&&/scanLiveTick/.test(js)&&/Confirme a carta/.test(js),
-              masterSet:/api\/master-set/.test(js)&&/Master Set/.test(js),
-              japanese:/card-image-fallback/.test(js)
+              masterSet:/api\/master-set/.test(js)&&/Master Set/.test(js)&&/Preços de Tenho e Não tenho/.test(js),
+              japanese:/card-image-fallback/.test(js)&&/jp-card-image/.test(js),
+              priceSort:/price_desc/.test(js)&&/price_asc/.test(js)&&/maior → menor/.test(js)&&/menor → maior/.test(js),
+              favorites:/favorites/.test(js)&&/canonicalCardIdentityKey/.test(js)&&/★ Favoritas/.test(js),
+              groupedGeneral:/groupedVirtualCards/.test(js)&&/_group_count/.test(js),
+              valueScope:/summary_value_scope/.test(js)&&/Só as que tenho/.test(js)&&/Só as que não tenho/.test(js),
+              mobileArtifact:!html.includes('\\\\n'),
+              valueScopeCss:/v14-value-scope-control/.test(css)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
