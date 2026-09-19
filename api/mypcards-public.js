@@ -135,12 +135,60 @@ module.exports=async function handler(req,res){
   const lang=String(req.query.lang||'').trim();
   const finish=String(req.query.finish||'Normal').trim();
   const condition=String(req.query.condition||'NM').trim();
+  const fast=String(req.query.fast||'')==='1';
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  // Fonte principal gratuita: abrir a página pública real em Chromium.
+  const directLink=safeMypProductUrl(link);
+
+  // Atualização manual de uma única carta: nunca prende a interface por
+  // Chromium/Apify. Se já sabemos a página da MYP, tentamos uma leitura direta
+  // via Reader por poucos segundos. Se não der, a carta permanece na fila
+  // persistente de alta prioridade para o worker do servidor.
+  if(fast){
+    if(!directLink){
+      return res.status(200).json({
+        ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'Fast Reader',
+        message:'Sem link MYP conhecido; atualização completa seguirá pela fila prioritária.'
+      });
+    }
+    try{
+      const text=await fetchJina(directLink,8000);
+      const identity=pageIdentity(text);
+      if(!matchesWanted(identity,{name,number,set})){
+        return res.status(200).json({
+          ok:false,error:'wrong_product',source:'MYP Cards',provider:'Fast Reader',link:directLink,
+          message:'O link salvo não corresponde à carta consultada.'
+        });
+      }
+      const market=extractMarket(identity,finish,condition);
+      if(hasAnyMarket(market)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
+          name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
+          finish,condition,link:directLink,
+          min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+          samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+          exactVariant:market.exactVariant!==false,
+          complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+          checkedAt:new Date().toISOString()
+        });
+      }
+      return res.status(200).json({
+        ok:false,error:'fast_no_price',source:'MYP Cards',provider:'Fast Reader',link:directLink,
+        message:'A leitura rápida não encontrou cotação utilizável; a fila prioritária continuará no servidor.'
+      });
+    }catch(error){
+      return res.status(200).json({
+        ok:false,error:error?.name==='AbortError'?'fast_timeout':'fast_unavailable',
+        source:'MYP Cards',provider:'Fast Reader',link:directLink,
+        message:'A leitura rápida não concluiu; a fila prioritária continuará no servidor.'
+      });
+    }
+  }
+
+  // Fonte completa: abrir a página pública real em Chromium.
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
-  const directLink=safeMypProductUrl(link);
   {
     const browserKey='browser:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
