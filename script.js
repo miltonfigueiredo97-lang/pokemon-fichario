@@ -9,7 +9,7 @@ const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 const LANG={"pt-br":"Português",en:"Inglês",ja:"Japonês"};
 const STATUS={missing:"Não tenho",wanted:"Quero",owned:"Tenho",ordered:"Pedido"};
 let currentUser=null,currentProfile=null,collection=[],currentPage=1,activeStatusFilter="all";
-let settings={binder_name:"Meu Fichário",binder_pages:1,binder_background:"graphite",show_values:false,display_price_mode:"avg",total_price_mode:"avg"};
+let settings={binder_name:"Meu Fichário",binder_pages:1,binder_background:"graphite",show_values:false,display_price_mode:"avg",total_price_mode:"avg",summary_value_scope:"all"};
 let selectedCard=null,selectedStatus="owned",selectedMarket=null,editingCardId=null,pendingPosition=null;
 let friendships=[],profilesById=new Map(),catalogResults=[],catalogSelection=new Map(),contextCard=null,draggedCard=null,ocrLoaded=false;
 let catalogSearchSeq=0,catalogSearchTimer=null;
