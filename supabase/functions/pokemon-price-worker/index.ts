@@ -6,8 +6,13 @@ const BATCH = 3;
 const STALE_MS = 5 * 60 * 1000;
 const TERMINAL = new Set(["variant_not_found","wrong_product","product_not_found","no_price_data"]);
 
+const CORS={
+  "Access-Control-Allow-Origin":"*",
+  "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods":"POST, OPTIONS"
+};
 function json(data: unknown, status=200){
-  return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Connection":"keep-alive"}});
+  return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Connection":"keep-alive",...CORS}});
 }
 function num(v: unknown){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
 
@@ -39,6 +44,7 @@ async function fetchPrice(card: any){
 }
 
 Deno.serve(async(req:Request)=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:CORS});
   if(req.method!=="POST")return json({ok:false,error:"method_not_allowed"},405);
 
   const url=Deno.env.get("SUPABASE_URL");
