@@ -252,9 +252,7 @@
             '<option value="price_asc">Preço · menor → maior</option>'+
             '<option value="price_desc">Preço · maior → menor</option>'+
           '</select>'+
-          '<button id="v14FavoritesOnly" class="icon-text-btn v14-fav-filter" type="button" aria-pressed="false">☆ Favoritos</button>'+
-          '<button id="v14RenameBinder" class="icon-text-btn" type="button">Renomear</button>'+
-          '<button id="v14DeleteBinder" class="icon-text-btn" type="button">Excluir</button>'+
+          '<button id="v14DeleteBinder" class="v14-delete-binder" type="button" aria-label="Excluir fichário">🗑 Excluir fichário</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
         host.appendChild(wrap);
         requestAnimationFrame(positionUnifiedTopbar);
@@ -291,6 +289,18 @@
               '<button id="v14CreateMaster" class="btn btn-primary full" type="button">Criar Master Set</button>'+
             '</div>'+
           '</section>'+
+        '</div>';
+      document.body.appendChild(d);
+    }
+    if(!byId('v14DeleteDialog')){
+      const d=document.createElement('dialog');
+      d.id='v14DeleteDialog';
+      d.className='sheet-dialog v14-delete-dialog';
+      d.innerHTML=
+        '<div class="dialog-shell v14-delete-shell">'+
+          '<div class="dialog-head"><div><p class="kicker v14-danger-kicker">EXCLUSÃO PERMANENTE</p><h2 id="v14DeleteTitle">Excluir fichário?</h2><p id="v14DeleteMessage" class="muted compact-copy"></p></div><button class="icon-only" data-v14-close="v14DeleteDialog" type="button" aria-label="Cancelar exclusão">×</button></div>'+
+          '<div class="v14-delete-warning"><strong>Esta ação não pode ser desfeita.</strong><span>As cartas deste fichário deixam de existir na sua base de dados, junto com preços, status, posições e favoritos salvos nelas.</span></div>'+
+          '<div class="v14-delete-actions"><button id="v14CancelDelete" class="btn btn-secondary" type="button">Cancelar</button><button id="v14ConfirmDelete" class="btn v14-danger-button" type="button">Excluir fichário</button></div>'+
         '</div>';
       document.body.appendChild(d);
     }
@@ -331,8 +341,9 @@
     byId('v14TabSet')?.addEventListener('click',()=>switchCreateTab('set'));
     byId('v14CreateEmpty')?.addEventListener('click',createEmptyBinder);
     byId('v14AddBinder')?.addEventListener('click',()=>{switchCreateTab('empty');byId('v14BinderDialog')?.showModal()});
-    byId('v14RenameBinder')?.addEventListener('click',renameBinder);
-    byId('v14DeleteBinder')?.addEventListener('click',deleteBinder);
+    byId('v14DeleteBinder')?.addEventListener('click',openDeleteBinderDialog);
+    byId('v14CancelDelete')?.addEventListener('click',()=>{const d=byId('v14DeleteDialog');if(d?.open)d.close()});
+    byId('v14ConfirmDelete')?.addEventListener('click',confirmDeleteBinder);
     byId('v14BinderSelect')?.addEventListener('change',e=>selectBinder(e.target.value));
     byId('v14SortSelect')?.addEventListener('change',e=>setSortMode(e.target.value));
     byId('v14GoStart')?.addEventListener('click',goToBinderStart);
@@ -348,7 +359,6 @@
         applyBinderSearch('');
       }
     });
-    byId('v14FavoritesOnly')?.addEventListener('click',toggleFavoritesFilter);
     byId('v14ValueScope')?.addEventListener('change',async e=>{
       const value=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
       settings.summary_value_scope=value;
@@ -495,15 +505,12 @@
       sel.value=V14.activeBinderId||'all';
     }
     const sort=byId('v14SortSelect');if(sort)sort.value=activeSort();
-    const rename=byId('v14RenameBinder');if(rename)rename.disabled=isGeneral();
-    const del=byId('v14DeleteBinder');if(del)del.disabled=isGeneral();
-    const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
-    const fav=byId('v14FavoritesOnly');
-    if(fav){
-      fav.classList.toggle('active',isFavorites());
-      fav.setAttribute('aria-pressed',String(isFavorites()));
-      fav.textContent=isFavorites()?'★ Favoritas':'☆ Favoritas';
+    const del=byId('v14DeleteBinder');
+    if(del){
+      del.disabled=isGeneral();
+      del.classList.toggle('hidden',isGeneral());
     }
+    const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
     const hint=document.querySelector('.binder-hint');
     if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização filtrada/ordenada · movimentação desativada');
     if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value=binderViewScope();
@@ -577,20 +584,70 @@
     syncLegacySettings();renderBinderControls();renderAll();toast('Fichário renomeado.');
   }
 
-  async function deleteBinder(){
+  function openDeleteBinderDialog(){
     const b=activeBinder();if(!b)return;
-    if(!confirm('Excluir o fichário "'+b.name+'" e todas as cartas dele? Esta ação não pode ser desfeita.'))return;
-    const {error}=await db.from('pokemon_binders').delete().eq('id',b.id).eq('user_id',currentUser.id);
-    if(error){console.error(error);return toast('Não consegui excluir o fichário: '+(error.message||'erro no banco'))}
-    V14.binders=V14.binders.filter(x=>x.id!==b.id);
-    V14.allCards=V14.allCards.filter(x=>x.binder_id!==b.id);
-    if(!V14.binders.length){
-      V14.activeBinderId=null;
-      await ensureFirstBinder();
-    }else V14.activeBinderId=V14.binders[0].id;
-    currentPage=1;
-    await db.from('pokemon_settings').update({current_binder_id:V14.activeBinderId}).eq('user_id',currentUser.id);
-    collection=physicalCollection();syncLegacySettings();renderBinderControls();renderAll();toast('Fichário excluído.');
+    const cards=V14.allCards.filter(x=>x.binder_id===b.id);
+    const count=cards.length;
+    const d=byId('v14DeleteDialog');if(!d)return;
+    d.dataset.binderId=b.id;
+    byId('v14DeleteTitle').textContent='Excluir "'+b.name+'"?';
+    byId('v14DeleteMessage').textContent=count
+      ? count+' carta'+(count===1?' será':'s serão')+' excluída'+(count===1?'':'s')+' permanentemente da sua base de dados.'
+      :'Este fichário está vazio e será excluído permanentemente.';
+    const confirm=byId('v14ConfirmDelete');
+    if(confirm)confirm.textContent=count
+      ? 'Excluir fichário e '+count+' carta'+(count===1?'':'s')
+      :'Excluir fichário vazio';
+    d.showModal();
+  }
+
+  async function confirmDeleteBinder(){
+    const d=byId('v14DeleteDialog');
+    const id=d?.dataset?.binderId;
+    const b=V14.binders.find(x=>x.id===id);
+    if(!b)return;
+    const cardIds=V14.allCards.filter(x=>x.binder_id===b.id).map(x=>x.id);
+    const btn=byId('v14ConfirmDelete');
+    busy(btn,true,'Excluindo…');
+    try{
+      const {data,error}=await db.from('pokemon_binders')
+        .delete()
+        .eq('id',b.id)
+        .eq('user_id',currentUser.id)
+        .select('id');
+      if(error)throw error;
+      if(!data?.length)throw new Error('Fichário não encontrado para exclusão.');
+
+      V14.binders=V14.binders.filter(x=>x.id!==b.id);
+      V14.allCards=V14.allCards.filter(x=>x.binder_id!==b.id);
+      V14.priceQueue=V14.priceQueue.filter(x=>x.binder_id!==b.id);
+      for(const cardId of cardIds)V14.priceJobs.delete(cardId);
+
+      if(!V14.binders.length){
+        V14.activeBinderId=null;
+        await ensureFirstBinder();
+      }else{
+        V14.activeBinderId=V14.binders[0].id;
+      }
+      V14.viewScope='all';
+      V14.binderSearchQuery='';
+      currentPage=1;
+      try{activeStatusFilter='all'}catch{}
+      await db.from('pokemon_settings')
+        .update({current_binder_id:V14.activeBinderId})
+        .eq('user_id',currentUser.id);
+      collection=physicalCollection();
+      syncLegacySettings();
+      renderBinderControls();
+      renderAll();
+      if(d?.open)d.close();
+      toast('Fichário e suas cartas foram excluídos permanentemente.');
+    }catch(error){
+      console.error(error);
+      toast('Não consegui excluir o fichário: '+(error?.message||'erro no banco'));
+    }finally{
+      busy(btn,false);
+    }
   }
 
   async function createEmptyBinder(){
