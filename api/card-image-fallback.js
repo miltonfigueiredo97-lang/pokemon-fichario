@@ -11,7 +11,10 @@ function score(c,w){
     if(cn===wn)s+=80;
     else if(cn.includes(wn)||wn.includes(cn))s+=45;
   }
-  if(w.hp&&Number(c?.hp)===Number(w.hp))s+=35;
+  if(w.hp){
+    if(Number(c?.hp)===Number(w.hp))s+=45;
+    else s-=70;
+  }
   if(w.number&&String(c?.localId||'').replace(/^0+/,'')===String(w.number).replace(/\D/g,'').replace(/^0+/,''))s+=12;
   if(w.rarity&&norm(c?.rarity)===norm(w.rarity))s+=10;
   if(c?.image)s+=20;
@@ -52,7 +55,7 @@ module.exports=async function handler(req,res){
     }
     candidates.sort((a,b)=>b.score-a.score);
     const best=candidates[0];
-    const out=best&&best.score>=80?{ok:true,...best}:{ok:false,error:'no_safe_fallback'};
+    const minScore=hp?105:80;\n    const out=best&&best.score>=minScore?{ok:true,...best}:{ok:false,error:'no_safe_fallback'};
     CACHE.set(key,out);
     return res.status(200).json(out);
   }catch(error){
