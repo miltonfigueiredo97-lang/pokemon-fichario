@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.5';
+  const APP_VERSION='V13.6-test';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.6',title:'Preço exibido configurável e ausência de oferta correta',items:[
+      'Dois seletores independentes permitem escolher mínimo, médio ou máximo para o valor mostrado nas cartas e para a soma da coleção.',
+      'A escolha é salva por usuário e não altera os preços coletados; muda somente qual campo é exibido/somado.',
+      'MYP sem anúncio para condição/acabamento deixa de aparecer como falha e não conserva preço antigo de outra condição.',
+      'Liga continua sendo consultada separadamente; quando o servidor da Liga bloqueia datacenters, o app não inventa cotação.'
+    ]},
     {version:'V13.5',title:'Cotação por condição real',items:[
       'MYP calcula mínimo, médio e máximo somente entre ofertas da condição escolhida.',
       'Acabamento vazio na MYP conta como acabamento padrão da impressão; acabamentos explicitamente diferentes são excluídos.',
@@ -181,7 +187,7 @@
       return out;
     }
     if(!j?.ok){
-      const out={source:j?.source||source,failed:true,error:j?.error||'unknown',message:j?.message||'',needsApifyToken:!!j?.needsApifyToken,needsMypToken:!!j?.needsToken,provider:j?.provider||'',connector:j?.connector||'',httpStatus:r?.status||0};
+      const out={source:j?.source||source,failed:true,error:j?.error||'unknown',message:j?.message||'',needsApifyToken:!!j?.needsApifyToken,needsMypToken:!!j?.needsToken,provider:j?.provider||'',connector:j?.connector||'',httpStatus:r?.status||0,link:j?.link||'',samples:j?.samples??0,exactVariant:j?.exactVariant===true,finish:j?.finish||finish||'Normal',condition:j?.condition||condition||'Nova'};
       console.warn('[Preços]',source,card?.name,card?.number,out);
       return out;
     }
@@ -261,14 +267,20 @@
     const oldLiga={min:+card?.liga_price_min||0,avg:+card?.liga_price_avg||0,max:+card?.liga_price_max||0,link:card?.liga_price_link||'',checkedAt:card?.liga_price_checked_at||null};
     const oldMyp={min:+card?.myp_price_min||0,avg:+card?.myp_price_avg||0,max:+card?.myp_price_max||0,link:card?.myp_price_link||'',checkedAt:card?.myp_price_checked_at||null};
 
-    // Só substitui uma fonte quando ela realmente devolveu algum preço.
-    // Falha, not_found e 0/0/0 preservam integralmente a última cotação salva.
     const ligaHasNew=hasPrice(dual?.liga);
     const mypHasNew=hasPrice(dual?.myp);
-    const liga=ligaHasNew?dual.liga:oldLiga;
-    const myp=mypHasNew?dual.myp:oldMyp;
-    const gotNew=ligaHasNew||mypHasNew;
 
+    // A MYP encontrou a carta, mas confirmou que NÃO existe anúncio para a
+    // condição/acabamento selecionados. Nesse caso, preservar um preço antigo
+    // seria enganoso: limpamos a cotação antiga dessa fonte e mantemos o link.
+    const mypVariantEmpty=dual?.myp?.failed===true&&dual?.myp?.error==='variant_not_found';
+
+    const liga=ligaHasNew?dual.liga:oldLiga;
+    const myp=mypHasNew
+      ?dual.myp
+      :(mypVariantEmpty?{min:0,avg:0,max:0,link:dual?.myp?.link||oldMyp.link||'',checkedAt:new Date().toISOString()}:oldMyp);
+
+    const gotNew=ligaHasNew||mypHasNew||mypVariantEmpty;
     const primary=primaryMarket(liga,myp);
     const source=primarySource(liga,myp);
     const oldPrimary={
@@ -277,21 +289,20 @@
       link:card?.price_br_link||card?.price_link||''
     };
 
+    const noPrimaryAfterVariantClear=mypVariantEmpty&&!hasPrice(liga)&&!hasPrice(myp);
+
     return {
       liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,liga_price_link:liga.link||oldLiga.link||null,liga_price_checked_at:liga.checkedAt||oldLiga.checkedAt||null,
       myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,myp_price_link:myp.link||oldMyp.link||null,myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
-      price_min:gotNew?(+primary?.min||0):oldPrimary.min,
-      // O painel de mercado mantém média vazia quando existe só uma oferta,
-      // mas o valor principal do fichário precisa continuar útil: usa média
-      // quando existe e, na falta dela, a única/mínima oferta disponível.
-      price_avg:gotNew?(+primary?.avg||+primary?.min||+primary?.max||0):oldPrimary.avg,
-      price_max:gotNew?(+primary?.max||0):oldPrimary.max,
+      price_min:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.min||0):oldPrimary.min),
+      price_avg:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.avg||+primary?.min||+primary?.max||0):oldPrimary.avg),
+      price_max:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.max||0):oldPrimary.max),
       currency:'BRL',
-      price_source:gotNew?source:oldPrimary.source,
-      price_link:gotNew?(primary?.link||oldPrimary.link||ligaSearchUrl(card)):(oldPrimary.link||ligaSearchUrl(card)),
-      price_br_source:gotNew&&source!=='Sem preço BR'?source:(card?.price_br_source||null),
-      price_br_link:gotNew?(primary?.link||card?.price_br_link||null):(card?.price_br_link||null),
-      price_checked_at:gotNew?(primary?.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
+      price_source:noPrimaryAfterVariantClear?'Sem preço BR':(gotNew?source:oldPrimary.source),
+      price_link:noPrimaryAfterVariantClear?(myp.link||oldPrimary.link||ligaSearchUrl(card)):(gotNew?(primary?.link||oldPrimary.link||ligaSearchUrl(card)):(oldPrimary.link||ligaSearchUrl(card))),
+      price_br_source:noPrimaryAfterVariantClear?null:(gotNew&&source!=='Sem preço BR'?source:(card?.price_br_source||null)),
+      price_br_link:noPrimaryAfterVariantClear?(myp.link||card?.price_br_link||null):(gotNew?(primary?.link||card?.price_br_link||null):(card?.price_br_link||null)),
+      price_checked_at:gotNew?(primary?.checkedAt||myp.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
     };
   }
 
@@ -603,8 +614,8 @@
     const b=$v('#v12UpdatePrices'),status=$v('#v12PriceProgress');
     if(b)b.disabled=true;
 
-    let updated=0,failed=0,ligaUpdated=0;
-    const failures=[];
+    let updated=0,failed=0,ligaUpdated=0,noOffer=0;
+    const failures=[],noOffers=[];
 
     try{
       for(let i=0;i<cards.length;i++){
@@ -634,6 +645,16 @@
             };
             await persistDual(card,partial);
             updated++;
+          }else if(myp?.error==='variant_not_found'){
+            // Não é erro de atualização: a página foi lida e não há anúncio para
+            // a condição/acabamento da carta. Persistimos o vazio para não manter
+            // preço antigo de outra condição.
+            await persistDual(card,{
+              source:'Sem preço BR',min:0,avg:0,max:0,link:myp?.link||'',
+              checkedAt:new Date().toISOString(),liga:null,myp,finish,condition
+            });
+            noOffer++;
+            noOffers.push(`${card.name}: sem oferta ${condition}/${finish}`);
           }else{
             failed++;
             failures.push(`${card.name}: MYP ${myp?.error||'sem preço'}`);
@@ -673,8 +694,9 @@
 
       if(status){
         const detail=failures.length?(' · '+failures.slice(0,2).join(' | ')):'';
-        status.textContent=`Concluído: MYP ${updated}/${cards.length} · Liga ${ligaUpdated}/${cards.length} · ${failed} falha(s)${detail}`;
-        status.title=failures.join('\n');
+        const emptyDetail=noOffers.length?(' · '+noOffers.slice(0,2).join(' | ')):'';
+        status.textContent=`Concluído: MYP ${updated}/${cards.length} · Liga ${ligaUpdated}/${cards.length} · ${noOffer} sem oferta · ${failed} falha(s)${detail}${emptyDetail}`;
+        status.title=[...failures,...noOffers].join('\n');
       }
       toast(updated
         ?`MYP atualizada automaticamente em ${updated}/${cards.length} carta(s).`
