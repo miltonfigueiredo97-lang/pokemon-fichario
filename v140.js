@@ -258,6 +258,7 @@
             '<option value="price_asc">Preço · menor → maior</option>'+
             '<option value="price_desc">Preço · maior → menor</option>'+
           '</select>'+
+          '<button id="v1421AddCard" class="btn v1421-add-card" type="button">＋ Carta</button>'+
           '<button id="v14DeleteBinder" class="v14-delete-binder" type="button" aria-label="Excluir fichário">🗑 Excluir fichário</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
         host.appendChild(wrap);
@@ -365,6 +366,10 @@
     byId('v14TabEmpty')?.addEventListener('click',()=>switchCreateTab('empty'));
     byId('v14TabSet')?.addEventListener('click',()=>switchCreateTab('set'));
     byId('v14CreateEmpty')?.addEventListener('click',createEmptyBinder);
+    byId('v1421AddCard')?.addEventListener('click',()=>{
+      if(isGeneral())return;
+      openAddForPosition(currentPage);
+    });
     byId('v14AddBinder')?.addEventListener('click',openBinderCreator);
     byId('v14DeleteBinder')?.addEventListener('click',openDeleteBinderDialog);
     byId('v14CancelDelete')?.addEventListener('click',()=>{const d=byId('v14DeleteDialog');if(d?.open)d.close()});
@@ -604,6 +609,11 @@
     if(del){
       del.disabled=isGeneral();
       del.classList.toggle('hidden',isGeneral());
+    }
+    const topAdd=byId('v1421AddCard');
+    if(topAdd){
+      topAdd.disabled=isGeneral();
+      topAdd.classList.toggle('hidden',isGeneral());
     }
     const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
     const hint=document.querySelector('.binder-hint');
