@@ -1,0 +1,18 @@
+UTC: 2026-09-19T00:15:43Z
+
+===== V13.3 auto MYP Lugia V 138/195 =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia%20V&number=138%2F195&set=Tempestade%20Prateada&setId=swsh12&lang=pt-br&finish=Foil&condition=Nova
+HTTP: 200
+BYTES: 175
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"O conector Apify não encontrou a carta na MYP."}
+--- matching lines ---
+
+===== V13.3 auto MYP Lugia EX 134/135 =====
+URL: https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&setId=bw8&lang=pt-br&finish=Foil&condition=DM
+HTTP: 200
+BYTES: 175
+--- first 1200 chars ---
+{"ok":false,"error":"not_found","connector":"Apify","apifyConfigured":true,"apifyError":"","needsApifyToken":false,"message":"O conector Apify não encontrou a carta na MYP."}
+--- matching lines ---
+
