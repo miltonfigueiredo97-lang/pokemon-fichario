@@ -173,6 +173,7 @@ jobs:
               workerKick:/db\.functions\?\.invoke\?\.\('pokemon-price-worker'/.test(js)&&/Access-Control-Allow-Origin/.test(fs.readFileSync('supabase/functions/pokemon-price-worker/index.ts','utf8')),
               productionOnlyVercel:(()=>{const v=JSON.parse(fs.readFileSync('vercel.json','utf8'));return v.git?.deploymentEnabled?.main===true&&v.git?.deploymentEnabled?.['*']===false})(),
               removeSingleCard:/btnDeleteSelected/.test(html)&&/Remover esta carta do fichário/.test(html)&&/openRemoveCardDialog/.test(js)&&/confirmRemoveCardFromBinder/.test(js),
+              removeFromDetailsV1422:/v1422RemoveCardDetails/.test(fs.readFileSync('v11fix.js','utf8'))&&/🗑 Remover/.test(fs.readFileSync('v11fix.js','utf8'))&&/removeDetails\.onclick=openRemoveCardDialog/.test(js),
               removeSingleCardConfirm:/v1417RemoveCardDialog/.test(html)&&/v1417CancelRemoveCard/.test(html)&&/v1417ConfirmRemoveCard/.test(html)&&/outra cópia não será alterada/.test(html),
               removeSingleCardCss:/v1417-remove-card/.test(css)&&/v1417-remove-card-warning/.test(css),
               masterSemanticVariants:/physicalVariantKey/.test(fs.readFileSync('api/master-set.js','utf8'))&&/variantFoil/.test(fs.readFileSync('api/master-set.js','utf8'))&&/variantSubtype/.test(fs.readFileSync('api/master-set.js','utf8')),
