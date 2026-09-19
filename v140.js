@@ -2371,6 +2371,8 @@
   function wireRemoveCardAction(){
     const remove=byId('btnDeleteSelected');
     if(remove)remove.onclick=openRemoveCardDialog;
+    const removeDetails=byId('v1422RemoveCardDetails');
+    if(removeDetails)removeDetails.onclick=openRemoveCardDialog;
     const cancel=byId('v1417CancelRemoveCard');
     if(cancel)cancel.onclick=()=>hardCloseDialog('v1417RemoveCardDialog');
     const close=byId('v1417RemoveCardDialog')?.querySelector('[data-v1417-close-remove]');
