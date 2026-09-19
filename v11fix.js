@@ -699,7 +699,45 @@
       @media(max-width:820px){
         .v115-info-grid,.v115-owned-view{grid-template-columns:1fr 1fr}
         .v115-info-item{min-height:50px;padding:9px 10px}
-        .v115-details-head-actions{position:absolute;top:0;right:0}
+        .details-head{
+          display:grid!important;
+          grid-template-columns:minmax(0,1fr) auto!important;
+          align-items:start!important;
+          gap:10px 12px!important;
+        }
+        .details-head>div:first-child{
+          min-width:0!important;
+        }
+        .details-head #selectedLangBadge{
+          grid-column:2!important;
+          grid-row:1!important;
+          align-self:start!important;
+          justify-self:end!important;
+          max-width:120px!important;
+          overflow:hidden!important;
+          text-overflow:ellipsis!important;
+          white-space:nowrap!important;
+        }
+        .v115-details-head-actions{
+          position:static!important;
+          grid-column:1/-1!important;
+          grid-row:2!important;
+          width:100%!important;
+          margin:0!important;
+          display:grid!important;
+          grid-template-columns:1fr 1fr!important;
+          gap:8px!important;
+        }
+        .v115-edit-btn,.v115-cancel-btn,.v1422-remove-btn{
+          width:100%!important;
+          min-width:0!important;
+          height:38px!important;
+          padding:0 12px!important;
+          justify-content:center!important;
+        }
+        .v115-details-head-actions .v115-cancel-btn:not([hidden]){
+          grid-column:1/-1!important;
+        }
       }
       @media(max-width:520px){
         .v115-info-grid,.v115-owned-view{grid-template-columns:1fr}
