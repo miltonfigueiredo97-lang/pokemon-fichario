@@ -26,6 +26,9 @@ async function json(url){
   if(!r.ok)throw new Error('TCGdex '+r.status);
   return r.json();
 }
+async function jsonOrNull(url){
+  try{return await json(url)}catch{return null}
+}
 async function pool(items,limit,fn){
   const out=new Array(items.length);let next=0;
   async function worker(){while(true){const i=next++;if(i>=items.length)return;try{out[i]=await fn(items[i],i)}catch(e){out[i]={__error:String(e)}}}}
@@ -66,9 +69,23 @@ module.exports=async function handler(req,res){
   const cached=CACHE.get(cacheKey);
   if(cached&&Date.now()-cached.at<3600000)return res.status(200).json(cached.value);
   try{
-    const set=await json(BASE+'/'+lang+'/sets/'+encodeURIComponent(setId));
+    let set=await jsonOrNull(BASE+'/'+lang+'/sets/'+encodeURIComponent(setId));
+    let sourceLang=lang;
+    if(!set||!Array.isArray(set.cards)||!set.cards.length){
+      const fallback=await jsonOrNull(BASE+'/en/sets/'+encodeURIComponent(setId));
+      if(fallback){set=fallback;sourceLang='en'}
+    }
+    if(!set)throw new Error('Coleção não encontrada no TCGdex.');
     const list=Array.isArray(set.cards)?set.cards:[];
-    const details=await pool(list,18,async item=>json(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id)));
+    const details=await pool(list,18,async item=>{
+      const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
+      if(preferred)return preferred;
+      if(lang!=='en'){
+        const english=await jsonOrNull(BASE+'/en/cards/'+encodeURIComponent(item.id));
+        if(english)return english;
+      }
+      return item;
+    });
     const entries=[];
     for(let i=0;i<details.length;i++){
       const card=details[i];
@@ -105,8 +122,9 @@ module.exports=async function handler(req,res){
       return an-bn||a.variantOrder-b.variantOrder||a.name.localeCompare(b.name);
     });
     const setName=set.name||setId;
+    const usedFallbackLanguage=sourceLang!==lang||details.some((card,i)=>card&&card.id===list[i]?.id&&lang!=='en'&&!card?.set?.name);
     const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
-    const value={ok:true,set:{id:set.id||setId,name:setName,series:set?.serie?.name||'',releaseDate:set.releaseDate||'',cardCount:set.cardCount||{},languageCode:lang==='pt'?'pt-br':lang,isPromoSet},entries};
+    const value={ok:true,set:{id:set.id||setId,name:setName,series:set?.serie?.name||'',releaseDate:set.releaseDate||'',cardCount:set.cardCount||{},languageCode:lang==='pt'?'pt-br':lang,isPromoSet},entries,sourceLanguage:sourceLang,fallbackLanguageUsed:usedFallbackLanguage};
     CACHE.set(cacheKey,{at:Date.now(),value});
     return res.status(200).json(value);
   }catch(error){
