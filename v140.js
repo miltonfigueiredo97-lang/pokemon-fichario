@@ -692,8 +692,18 @@
     byId('v14PromoNotice')?.classList.add('hidden');
     V14.masterPreview=null;
     try{
-      const list=[...(await fetchSeries(lang))].reverse();
-      series.innerHTML='<option value="">Selecione a geração</option>'+list.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
+      const list=[...(await fetchSeries(lang))];
+      let englishById=new Map();
+      if(lang==='ja'){
+        try{
+          const en=await fetchSeries('en');
+          englishById=new Map(en.map(s=>[String(s.id||'').toLowerCase(),s.name||s.id]));
+        }catch{}
+      }
+      series.innerHTML='<option value="">Selecione a geração</option>'+list.map(s=>{
+        const label=lang==='ja'?(englishById.get(String(s.id||'').toLowerCase())||s.name||s.id):(s.name||s.id);
+        return '<option value="'+esc(s.id)+'">'+esc(label)+'</option>';
+      }).join('');
       series.disabled=false;
       byId('v14SetStatus').textContent='Escolha a geração e depois a coleção.';
     }catch(e){
@@ -711,15 +721,16 @@
     sets.disabled=true;sets.innerHTML='<option value="">Carregando coleções…</option>';
     byId('v14SetStatus').textContent='Carregando coleções da geração…';
     try{
-      const serie=await fetchSeriesDetail(lang,seriesId),list=Array.isArray(serie.sets)?serie.sets:[];
-      const promo=s=>/promo|black star/i.test(String(s.name||'')+' '+String(s.id||''));
-      list.sort((a,b)=>Number(promo(a))-Number(promo(b))||String(a.name||'').localeCompare(String(b.name||''),'pt-BR',{numeric:true}));
+      const r=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const catalog=await r.json();
+      if(!catalog?.ok)throw new Error(catalog?.message||'Falha ao carregar as coleções');
+      const list=Array.isArray(catalog.sets)?catalog.sets:[];
       sets.innerHTML='<option value="">Selecione a coleção</option>'+list.map(s=>
-        '<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+(promo(s)?' · PROMOS':'')+'</option>'
+        '<option value="'+esc(s.id)+'">'+esc(s.displayName||s.name||s.id)+(s.isPromo?' · PROMOS':'')+'</option>'
       ).join('');
       sets.disabled=false;
-      const promoCount=list.filter(promo).length;
-      byId('v14SetStatus').textContent=list.length+' coleções nesta geração'+(promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
+      const promoCount=list.filter(s=>s.isPromo).length;
+      byId('v14SetStatus').textContent=list.length+' coleções em ordem de lançamento'+(promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
     }catch(e){
       console.error(e);sets.innerHTML='<option value="">Erro ao carregar coleções</option>';
       byId('v14SetStatus').textContent='Não consegui carregar as coleções desta geração.';
