@@ -490,3 +490,64 @@ dialog.sheet-dialog:not([open]){
     height:0!important;
   }
 }
+
+
+/* V14.17 — remove a single saved card from its binder */
+.v1417-card-actions{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:8px!important;
+}
+.v1417-card-actions #btnSaveCard{
+  width:100%!important;
+}
+.v1417-remove-card{
+  width:100%!important;
+  min-height:38px!important;
+  border:1px solid rgba(255,78,78,.38)!important;
+  background:rgba(255,55,55,.07)!important;
+  color:#ff9090!important;
+  font-weight:900!important;
+}
+.v1417-remove-card:hover:not(:disabled){
+  background:rgba(255,55,55,.14)!important;
+  border-color:rgba(255,96,96,.65)!important;
+  color:#ffb0b0!important;
+}
+.v1417-remove-card-dialog::backdrop{
+  background:rgba(0,0,0,.72)!important;
+  backdrop-filter:blur(4px)!important;
+}
+.v1417-remove-card-shell{
+  max-width:500px!important;
+}
+.v1417-remove-card-warning{
+  display:grid!important;
+  gap:6px!important;
+  margin:8px 0 16px!important;
+  padding:12px!important;
+  border:1px solid rgba(255,77,77,.24)!important;
+  border-radius:10px!important;
+  background:rgba(255,45,45,.06)!important;
+}
+.v1417-remove-card-warning strong{
+  color:#ff9494!important;
+  font-size:11px!important;
+  font-weight:950!important;
+}
+.v1417-remove-card-warning span{
+  color:#b9aaaa!important;
+  font-size:9px!important;
+  line-height:1.45!important;
+}
+.v1417-remove-card-actions{
+  display:grid!important;
+  grid-template-columns:1fr 1.2fr!important;
+  gap:8px!important;
+}
+.v1417-remove-card-actions .btn{
+  min-height:40px!important;
+}
+@media(max-width:820px){
+  .v1417-remove-card-actions{grid-template-columns:1fr!important}
+}
