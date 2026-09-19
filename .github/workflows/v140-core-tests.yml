@@ -108,8 +108,8 @@ jobs:
               mobileBinderControls:/querySelector\('\.binder-area'\)/.test(js)&&/top:48px/.test(css)&&/binder-stage\{padding:96px 10px 10px!important\}/.test(css),
               mobileCardValues:/V14\.3 — mobile card values/.test(css)&&/\.pocket-card \.card-value/.test(css)&&/display:block!important/.test(css),
               masterGenerationFlow:/v14SeriesSelect/.test(js)&&/v14SetSelect/.test(js)&&/\/series\//.test(js),
-              masterDuplicate:/nextMasterBinderName/.test(js)&&/set_id===setId/.test(js),
-              masterImmediateReload:/await loadCardsV14\(false\)/.test(js)&&/aparecia vazio/.test(js),
+              masterDuplicate:/liveMasterBinderName/.test(js)&&/\.eq\('set_id',setId\)/.test(js),
+              masterImmediateReload:/hardCloseDialog\('v14BinderDialog'\)/.test(js)&&/await loadCardsV14\(false\)/.test(js),
               masterPromos:/isPromoSet/.test(js)&&/Promos não são misturadas automaticamente/.test(js),
               mobileDelete:/v14DeleteBinder/.test(js)&&/v14-delete-binder/.test(css)&&/Excluir fichário/.test(js),
               summaryOverlay:/z-index:75/.test(css),
@@ -142,7 +142,12 @@ jobs:
               noHiddenPriceRefresh:/Abrir uma carta deve ser instantâneo/.test(fs.readFileSync('v122.js','utf8'))&&!/toda abertura de uma carta existente tenta atualizar/.test(fs.readFileSync('v122.js','utf8')),
               boundedSinglePrice:/querySingleCardPriceFast/.test(js)&&/fast:'1'/.test(js)&&/11000/.test(js)&&/price_processing_at:null/.test(js),
               mobileNoBulkWorker:/mobile\|\|source\.length>8/.test(js)&&/V14\.priceQueue\.length=0/.test(js),
-              fastPriceApi:/const fast=/.test(fs.readFileSync('api/mypcards-public.js','utf8'))&&/Fast Reader/.test(fs.readFileSync('api/mypcards-public.js','utf8'))&&/fetchJina\(directLink,8000\)/.test(fs.readFileSync('api/mypcards-public.js','utf8'))
+              fastPriceApi:/const fast=/.test(fs.readFileSync('api/mypcards-public.js','utf8'))&&/Fast Reader/.test(fs.readFileSync('api/mypcards-public.js','utf8'))&&/fetchJina\(directLink,8000\)/.test(fs.readFileSync('api/mypcards-public.js','utf8')),
+              mobileCreatorNonModal:/openBinderCreator/.test(js)&&/\.show\(\)/.test(js)&&/showModal\(\)/.test(js)&&/max-width:820px/.test(css)&&/v14-binder-dialog\[open\]/.test(css),
+              mobileReleaseGuard:/releaseMobileInteraction/.test(js)&&/hardCloseDialog/.test(js)&&/setTimeout\(releaseMobileInteraction,650\)/.test(js),
+              masterBuilderReset:/resetMasterBuilderState/.test(js)&&/masterEpoch/.test(js)&&/epoch!==V14\.masterEpoch/.test(js),
+              liveMasterDuplicateCheck:/liveMasterBinderName/.test(js)&&/\.eq\('set_id',setId\)/.test(js),
+              closedDialogTapSafety:/dialog\.sheet-dialog:not\(\[open\]\)/.test(css)&&/pointer-events:none!important/.test(css)
             };
             const pass=masterPass&&classicPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},image:img.body,assertions};
