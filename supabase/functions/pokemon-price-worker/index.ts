@@ -6,8 +6,13 @@ const BATCH = 3;
 const STALE_MS = 5 * 60 * 1000;
 const TERMINAL = new Set(["variant_not_found","wrong_product","product_not_found","no_price_data"]);
 
+const CORS={
+  "Access-Control-Allow-Origin":"*",
+  "Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods":"POST, OPTIONS"
+};
 function json(data: unknown, status=200){
-  return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Connection":"keep-alive"}});
+  return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Connection":"keep-alive",...CORS}});
 }
 function num(v: unknown){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
 
@@ -21,6 +26,7 @@ async function fetchPrice(card: any){
     finish:String(card.finish||"Normal"),
     condition:String(card.condition||"Nova")
   });
+  if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
   const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
   if(link)q.set("link",link);
   const controller=new AbortController();
@@ -39,6 +45,7 @@ async function fetchPrice(card: any){
 }
 
 Deno.serve(async(req:Request)=>{
+  if(req.method==="OPTIONS")return new Response("ok",{headers:CORS});
   if(req.method!=="POST")return json({ok:false,error:"method_not_allowed"},405);
 
   const url=Deno.env.get("SUPABASE_URL");
@@ -51,7 +58,7 @@ Deno.serve(async(req:Request)=>{
   const staleIso=new Date(now.getTime()-STALE_MS).toISOString();
 
   const {data:candidates,error:listError}=await db.from("pokemon_cards")
-    .select("id,user_id,name,number,set_name,set_id,language_code,finish,condition,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at")
+    .select("id,user_id,name,number,set_name,set_id,language_code,finish,condition,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at,price_priority")
     .eq("price_pending",true)
     .lte("price_next_retry_at",nowIso)
     .or("price_processing_at.is.null,price_processing_at.lt."+staleIso)

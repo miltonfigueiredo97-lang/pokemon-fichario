@@ -136,6 +136,7 @@ module.exports=async function handler(req,res){
   const finish=String(req.query.finish||'Normal').trim();
   const condition=String(req.query.condition||'NM').trim();
   const fast=String(req.query.fast||'')==='1';
+  if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
   const directLink=safeMypProductUrl(link);

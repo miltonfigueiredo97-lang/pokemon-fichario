@@ -11,6 +11,7 @@
     priceJobs:new Map(),
     priceQueue:[],
     priceWorkers:0,
+    singlePriceWatch:null,
     scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null},
     setsCache:new Map(),
     seriesCache:new Map(),
@@ -1415,9 +1416,136 @@
 
   function syncSingleCardPriceButton(){
     const b=byId('btnUpdateCardPrice');if(!b)return;
-    const visible=!!editingCardId&&!!V14.allCards.find(x=>x.id===editingCardId);
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    const visible=!!card;
+    const watching=!!(V14.singlePriceWatch&&V14.singlePriceWatch.cardId===editingCardId);
     b.classList.toggle('hidden',!visible);
-    b.disabled=!visible;
+    b.disabled=!visible||watching;
+    if(watching)b.textContent=V14.singlePriceWatch.label||'Atualizando preço…';
+    else if(visible&&card.price_pending&&Number(card.price_priority||0)>=1000){
+      // If the editor was reopened while a manual refresh is still running,
+      // resume watching the database instead of requiring a page refresh.
+      setTimeout(()=>resumeSinglePriceWatch(card),0);
+    }
+  }
+
+  function setSinglePriceWatchLabel(label){
+    const watch=V14.singlePriceWatch;
+    if(!watch)return;
+    watch.label=label;
+    const b=byId('btnUpdateCardPrice');
+    if(b&&editingCardId===watch.cardId){
+      b.disabled=true;
+      b.textContent=label;
+    }
+    if(byId('marketStatus')&&editingCardId===watch.cardId)byId('marketStatus').textContent=label;
+  }
+
+  function kickPriceWorkerNow(){
+    try{
+      const task=db.functions?.invoke?.('pokemon-price-worker',{body:{reason:'manual-single-card'}});
+      if(task?.catch)task.catch(e=>console.warn('[V14 worker kick]',e));
+    }catch(e){console.warn('[V14 worker kick]',e)}
+  }
+
+  function priceRowHasFreshResult(row,requestedAt){
+    const checked=Date.parse(row?.price_checked_at||row?.myp_price_checked_at||0);
+    const requested=Date.parse(requestedAt||0);
+    const hasPrice=Number(row?.price_min||0)>0||Number(row?.price_avg||0)>0||Number(row?.price_max||0)>0;
+    return hasPrice&&checked>=requested-1000&&row?.price_pending===false;
+  }
+
+  function renderFreshSinglePrice(cardId,row){
+    applyLocalPricePatch(cardId,row);
+    if(editingCardId===cardId){
+      setPrices(row.price_min,row.price_avg,row.price_max);
+      selectedMarket={
+        source:row.price_source||row.price_br_source||'MYP Cards',
+        min:Number(row.price_min||0),avg:Number(row.price_avg||0),max:Number(row.price_max||0),
+        link:row.myp_price_link||row.price_br_link||row.price_link||'',
+        checkedAt:row.price_checked_at||row.myp_price_checked_at||null
+      };
+      if(byId('marketStatus'))byId('marketStatus').textContent='MYP Cards · atualizado agora';
+      const link=selectedMarket.link;
+      if(link&&byId('mypcardsLink')){
+        byId('mypcardsLink').href=link;
+        byId('mypcardsLink').classList.remove('hidden');
+      }
+    }
+    try{renderBinder();renderSummary()}catch{}
+  }
+
+  async function waitForSinglePrice(card,requestedAt,{resume=false}={}){
+    const cardId=card.id;
+    if(V14.singlePriceWatch?.cardId===cardId)return V14.singlePriceWatch.promise;
+    if(V14.singlePriceWatch)V14.singlePriceWatch.cancelled=true;
+
+    const watch={cardId,requestedAt,cancelled:false,label:'Atualizando preço…',promise:null};
+    V14.singlePriceWatch=watch;
+    syncSingleCardPriceButton();
+
+    watch.promise=(async()=>{
+      const started=Date.now();
+      let lastKick=0;
+      let consecutiveErrors=0;
+      while(!watch.cancelled&&Date.now()-started<5*60_000){
+        if(Date.now()-lastKick>25_000){
+          kickPriceWorkerNow();
+          lastKick=Date.now();
+        }
+
+        const {data,error}=await db.from('pokemon_cards')
+          .select('id,price_min,price_avg,price_max,currency,price_source,price_link,price_br_source,price_br_link,myp_price_link,myp_price_checked_at,price_checked_at,price_pending,price_processing_at,price_requested_at,price_next_retry_at,price_attempts,price_priority,price_last_error')
+          .eq('id',cardId).eq('user_id',currentUser.id).maybeSingle();
+
+        if(error){
+          consecutiveErrors++;
+          if(consecutiveErrors>=3)setSinglePriceWatchLabel('Reconectando ao preço…');
+        }else if(!data){
+          setSinglePriceWatchLabel('Carta não encontrada.');
+          return{state:'missing'};
+        }else{
+          consecutiveErrors=0;
+          applyLocalPricePatch(cardId,data);
+          if(priceRowHasFreshResult(data,requestedAt)){
+            renderFreshSinglePrice(cardId,data);
+            return{state:'updated',data};
+          }
+          const sameRequest=Date.parse(data.price_requested_at||0)>=Date.parse(requestedAt||0)-1000;
+          if(sameRequest&&data.price_pending===false&&data.price_last_error){
+            setSinglePriceWatchLabel('Sem cotação disponível');
+            return{state:'unavailable',data};
+          }
+          setSinglePriceWatchLabel(data.price_processing_at?'Atualizando no servidor…':'Aguardando servidor…');
+        }
+
+        const elapsed=Date.now()-started;
+        await sleep(elapsed<30_000?1500:4000);
+      }
+      return{state:'timeout'};
+    })();
+
+    try{
+      const result=await watch.promise;
+      if(result.state==='updated')toast(resume?'Preço atualizado automaticamente.':'Preço desta carta atualizado.');
+      else if(result.state==='unavailable')toast('O servidor concluiu, mas não encontrou cotação compatível.');
+      else if(result.state==='timeout')toast('O servidor ainda está tentando. O preço aparecerá automaticamente quando concluir.');
+      return result;
+    }finally{
+      if(V14.singlePriceWatch===watch)V14.singlePriceWatch=null;
+      const b=byId('btnUpdateCardPrice');
+      if(b&&editingCardId===cardId){
+        b.textContent=b.dataset.old||'↻ Atualizar preço desta carta';
+        b.disabled=false;
+      }
+      syncSingleCardPriceButton();
+    }
+  }
+
+  function resumeSinglePriceWatch(card){
+    if(!card?.id||V14.singlePriceWatch?.cardId===card.id)return;
+    const requestedAt=card.price_requested_at||new Date().toISOString();
+    waitForSinglePrice(card,requestedAt,{resume:true}).catch(e=>console.warn('[V14 resume price watch]',e));
   }
 
   async function querySingleCardPriceFast(card){
@@ -1429,7 +1557,8 @@
       setId:String(card.set_id||''),
       lang:String(card.language_code||''),
       finish,condition,
-      fast:'1'
+      fast:'1',
+      _:String(Date.now())
     });
     const link=[card.myp_price_link,card.price_br_link,card.price_link].find(v=>/mypcards\.com/i.test(String(v||'')));
     if(link)p.set('link',link);
@@ -1457,60 +1586,68 @@
   async function updateEditingCardPriceNow(){
     const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
     if(!card)return toast('Abra uma carta já salva para atualizar o preço.');
+    if(V14.singlePriceWatch?.cardId===card.id)return;
     const b=byId('btnUpdateCardPrice');
-    busy(b,true,'Atualizando esta carta…');
+    busy(b,true,'Atualizando preço…');
     let dual=null;
+    const requestedAt=new Date().toISOString();
     try{
-      const now=new Date().toISOString();
-      // Nunca marcamos como "processing" antes da consulta do aparelho.
-      // Assim o worker do servidor pode assumir imediatamente se a leitura rápida falhar.
+      // A atualização manual recebe prioridade máxima. Se a consulta rápida
+      // não resolver, o botão continua ocupado enquanto observamos a mesma
+      // linha no Supabase até o worker gravar o preço.
       const pending={
-        price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
-        price_attempts:0,price_priority:100,price_last_error:null
+        price_pending:true,price_processing_at:null,price_requested_at:requestedAt,price_next_retry_at:requestedAt,
+        price_attempts:0,price_priority:1000,price_last_error:null
       };
       const {error:pendingError}=await db.from('pokemon_cards').update(pending).eq('id',card.id).eq('user_id',currentUser.id);
       if(pendingError)throw pendingError;
       Object.assign(card,pending);
+      applyLocalPricePatch(card.id,pending);
 
       dual=await querySingleCardPriceFast(card);
       const patch=pricePatchFromDual(card,dual);
       if(patch){
         const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
         if(error)throw error;
-        applyLocalPricePatch(card.id,patch);
-        selectedMarket=dual;
-        setPrices(patch.price_min,patch.price_avg,patch.price_max);
-        if(byId('marketStatus'))byId('marketStatus').textContent='MYP Cards · atualizado agora';
-        if(patch.myp_price_link){
-          byId('mypcardsLink').href=patch.myp_price_link;
-          byId('mypcardsLink').classList.remove('hidden');
-        }
-        renderBinder();renderSummary();
+        renderFreshSinglePrice(card.id,patch);
         toast('Preço desta carta atualizado.');
-      }else{
-        const code=dual?.myp?.error||'fast_unavailable';
-        const keepQueued={
-          price_pending:true,price_processing_at:null,price_next_retry_at:new Date().toISOString(),
-          price_priority:100,price_last_error:code
-        };
-        await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
-        applyLocalPricePatch(card.id,keepQueued);
-        if(byId('marketStatus'))byId('marketStatus').textContent='Fila prioritária · servidor atualizando';
-        toast('Consulta rápida encerrada; a carta ficou em prioridade máxima no servidor.');
+        return;
       }
+
+      const code=dual?.myp?.error||'fast_unavailable';
+      const keepQueued={
+        price_pending:true,price_processing_at:null,price_requested_at:requestedAt,
+        price_next_retry_at:new Date().toISOString(),price_attempts:0,
+        price_priority:1000,price_last_error:code
+      };
+      const {error:queueError}=await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
+      if(queueError)throw queueError;
+      applyLocalPricePatch(card.id,keepQueued);
+      setSinglePriceWatchLabel('Aguardando servidor…');
+      kickPriceWorkerNow();
+      await waitForSinglePrice(card,requestedAt);
     }catch(e){
       console.error(e);
       const keepQueued={
-        price_pending:true,price_processing_at:null,price_next_retry_at:new Date().toISOString(),
-        price_priority:100,price_last_error:e?.name==='AbortError'?'fast_timeout':String(e?.message||'fast_error')
+        price_pending:true,price_processing_at:null,price_requested_at:requestedAt,
+        price_next_retry_at:new Date().toISOString(),price_priority:1000,
+        price_last_error:e?.name==='AbortError'?'fast_timeout':String(e?.message||'fast_error')
       };
       try{
         await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
         applyLocalPricePatch(card.id,keepQueued);
-      }catch{}
-      if(byId('marketStatus'))byId('marketStatus').textContent='Fila prioritária · servidor atualizando';
-      toast('A consulta rápida não respondeu; o servidor continuará esta carta em prioridade máxima.');
-    }finally{busy(b,false);syncSingleCardPriceButton()}
+        kickPriceWorkerNow();
+        await waitForSinglePrice(card,requestedAt);
+      }catch(watchError){
+        console.warn('[V14 manual price watch]',watchError);
+        toast('Não consegui acompanhar a atualização agora, mas ela continua no servidor.');
+      }
+    }finally{
+      if(!V14.singlePriceWatch||V14.singlePriceWatch.cardId!==card.id){
+        busy(b,false);
+        syncSingleCardPriceButton();
+      }
+    }
   }
 
   async function saveSelectedCardV14(){

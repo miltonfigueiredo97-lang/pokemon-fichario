@@ -122,7 +122,7 @@ jobs:
               goStart:/v14GoStart/.test(js)&&/goToBinderStart/.test(js)&&/cancelBinderPageFlipV14/.test(pageJs),
               binderSearch:/v14BinderSearch/.test(js)&&/binderSearchScore/.test(js)&&/applyBinderSearch/.test(js)&&/v14-binder-search/.test(css)&&!/v14BinderSearchList/.test(js),
               filteredPriceRefresh:/visiblePriceTargetCards/.test(js)&&/updateVisiblePricesV14/.test(js)&&/Atualizar preços visíveis/.test(fs.readFileSync('v122.js','utf8')),
-              singleCardPrice:/btnUpdateCardPrice/.test(html)&&/updateEditingCardPriceNow/.test(js)&&/price_priority:100/.test(js),
+              singleCardPrice:/btnUpdateCardPrice/.test(html)&&/updateEditingCardPriceNow/.test(js)&&/price_priority:1000/.test(js),
               persistentPriceState:/price_processing_at/.test(js)&&/price_next_retry_at/.test(js)&&/price_last_error/.test(js),
               persistentWorkerSource:fs.existsSync('supabase/functions/pokemon-price-worker/index.ts'),
               toolbarClearance:/top:6px!important/.test(css)&&/padding:52px 18px 8px!important/.test(css)&&/place-items:start center!important/.test(css),
@@ -147,7 +147,10 @@ jobs:
               mobileReleaseGuard:/releaseMobileInteraction/.test(js)&&/hardCloseDialog/.test(js)&&/setTimeout\(releaseMobileInteraction,650\)/.test(js),
               masterBuilderReset:/resetMasterBuilderState/.test(js)&&/masterEpoch/.test(js)&&/epoch!==V14\.masterEpoch/.test(js),
               liveMasterDuplicateCheck:/liveMasterBinderName/.test(js)&&/\.eq\('set_id',setId\)/.test(js),
-              closedDialogTapSafety:/dialog\.sheet-dialog:not\(\[open\]\)/.test(css)&&/pointer-events:none!important/.test(css)
+              closedDialogTapSafety:/dialog\.sheet-dialog:not\(\[open\]\)/.test(css)&&/pointer-events:none!important/.test(css),
+              liveSinglePriceSync:/waitForSinglePrice/.test(js)&&/priceRowHasFreshResult/.test(js)&&/renderFreshSinglePrice/.test(js)&&/Atualizando no servidor/.test(js)&&/Aguardando servidor/.test(js),
+              workerKick:/db\.functions\?\.invoke\?\.\('pokemon-price-worker'/.test(js)&&/Access-Control-Allow-Origin/.test(fs.readFileSync('supabase/functions/pokemon-price-worker/index.ts','utf8')),
+              productionOnlyVercel:(()=>{const v=JSON.parse(fs.readFileSync('vercel.json','utf8'));return v.git?.deploymentEnabled?.main===true&&v.git?.deploymentEnabled?.['*']===false})()
             };
             const pass=masterPass&&classicPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},image:img.body,assertions};
