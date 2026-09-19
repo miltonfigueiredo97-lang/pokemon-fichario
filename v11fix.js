@@ -70,6 +70,10 @@
   // REALISTIC BINDER PAGE TURN
   // ------------------------------------------------------------------
   let pageFlipBusy=false;
+  let pageFlipGeneration=0;
+  let pageFlipTimer=null;
+  let pageFlipSuppressUntil=0;
+  let lastPageFlipStartedAt=0;
 
   function injectPageFlipStyles(){
     if($('#v124PageFlipStyles'))return;
@@ -311,14 +315,51 @@
     return duration;
   }
 
+  function cancelPageFlip({suppress=false}={}){
+    pageFlipGeneration++;
+    if(pageFlipTimer){clearTimeout(pageFlipTimer);pageFlipTimer=null}
+    const stage=$('#binderStage');
+    if(stage){
+      stage.querySelectorAll('.v124-curl-root,.v124-curl-strip').forEach(el=>{
+        try{el.getAnimations?.().forEach(a=>a.cancel())}catch(_e){}
+      });
+      stage.querySelectorAll('.v124-curl-root').forEach(el=>el.remove());
+      stage.querySelectorAll('.binder-sheet-wrap').forEach(el=>el.classList.remove('v124-under','v124-next','v124-prev','v124-under-run'));
+      stage.classList.remove('v124-page-flipping');
+    }
+    pageFlipBusy=false;
+    if(suppress){
+      const mobile=window.matchMedia?.('(max-width:820px)').matches;
+      pageFlipSuppressUntil=performance.now()+(mobile?360:220);
+    }
+    refitSoon();
+  }
+
   function startPageFlip(direction){
-    if(pageFlipBusy)return;
     if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+    const now=performance.now();
+    const mobile=window.matchMedia?.('(max-width:820px)').matches;
+    const rapidWindow=mobile?330:180;
+
+    // Se o usuário navega antes de a folha terminar, a prioridade vira a navegação.
+    // Cancela imediatamente a animação antiga e deixa os próximos cliques rápidos sem efeito visual.
+    if(pageFlipBusy){
+      cancelPageFlip({suppress:true});
+      lastPageFlipStartedAt=now;
+      return;
+    }
+    if(now<pageFlipSuppressUntil||now-lastPageFlipStartedAt<rapidWindow){
+      pageFlipSuppressUntil=Math.max(pageFlipSuppressUntil,now+(mobile?260:140));
+      lastPageFlipStartedAt=now;
+      return;
+    }
 
     const stage=$('#binderStage');
     const wrap=stage?.querySelector('.binder-sheet-wrap');
     if(!stage||!wrap)return;
 
+    const generation=++pageFlipGeneration;
+    lastPageFlipStartedAt=now;
     pageFlipBusy=true;
     stage.classList.add('v124-page-flipping');
     wrap.classList.remove('v124-under','v124-next','v124-prev','v124-under-run');
@@ -330,28 +371,34 @@
     if(direction==='next'){
       curl=createCurlRoot(stage,wrap);
       if(curl)duration=animateCurl(curl,'next');
-      requestAnimationFrame(()=>requestAnimationFrame(()=>wrap.classList.add('v124-under-run')));
-    }else{
-      // For "voltar", the page that should move is the NEW page.
-      // The click handler below runs in capture phase; two frames later the app has
-      // already rendered the previous page, so we bend that new sheet from left to right.
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        if(generation!==pageFlipGeneration)return;
+        wrap.classList.add('v124-under-run');
+      }));
+    }else{
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        if(generation!==pageFlipGeneration)return;
         const fresh=stage.querySelector('.binder-sheet-wrap');
+        if(!fresh)return;
         curl=createCurlRoot(stage,fresh);
         if(curl)duration=animateCurl(curl,'prev');
         fresh.classList.add('v124-under','v124-prev');
-        requestAnimationFrame(()=>fresh.classList.add('v124-under-run'));
+        requestAnimationFrame(()=>{
+          if(generation===pageFlipGeneration)fresh.classList.add('v124-under-run');
+        });
       }));
     }
 
-    setTimeout(()=>{
+    pageFlipTimer=setTimeout(()=>{
+      if(generation!==pageFlipGeneration)return;
       curl?.root?.remove();
       const fresh=stage.querySelector('.binder-sheet-wrap');
       fresh?.classList.remove('v124-under','v124-next','v124-prev','v124-under-run');
       stage.classList.remove('v124-page-flipping');
       pageFlipBusy=false;
+      pageFlipTimer=null;
       refitSoon();
-    },1390);
+    },Math.min(1390,duration+80));
   }
 
   function installPageTurn(){
