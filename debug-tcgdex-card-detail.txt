@@ -1,0 +1,12 @@
+UTC: 2026-09-19T00:19:08Z
+
+===== TCGdex swsh12-138 detail =====
+URL: https://api.tcgdex.net/v2/en/cards/swsh12-138
+HTTP: 200
+BYTES: 2084
+--- first 1200 chars ---
+{"category":"Pokemon","id":"swsh12-138","illustrator":"Mitsuhiro Arita","image":"https://assets.tcgdex.net/en/swsh/swsh12/138","localId":"138","name":"Lugia V","rarity":"Holo Rare V","set":{"cardCount":{"official":195,"total":215},"id":"swsh12","logo":"https://assets.tcgdex.net/en/swsh/swsh12/logo","name":"Silver Tempest","symbol":"https://assets.tcgdex.net/univ/swsh/swsh12/symbol"},"variants":{"firstEdition":false,"holo":true,"normal":false,"reverse":false,"wPromo":false},"variants_detailed":[{"type":"holo","size":"standard","thirdParty":{"cardmarket":682185,"tcgplayer":450289},"variantId":"jr7oetx1mqug9","pricing":{"cardmarket":{"updated":"2026-09-18T22:54:32.937Z","unit":"EUR","idProduct":682185,"avg":19.65,"low":7.5,"trend":24.25,"avg1":19.36,"avg7":29.93,"avg30":19.72,"avg-holo":null,"low-holo":null,"trend-holo":0,"avg1-holo":null,"avg7-holo":null,"avg30-holo":null},"tcgplayer":{"unit":"USD","updated":"2026-09-18T22:54:54.658Z","holofoil":{"productId":450289,"lowPrice":11,"midPrice":15.24,"highPrice":284.2,"marketPrice":14.22,"directLowPrice":12.11}}}}],"dexId":[249],"hp":220,"types":["Colorless"],"stage":"Basic","suffix":"V","attacks":[{"cost":["Colorless"],"name":"Read the W
+--- matching lines ---
+-holo":0,"avg1-holo":null,"avg7-holo":null,"avg30-holo":null},"tcgplayer":{"unit":"USD","updated":"2026-09-18T22:54:54.658Z","holofoil":{"productId":450289,"lowPrice":11,"midPrice":15.24,"highPrice":284.2,"marketPrice":14.22,"directLowPrice":12.11}}}}],"dexId":[249],"hp":220,"types":["Colorless"],"stage":"Basic","suffix":"V
+-holo":0,"avg1-holo":null,"avg7-holo":null,"avg30-holo":null},"tcgplayer":{"unit":"USD","updated":"2026-09-18T22:54:54.658Z","holofoil":{"productId":450289,"lowPrice":11,"midPrice":15.24,"highPrice":284.2,"marketPrice":14.22,"directLowPrice":12.11}}}}
+
