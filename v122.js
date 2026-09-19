@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.2';
+  const APP_VERSION='V13.3-test';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -124,8 +124,13 @@
   async function querySource(endpoint,source,card,finish,condition){
     const full=await resolveFullNumber(card);
     const p=new URLSearchParams({name:String(card?.market_name_pt||card?.namePt||card?.name||''),number:full,finish:finish||'Normal',condition:condition||'Nova'});
-    const set=String(card?.setId||card?.set_id||card?.setName||card?.set_name||card?.market_edition_pt||'').trim();
-    if(set)p.set('set',set);
+    // Nome da coleção é necessário para desempatar impressões com o mesmo número
+    // na MYP (ex.: Lugia V 138/195 existe em SIT e PPS).
+    const setName=String(card?.setName||card?.set_name||card?.market_edition_pt||'').trim();
+    const setId=String(card?.setId||card?.set_id||'').trim();
+    if(setName)p.set('set',setName);
+    if(setId)p.set('setId',setId);
+    const set=setName||setId;
     const lang=String(card?.languageCode||card?.language_code||'').trim();if(lang)p.set('lang',lang);
     if(source==='myp'){
       const known=[card?.myp_price_link,card?.price_br_link,card?.price_link].find(isMypUrl);if(known)p.set('link',known);
