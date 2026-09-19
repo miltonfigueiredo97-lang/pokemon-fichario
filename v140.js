@@ -144,8 +144,10 @@
       return;
     }
     const ar=area.getBoundingClientRect(),sr=sheet.getBoundingClientRect();
-    const center=sr.left-ar.left+(sr.width/2);
-    bar.style.left=Math.max(360,Math.min(ar.width-360,center))+'px';
+    const desired=sr.left-ar.left+(sr.width/2);
+    const half=Math.max(1,bar.getBoundingClientRect().width/2);
+    const center=Math.max(half+10,Math.min(ar.width-half-10,desired));
+    bar.style.left=center+'px';
   }
 
   function ensureUnifiedTopbar(){
