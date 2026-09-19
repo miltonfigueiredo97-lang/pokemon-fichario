@@ -81,23 +81,13 @@
     const stage=$id('binderStage');
     if(!stage||stage.querySelector('.v11-rail'))return;
     const rail=document.createElement('div');
-    rail.className='v11-rail';
+    rail.className='v11-rail v149-useful-rail';
 
-    const toggle=makeTool('toggle','‹','Recolher menu',()=>{
-      rail.classList.toggle('v11-rail-collapsed');
-      toggle.textContent=rail.classList.contains('v11-rail-collapsed')?'›':'‹';
-      toggle.title=rail.classList.contains('v11-rail-collapsed')?'Abrir menu':'Recolher menu';
-    });
-    toggle.classList.add('v11-tool-toggle');
-    rail.appendChild(toggle);
-    rail.appendChild(makeTool('add','＋','Adicionar cartas',()=>{$id('btnOpenAdd')?.click()}));
+    rail.appendChild(makeTool('add','＋','Adicionar carta',()=>{$id('btnOpenAdd')?.click()}));
+    rail.appendChild(makeTool('scan','⌁','Escanear carta',()=>{$id('btnMobileScan')?.click()}));
+    rail.appendChild(makeTool('pages','▦','Abrir páginas',()=>{$id('btnPages')?.click()}));
     rail.appendChild(makeTool('friends','♙','Amigos',()=>{$id('btnFriends')?.click()}));
-    rail.appendChild(makeTool('summary','▤','Mostrar ou ocultar resumo',()=>toggleSummary()));
-    rail.appendChild(makeTool('fullscreen','⛶','Fichário em tela cheia',toggleFullscreen));
-    rail.appendChild(makeTool('appearance','⚙','Aparência',()=>{
-      if(typeof openDialog==='function')openDialog('appearanceDialog');
-    }));
-    rail.appendChild(makeTool('logout','↗','Sair',()=>{$id('btnLogout')?.click()}));
+    rail.appendChild(makeTool('fullscreen','⛶','Tela cheia',toggleFullscreen));
     stage.appendChild(rail);
 
     try{
