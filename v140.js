@@ -134,9 +134,38 @@
     return arr;
   }
 
+  function positionUnifiedTopbar(){
+    const area=document.querySelector('.binder-area');
+    const bar=byId('v14UnifiedTopbar');
+    const sheet=document.querySelector('.binder-sheet-wrap');
+    if(!area||!bar||!sheet)return;
+    if(window.matchMedia('(max-width:820px)').matches){
+      bar.style.removeProperty('left');
+      return;
+    }
+    const ar=area.getBoundingClientRect(),sr=sheet.getBoundingClientRect();
+    const center=sr.left-ar.left+(sr.width/2);
+    bar.style.left=Math.max(360,Math.min(ar.width-360,center))+'px';
+  }
+
+  function ensureUnifiedTopbar(){
+    const host=document.querySelector('.binder-area');
+    const pageCenter=document.querySelector('.page-center');
+    if(!host||!pageCenter)return null;
+    let bar=byId('v14UnifiedTopbar');
+    if(!bar){
+      bar=document.createElement('div');
+      bar.id='v14UnifiedTopbar';
+      bar.className='v14-unified-topbar';
+      host.insertBefore(bar,host.firstChild);
+    }
+    if(pageCenter.parentElement!==bar)bar.appendChild(pageCenter);
+    return bar;
+  }
+
   function injectUI(){
     if(!byId('v14BinderControls')){
-      const host=document.querySelector('.binder-area');
+      const host=ensureUnifiedTopbar();
       if(host){
         const wrap=document.createElement('div');
         wrap.id='v14BinderControls';
@@ -156,8 +185,12 @@
           '<button id="v14RenameBinder" class="icon-text-btn" type="button">Renomear</button>'+
           '<button id="v14DeleteBinder" class="icon-text-btn" type="button">Excluir</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
-        host.insertBefore(wrap,host.firstChild);
+        host.appendChild(wrap);
+        requestAnimationFrame(positionUnifiedTopbar);
       }
+    }else{
+      ensureUnifiedTopbar();
+      requestAnimationFrame(positionUnifiedTopbar);
     }
     if(!byId('v14BinderDialog')){
       const d=document.createElement('dialog');
@@ -296,6 +329,7 @@
     }
     const hint=document.querySelector('.binder-hint');
     if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização ordenada · movimentação desativada');
+    requestAnimationFrame(positionUnifiedTopbar);
   }
 
   async function selectBinder(id){
@@ -1165,6 +1199,15 @@
     }).observe(app,{attributes:true,attributeFilter:['class']});
     const add=byId('addDialog');
     if(add)new MutationObserver(()=>wireFastAdd()).observe(add,{attributes:true,attributeFilter:['open']});
+    const area=document.querySelector('.binder-area');
+    const sheet=document.querySelector('.binder-sheet-wrap');
+    if(typeof ResizeObserver!=='undefined'){
+      const ro=new ResizeObserver(()=>positionUnifiedTopbar());
+      if(area)ro.observe(area);
+      if(sheet)ro.observe(sheet);
+    }
+    window.addEventListener('resize',positionUnifiedTopbar,{passive:true});
+    setTimeout(positionUnifiedTopbar,60);
   }
 
   patchFunctions();
