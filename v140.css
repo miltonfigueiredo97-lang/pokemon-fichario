@@ -216,3 +216,12 @@
 .v149-useful-rail .v11-tool[data-kind="friends"]{
   color:#c7d2ff!important;
 }
+
+#summaryPanel #v12UpdatePrices{order:1}
+#summaryPanel #v122ExportExcel{order:2}
+#summaryPanel #v122TemplateExcel{order:3}
+#summaryPanel #v122ImportExcel{order:4}
+#summaryPanel #btnExport{order:5}
+#summaryPanel #btnPrint{order:6}
+#summaryPanel #btnSummarySettings{order:7}
+#summaryPanel #v112Logout{order:8}
