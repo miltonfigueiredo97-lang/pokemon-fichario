@@ -1,6 +1,6 @@
 ===== https://www.clubedaliga.com.br/api/cardsearch?tcg=2&term=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:21:12 GMT
+date: Sat, 19 Sep 2026 02:22:42 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -8,15 +8,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=tP6S5b9O%2F9A3NI3ajPLD%2FsfF0cw%2BxoKatrARFQlbOpEgsBDQrh2sVfoaWK38WnjaVlmZs4IVdnskg30kx9Jkr%2Bxstbc0SK1qva5W%2BP4B5jsU2G7aUMxHEnB%2Bs4m7LD9lRvRsmQa87k7a"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=rWyZYw0vcWia1iVpoQFgL8lhYjWic0fGnkqXvz1Jpqn63RQjASRUsPN7OeD8ZpUyRBW62%2BrdpBOzJYcZjTIuyw64O41O2xJFXQtYmGmtb7MFjnAWD%2BGfmBgv2LOdxb2YeE%2FeHGAynKYr"}]}
 server: cloudflare
-cf-ray: a3d51d9becd032f4-ORD
+cf-ray: a3d51fcaec3026d7-IAD
 
 error code: 1005
 
 ===== https://www.clubedaliga.com.br/api/cardsearch?tcg=2&q=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:21:13 GMT
+date: Sat, 19 Sep 2026 02:22:42 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -24,15 +24,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=hqNk14H0lOQWmMPfKEOzvxau5WBQ%2F1ihy%2BIrc1ORovyHmGGCLmD%2BiiNSV7jaVk4Hd6snQxvREIVgVOr7wit0NG%2BGRpw8bhLLDWEkyMqjzkmZ2VqFZ0E1QdSPqwL6lQGkaQ7%2BqVXxIdwI"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=JL3LXW4paAHt2Kr2tmU%2B1ZKCiUMd1nHBaIURZELbypeZYV%2FN%2Fmmq2%2F4n4mFNzRLoTnJMnmMK%2F7n7fokv9Gqe8FXgQJ1i1iM99%2F1jdG7RqXrKuY%2BCiU5C168uvranNiGTA4V68%2FYiJ5Qk"}]}
 server: cloudflare
-cf-ray: a3d51d9c4c50e207-ORD
+cf-ray: a3d51fcb3ef105e9-IAD
 
 error code: 1005
 
 ===== https://www.clubedaliga.com.br/?view=cards/card&card=Lugia-EX&ed=PLS&tcg=2 =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:21:13 GMT
+date: Sat, 19 Sep 2026 02:22:42 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -40,15 +40,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=fIy5ZlHeUPG4YARLER%2BsCVKTgSQv46AfXclISf1uO%2BnF4i0yjfjs%2FWRIf%2Fa7Vi65cJ2dmXhZ8yoslat%2BAERMR%2FBXiR89Xg2B1qumTZPD7Lpo4pWJweunqyJe3s7ztF1SVrZgNNZ3to2q"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=OyEt%2FdszheSwrrEcKAIq2U6tznlnNv8BNtG1jd8bXDi35Xo8rLGF%2BHi4kU53l6VbVnX1aVyIVPlOZ2MH9UbbqMmszYAJ4oB1MjQLSy2EfSRPtxTq77z895vLCue%2B67xaIKeWSyGcqe%2FB"}]}
 server: cloudflare
-cf-ray: a3d51d9cb8e37a5f-ORD
+cf-ray: a3d51fcb7a300c3d-IAD
 
 error code: 1005
 
 ===== https://www.clubedaliga.com.br/?view=cards/search&card=Lugia-EX&tcg=2 =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:21:13 GMT
+date: Sat, 19 Sep 2026 02:22:42 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -56,9 +56,9 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=s21T%2BonGg1dPjkQ4d5D9PeLXpoljDeE9rxvkgjw1iZ6wi3pbl219ai%2FAKiT5M9%2FnUTMp7xaPLi2PZvG7aG%2B1cd%2BKc%2FABynGo1eFLQKvox9NCaNvC%2FbS8o05mTd1Oy4mbyN76M2O0kabp"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=bEufqs2YikVeKvXY499i7uSfUvsPoHqflfsvawwsXiN5boFJTlXumBksvPXXfVRFJ2MsmOtCD3zOg%2F1MsRwFCmGyAr5Nv2eg27cx8O2mqzjRYuk5vq8vfiXhPZ1GMzQsh5EkiVRzZNI6"}]}
 server: cloudflare
-cf-ray: a3d51d9cf9fce895-MSP
+cf-ray: a3d51fcbcf282419-IAD
 
 error code: 1005
 
