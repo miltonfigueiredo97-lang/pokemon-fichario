@@ -422,46 +422,28 @@
 
   async function smartSearchCards(){
     const q=parseSmartQuery();
-    if(!q.raw&&!q.number){toast('Digite nome ou número.');return}
+    if(!q.raw&&!q.number&&!q.setHint){toast('Digite nome, número ou coleção.');return}
     const btn=$id('btnSearchCards');
     busy(btn,true,'Buscando...');
     const status=$id('searchStatus');
-    if(status)status.textContent='Buscando a impressão correta…';
+    if(status)status.textContent='Combinando nome, número, coleção e idioma…';
 
     try{
       const langs=q.language==='all'?['pt-br','en','ja']:[q.language];
-      const mypPromise=q.language==='ja'?Promise.resolve({cards:[],needsToken:false}):searchMypCards(q.raw,q.number,q.setHint);
-      const [myp,...groups]=await Promise.all([mypPromise,...langs.map(l=>searchTCGdex(l,q.raw,q.number))]);
-      const wantedNum=numParts(q.number);
+      const mypPromise=q.raw&&q.language!=='ja'?searchMypCards(q.raw,q.number,q.setHint):Promise.resolve({cards:[],needsToken:false});
+      const [myp,...groups]=await Promise.all([mypPromise,...langs.map(l=>searchTCGdex(l,q.raw,q.number,{setHint:q.setHint,live:false}))]);
 
-      let tcg=dedupe(groups.flat()).filter(c=>{
-        if(q.raw&&!nameRelevant(c.name,q.raw))return false;
-        if(wantedNum.n&&numParts(c.number).n!==wantedNum.n)return false;
-        if(q.language!=='all'&&c.languageCode!==q.language)return false;
-        return true;
-      });
-      if(q.setHint){
-        const exactSet=tcg.filter(c=>setRelevant(c,q.setHint));
-        if(exactSet.length)tcg=exactSet;
-      }
+      let tcg=dedupe(groups.flat()).filter(c=>q.language==='all'||c.languageCode===q.language);
+      let market=(myp.cards||[]).filter(c=>q.language==='all'||c.languageCode===q.language);
 
-      let market=(myp.cards||[]).filter(c=>{
-        if(q.raw&&!nameRelevant(c.name,q.raw))return false;
-        if(wantedNum.n&&numParts(c.number).n!==wantedNum.n)return false;
-        if(q.language!=='all'&&c.languageCode!==q.language)return false;
-        return true;
-      });
-      if(q.setHint){
-        const exactMarket=market.filter(c=>setRelevant(c,q.setHint));
-        if(exactMarket.length)market=exactMarket;
-      }
-
-      catalogResults=rank(dedupe([...market,...tcg]),{name:q.raw,number:q.number,setHint:q.setHint,language:q.language}).slice(0,72);
+      const maxResults=q.setHint&&!q.raw&&!q.number?400:100;
+      catalogResults=rank(dedupe([...market,...tcg]),{name:q.raw,number:q.number,setHint:q.setHint,language:q.language}).slice(0,maxResults);
       populateRarityFilter();
       renderCatalog();
       const pt=catalogResults.filter(c=>c.languageCode==='pt-br').length;
+      const criteria=[q.raw&&`nome “${q.raw}”`,q.number&&`nº ${q.number}`,q.setHint&&`coleção “${q.setHint}”`,q.language!=='all'&&q.language].filter(Boolean).join(' · ');
       if(status){
-        status.textContent=`${catalogResults.length} resultado(s) · ${pt} em português.`;
+        status.textContent=`${catalogResults.length} resultado(s) · ${pt} em português${criteria?` · filtros combinados: ${criteria}`:''}.`;
         if(myp.needsToken){
           const a=document.createElement('a');
           a.href='https://mypcards.github.io/mypcards-api/';
@@ -475,7 +457,7 @@
       if(status)status.textContent='Erro ao buscar. Tente novamente.';
     }finally{busy(btn,false)}
   }
-  window.smartSearchCardsV11=smartSearchCards;
+window.smartSearchCardsV11=smartSearchCards;
 
   function installSearchUX(){
     const select=$id('searchLanguage');
@@ -489,7 +471,7 @@
         b.onclick=()=>{
           select.value=value;
           tabs.querySelectorAll('.v11-lang-btn').forEach(x=>x.classList.toggle('active',x.dataset.lang===value));
-          if(($id('searchName')?.value||'').trim()||($id('searchNumber')?.value||'').trim())smartSearchCards();
+          if(($id('searchName')?.value||'').trim()||($id('searchNumber')?.value||'').trim()||($id('searchSet')?.value||'').trim())smartSearchCards();
         };
         tabs.appendChild(b);
       });
