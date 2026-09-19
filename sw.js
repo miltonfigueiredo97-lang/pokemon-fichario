@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pokemon-binder-v13-9';
+const CACHE_NAME = 'pokemon-binder-v14-preview';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -6,12 +6,12 @@ const APP_SHELL = [
   '/v8.css',
   '/v11fix.css',
   '/v12.css',
-  '/v122.css',
+  '/v122.css',\n  '/v140.css',
   '/script.js',
   '/v8.js',
   '/v11fix.js',
   '/v12.js',
-  '/v122.js',
+  '/v122.js',\n  '/v140.js',
   '/manifest.webmanifest',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg'
