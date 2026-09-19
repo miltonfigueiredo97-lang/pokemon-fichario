@@ -120,25 +120,128 @@ async function fetchTCGdexList(apiLang,q){
     return[];
   }
 }
+async function fetchTCGdexSets(apiLang){
+  const key="sets|"+apiLang,cached=catalogSearchCache.get(key);
+  if(cached&&Date.now()-cached.at<10*60*1000)return cached.items;
+  try{
+    const r=await fetch(`${TCGDEX_BASE}/${apiLang}/sets`);
+    if(!r.ok)return[];
+    const a=await r.json(),items=Array.isArray(a)?a:[];
+    catalogSearchCache.set(key,{at:Date.now(),items});
+    return items;
+  }catch(e){
+    console.warn("TCGdex sets",apiLang,e);
+    return[];
+  }
+}
+function setSearchScore(s,hint){
+  const h=norm(hint),name=norm(s?.name),id=norm(s?.id);
+  if(!h)return 0;
+  if(name===h||id===h)return 1200;
+  if(name.startsWith(h)||id.startsWith(h))return 980;
+  if(name.includes(h)||h.includes(name)||id.includes(h)||h.includes(id))return 820;
+  const words=h.split(" ").filter(Boolean),target=new Set(name.split(" ").filter(Boolean));
+  const hits=words.filter(w=>target.has(w)).length;
+  let score=hits?420+hits*80:0;
+  const sim=Math.max(nameSimilarity(h,name),nameSimilarity(h,id));
+  if(sim>=.9)score=Math.max(score,760);
+  else if(sim>=.8)score=Math.max(score,620);
+  else if(sim>=.68)score=Math.max(score,430);
+  else if(sim>=.55)score=Math.max(score,260);
+  return score;
+}
+async function findTCGdexSets(lang,hint,limit=4){
+  const h=String(hint||"").trim();
+  if(!h)return[];
+  const apiLang=tcgApiLang(lang),sets=await fetchTCGdexSets(apiLang);
+  return sets.map(s=>({s,score:setSearchScore(s,h)}))
+    .filter(x=>x.score>=220)
+    .sort((a,b)=>b.score-a.score||String(a.s.name||"").localeCompare(String(b.s.name||"")))
+    .slice(0,limit)
+    .map(x=>x.s);
+}
+async function fetchTCGdexSet(lang,setId){
+  const apiLang=tcgApiLang(lang),key=`set|${apiLang}|${setId}`,cached=catalogSearchCache.get(key);
+  if(cached&&Date.now()-cached.at<10*60*1000)return cached.item;
+  try{
+    const r=await fetch(`${TCGDEX_BASE}/${apiLang}/sets/${encodeURIComponent(setId)}`);
+    if(!r.ok)return null;
+    const item=await r.json();
+    catalogSearchCache.set(key,{at:Date.now(),item});
+    return item;
+  }catch(e){
+    console.warn("TCGdex set",apiLang,setId,e);
+    return null;
+  }
+}
+function mapTCGSetBrief(c,set,lang){
+  const local=String(c?.localId||""),setId=set?.id||"",image=c?.image||"";
+  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:local,printedTotal:String(set?.cardCount?.official||""),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
+}
+function quickCatalogScore(c,name,number){
+  let s=0;
+  const qn=norm(name),cn=norm(c?.name),wanted=numParts(number).n,actual=numParts(c?.number).n;
+  if(qn){
+    if(cn===qn)s+=900;
+    else if(cn.startsWith(qn))s+=720;
+    else if(cn.includes(qn)||qn.includes(cn))s+=580;
+    else s+=Math.round(nameSimilarity(qn,cn)*420);
+  }
+  if(wanted)s+=actual===wanted?800:-250;
+  return s;
+}
 async function searchTCGdex(lang,name,number,options={}){
-  const apiLang=tcgApiLang(lang),n=numParts(number).n;
+  const apiLang=tcgApiLang(lang),n=numParts(number).n,setHint=String(options.setHint||"").trim(),live=!!options.live;
   const names=tcgNameVariants(name),seenIds=new Map();
   let fuzzyUsed=false,fuzzyTerm="";
+
+  // Coleção é um critério de busca de verdade, não apenas um bônus de ranking.
+  // Se ela for reconhecida, partimos da lista oficial de cartas daquele set.
+  if(setHint){
+    const matchedSets=await findTCGdexSets(lang,setHint,live?2:4);
+    if(matchedSets.length){
+      const sets=(await Promise.all(matchedSets.map(s=>fetchTCGdexSet(lang,s.id)))).filter(Boolean);
+      let pool=[];
+      for(const set of sets){
+        for(const card of Array.isArray(set.cards)?set.cards:[])pool.push(mapTCGSetBrief(card,set,lang));
+      }
+      if(pool.length){
+        if(n){
+          const exact=pool.filter(c=>numParts(c.number).n===n);
+          if(exact.length)pool=exact;
+        }
+        pool.sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number));
+        const cap=!String(name||"").trim()&&!n?400:(live?36:96);
+        pool=pool.slice(0,cap);
+        if(String(name||"").trim()||n){
+          const details=await Promise.all(pool.map(c=>fetchTCGdexCard(lang,c.apiId,c)));
+          const out=details.filter(Boolean);
+          out.fuzzyUsed=false;out.fuzzyTerm="";
+          return out;
+        }
+        pool.fuzzyUsed=false;pool.fuzzyTerm="";
+        return pool;
+      }
+    }
+  }
 
   const addList=items=>{
     for(const x of items||[])if(x?.id&&!seenIds.has(x.id))seenIds.set(x.id,x);
   };
 
+  if(!String(name||"").trim()&&!n){
+    const empty=[];empty.fuzzyUsed=false;empty.fuzzyTerm="";return empty;
+  }
+
   // Primeiro tenta exatamente o que o usuário escreveu, do mais específico ao amplo.
   for(const candidate of names){
     if(n)addList(await fetchTCGdexList(apiLang,{name:candidate,localId:n}));
     addList(await fetchTCGdexList(apiLang,{name:candidate}));
-    if(seenIds.size>=24)break;
+    if(seenIds.size>=32)break;
   }
   if(!seenIds.size&&n)addList(await fetchTCGdexList(apiLang,{localId:n}));
 
-  // Se não achou nada, relaxa apenas o nome. Ex.: "umbreom ex" -> "umbreo"
-  // e depois o ranking por distância coloca "Umbreon ex" no topo.
+  // Se não achou nada, relaxa apenas o nome e deixa o ranking achar o mais próximo.
   if(!seenIds.size&&String(name||"").trim()){
     for(const prefix of fuzzyNamePrefixes(name)){
       const items=await fetchTCGdexList(apiLang,{name:prefix});
@@ -151,7 +254,7 @@ async function searchTCGdex(lang,name,number,options={}){
     }
   }
 
-  const limit=options.live?24:36;
+  const limit=live?28:48;
   const list=[...seenIds.values()].slice(0,limit);
   const details=await Promise.all(list.map(x=>fetchTCGdexCard(lang,x.id,x)));
   const out=details.filter(Boolean);
@@ -160,12 +263,12 @@ async function searchTCGdex(lang,name,number,options={}){
   return out;
 }
 async function fetchTCGdexCard(lang,id,fallback=null){
-  const apiLang=tcgApiLang(lang);
+  const apiLang=tcgApiLang(lang),fb=()=>fallback?(fallback.source==="TCGdex"?fallback:mapTCG(fallback,lang)):null;
   try{
     const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards/${encodeURIComponent(id)}`);
-    if(!r.ok)return fallback?mapTCG(fallback,lang):null;
+    if(!r.ok)return fb();
     return mapTCG(await r.json(),lang);
-  }catch{return fallback?mapTCG(fallback,lang):null}
+  }catch{return fb()}
 }
 function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"";let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:local,printedTotal:String(s.cardCount?.official||""),rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
@@ -177,21 +280,33 @@ function rank(cards,q){
     if(c.languageCode==="pt-br")s+=320;else if(c.languageCode==="en")s+=100;else if(c.languageCode==="ja")s+=70;
     if(q.language!=="all"&&c.languageCode===q.language)s+=250;
     if(qn){
-      if(cn===qn)s+=500;
-      else if(cn.includes(qn)||qn.includes(cn))s+=280;
+      if(cn===qn)s+=720;
+      else if(cn.startsWith(qn))s+=520;
+      else if(cn.includes(qn)||qn.includes(cn))s+=390;
       else{
         const sim=nameSimilarity(qn,cn);
-        if(sim>=.88)s+=260;
-        else if(sim>=.78)s+=190;
-        else if(sim>=.66)s+=80;
-        else s-=140;
+        if(sim>=.9)s+=360;
+        else if(sim>=.8)s+=260;
+        else if(sim>=.68)s+=120;
+        else s-=180;
       }
     }
     if(num.n){
-      if(nn===num.n)s+=430;else s-=240;
-      if(num.d&&(numParts(c.number).d===num.d||c.printedTotal===num.d))s+=220;
+      if(nn===num.n)s+=650;else s-=420;
+      if(num.d&&(numParts(c.number).d===num.d||String(c.printedTotal||"")===num.d))s+=260;
     }
-    if(set&&(cs.includes(set)||ci.includes(set)))s+=240;
+    if(set){
+      if(cs===set||ci===set)s+=760;
+      else if(cs.startsWith(set)||ci.startsWith(set))s+=620;
+      else if(cs.includes(set)||set.includes(cs)||ci.includes(set)||set.includes(ci))s+=500;
+      else{
+        const sim=Math.max(nameSimilarity(set,cs),nameSimilarity(set,ci));
+        if(sim>=.88)s+=380;
+        else if(sim>=.76)s+=220;
+        else if(sim>=.62)s+=80;
+        else s-=360;
+      }
+    }
     if(c.market?.avg||c.market?.min)s+=70;
     if(c.imageUrl)s+=15;
     return s;
@@ -203,18 +318,19 @@ async function searchCards(options={}){
   let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
 
   const typedLetters=norm(raw).replace(/\s+/g,"").length;
-  if(!raw&&!number){
+  const setLetters=norm(setHint).replace(/\s+/g,"").length;
+  if(!raw&&!number&&!setHint){
     catalogResults=[];
     populateRarityFilter();
     renderCatalog();
     $("searchStatus").textContent="";
     return;
   }
-  if(live&&!number&&typedLetters<3){
+  if(live&&!number&&typedLetters<2&&setLetters<2){
     catalogResults=[];
     populateRarityFilter();
     renderCatalog();
-    $("searchStatus").textContent="Digite pelo menos 3 letras para buscar automaticamente.";
+    $("searchStatus").textContent="Digite pelo menos 2 letras no nome ou na coleção para buscar automaticamente.";
     return;
   }
 
@@ -223,25 +339,26 @@ async function searchCards(options={}){
 
   const b=$("btnSearchCards");
   if(!live)busy(b,true,"Buscando...");
-  $("searchStatus").textContent=live?"Buscando enquanto você digita…":"Procurando as opções mais próximas…";
+  $("searchStatus").textContent=live?"Refinando resultados enquanto você digita…":"Combinando nome, número, coleção e idioma…";
 
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
-    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live})));
+    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint})));
     if(requestId!==catalogSearchSeq)return;
 
     let results=dedupe(groups.flat());
     if(language!=="all")results=results.filter(c=>c.languageCode===language);
-    catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,80);
+    const maxResults=setHint&&!raw&&!number?400:100;
+    catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
     populateRarityFilter();
     renderCatalog();
 
     const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
-    const refinement=[number&&`nº ${number}`,setHint&&`coleção "${setHint}"`].filter(Boolean).join(" · ");
+    const criteria=[raw&&`nome “${raw}”`,number&&`nº ${number}`,setHint&&`coleção “${setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" · ");
     const fuzzy=groups.some(g=>g.fuzzyUsed);
     const best=fuzzy&&catalogResults[0]?.name?catalogResults[0].name:"";
     const correction=best&&norm(best)!==norm(raw)?` · mais próximo: “${best}”`:"";
-    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${correction}${refinement?` · priorizando ${refinement}`:""}.`;
+    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${correction}${criteria?` · filtros combinados: ${criteria}`:""}.`;
   }catch(e){
     if(requestId!==catalogSearchSeq)return;
     console.error(e);
@@ -293,7 +410,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.25",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.26",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
