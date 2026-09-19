@@ -80,7 +80,7 @@ jobs:
             const exeggcute=entries.filter(x=>x.apiId==='sv08-001');
             const masterPass=master.status===200&&master.body?.ok&&entries.length>252&&exeggcute.some(x=>x.finish==='Normal')&&exeggcute.some(x=>x.finish==='Reverse Foil');
 
-            const classic=await invoke('api/master-set.js',{lang:'pt',set:'cel25cc'});
+            const classic=await invoke('api/master-set.js',{lang:'pt',set:'cel25cc',debug:'1'});
             const classicEntries=classic.body?.entries||[];
             const classicPass=classic.status===200&&classic.body?.ok&&classicEntries.length>=25;
 
@@ -179,7 +179,7 @@ jobs:
               generalStatusFilter:/activeStatusFilter/.test(js)&&/arr=arr\.filter\(c=>\(c\.collection_status\|\|'owned'\)===activeStatusFilter\)/.test(js)
             };
             const pass=masterPass&&classicPass&&set151Pass&&jp151Pass&&imagePass&&Object.values(assertions).every(Boolean);
-            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},set151:{status:set151.status,entries:entries151.length,charm004},jp151:{status:jp151.status,entries:jpEntries.length,charm004:jpCharm},image:img.body,assertions};
+            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed,debug:classic.body?.debug},set151:{status:set151.status,entries:entries151.length,charm004},jp151:{status:jp151.status,entries:jpEntries.length,charm004:jpCharm},image:img.body,assertions};
             fs.writeFileSync('v140-core-test-result.json',JSON.stringify(out,null,2));
             console.log(JSON.stringify(out,null,2));
             if(!pass)process.exitCode=1;
