@@ -1585,60 +1585,68 @@
   async function updateEditingCardPriceNow(){
     const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
     if(!card)return toast('Abra uma carta já salva para atualizar o preço.');
+    if(V14.singlePriceWatch?.cardId===card.id)return;
     const b=byId('btnUpdateCardPrice');
-    busy(b,true,'Atualizando esta carta…');
+    busy(b,true,'Atualizando preço…');
     let dual=null;
+    const requestedAt=new Date().toISOString();
     try{
-      const now=new Date().toISOString();
-      // Nunca marcamos como "processing" antes da consulta do aparelho.
-      // Assim o worker do servidor pode assumir imediatamente se a leitura rápida falhar.
+      // A atualização manual recebe prioridade máxima. Se a consulta rápida
+      // não resolver, o botão continua ocupado enquanto observamos a mesma
+      // linha no Supabase até o worker gravar o preço.
       const pending={
-        price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
-        price_attempts:0,price_priority:100,price_last_error:null
+        price_pending:true,price_processing_at:null,price_requested_at:requestedAt,price_next_retry_at:requestedAt,
+        price_attempts:0,price_priority:1000,price_last_error:null
       };
       const {error:pendingError}=await db.from('pokemon_cards').update(pending).eq('id',card.id).eq('user_id',currentUser.id);
       if(pendingError)throw pendingError;
       Object.assign(card,pending);
+      applyLocalPricePatch(card.id,pending);
 
       dual=await querySingleCardPriceFast(card);
       const patch=pricePatchFromDual(card,dual);
       if(patch){
         const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
         if(error)throw error;
-        applyLocalPricePatch(card.id,patch);
-        selectedMarket=dual;
-        setPrices(patch.price_min,patch.price_avg,patch.price_max);
-        if(byId('marketStatus'))byId('marketStatus').textContent='MYP Cards · atualizado agora';
-        if(patch.myp_price_link){
-          byId('mypcardsLink').href=patch.myp_price_link;
-          byId('mypcardsLink').classList.remove('hidden');
-        }
-        renderBinder();renderSummary();
+        renderFreshSinglePrice(card.id,patch);
         toast('Preço desta carta atualizado.');
-      }else{
-        const code=dual?.myp?.error||'fast_unavailable';
-        const keepQueued={
-          price_pending:true,price_processing_at:null,price_next_retry_at:new Date().toISOString(),
-          price_priority:100,price_last_error:code
-        };
-        await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
-        applyLocalPricePatch(card.id,keepQueued);
-        if(byId('marketStatus'))byId('marketStatus').textContent='Fila prioritária · servidor atualizando';
-        toast('Consulta rápida encerrada; a carta ficou em prioridade máxima no servidor.');
+        return;
       }
+
+      const code=dual?.myp?.error||'fast_unavailable';
+      const keepQueued={
+        price_pending:true,price_processing_at:null,price_requested_at:requestedAt,
+        price_next_retry_at:new Date().toISOString(),price_attempts:0,
+        price_priority:1000,price_last_error:code
+      };
+      const {error:queueError}=await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
+      if(queueError)throw queueError;
+      applyLocalPricePatch(card.id,keepQueued);
+      setSinglePriceWatchLabel('Aguardando servidor…');
+      kickPriceWorkerNow();
+      await waitForSinglePrice(card,requestedAt);
     }catch(e){
       console.error(e);
       const keepQueued={
-        price_pending:true,price_processing_at:null,price_next_retry_at:new Date().toISOString(),
-        price_priority:100,price_last_error:e?.name==='AbortError'?'fast_timeout':String(e?.message||'fast_error')
+        price_pending:true,price_processing_at:null,price_requested_at:requestedAt,
+        price_next_retry_at:new Date().toISOString(),price_priority:1000,
+        price_last_error:e?.name==='AbortError'?'fast_timeout':String(e?.message||'fast_error')
       };
       try{
         await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
         applyLocalPricePatch(card.id,keepQueued);
-      }catch{}
-      if(byId('marketStatus'))byId('marketStatus').textContent='Fila prioritária · servidor atualizando';
-      toast('A consulta rápida não respondeu; o servidor continuará esta carta em prioridade máxima.');
-    }finally{busy(b,false);syncSingleCardPriceButton()}
+        kickPriceWorkerNow();
+        await waitForSinglePrice(card,requestedAt);
+      }catch(watchError){
+        console.warn('[V14 manual price watch]',watchError);
+        toast('Não consegui acompanhar a atualização agora, mas ela continua no servidor.');
+      }
+    }finally{
+      if(!V14.singlePriceWatch||V14.singlePriceWatch.cardId!==card.id){
+        busy(b,false);
+        syncSingleCardPriceButton();
+      }
+    }
   }
 
   async function saveSelectedCardV14(){
