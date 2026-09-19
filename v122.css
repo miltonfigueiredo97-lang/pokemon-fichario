@@ -2,8 +2,8 @@
 .v122-finish-box{grid-column:1/-1;display:grid;gap:8px;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0c1013}
 .v122-finish-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .v122-finish-title strong{font-size:11px;color:#f1eee6}
-.v122-finish-title small{font-size:9px;color:#8f999f}
-.v122-finish-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(170px,230px);align-items:center;gap:10px}
+.v122-finish-title small{font-size:9px;color:#8f999f;max-width:420px;text-align:right}
+.v122-finish-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(145px,210px) minmax(145px,210px);align-items:center;gap:10px}
 .v122-finish-row>span{font-size:10px;font-weight:850;color:#d9ddd9;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v122-finish-row>span small{color:#78838a;font-weight:700}
 .v122-finish-row select{min-width:0;height:34px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:#11161a;color:#eef0ec;padding:0 9px;font-size:10px;font-weight:750}
