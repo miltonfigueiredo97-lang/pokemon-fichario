@@ -1,0 +1,43 @@
+{
+  "pass": true,
+  "result": {
+    "ok": true,
+    "provider": "Chromium",
+    "mode": "browser-page",
+    "title": "Lugia V (138/195)",
+    "edition": "Espada e Escudo 12: Tempestade Prateada (SIT)",
+    "link": "https://mypcards.com/pokemon/produto/174895/lugia-v",
+    "httpStatus": 200,
+    "min": 59.9,
+    "avg": 162.31,
+    "max": 200,
+    "samples": 15,
+    "availableQuantity": 1,
+    "exactVariant": true,
+    "complete": true,
+    "pageStats": {
+      "min": 59.9,
+      "avg": 162.31,
+      "max": 200,
+      "last": 69.9
+    },
+    "variant": {
+      "found": true,
+      "min": 100,
+      "avg": 0,
+      "max": 0,
+      "samples": 1,
+      "finish": "foil",
+      "condition": "NM"
+    },
+    "matched": [
+      {
+        "seller": "laiin",
+        "finish": "Foil",
+        "condition": "NM",
+        "price": 100,
+        "qty": "1 un."
+      }
+    ]
+  }
+}
