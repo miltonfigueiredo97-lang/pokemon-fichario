@@ -1,0 +1,52 @@
+name: V13.4 price test
+on:
+  push:
+    branches:
+      - fix-v134-prices-condition-test
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Test real MYP auto-discovery and summary
+        run: |
+          cat > v134-test.cjs <<'EOF'
+          const fs=require('fs');
+          const {findAndScrapeMypBrowser}=require('./lib/myp-browser');
+          (async()=>{
+            const result=await findAndScrapeMypBrowser('',{
+              name:'Lugia V',
+              number:'138/195',
+              set:'Tempestade Prateada',
+              setId:'swsh12',
+              lang:'pt-br',
+              finish:'Foil',
+              condition:'Nova'
+            });
+            const pass=!!(
+              result?.ok &&
+              /174895/.test(result.link||'') &&
+              Math.abs(Number(result.min)-59.90)<0.01 &&
+              Math.abs(Number(result.avg)-162.31)<0.01 &&
+              Number(result.max)>=100
+            );
+            fs.writeFileSync('v134-price-test-result.json',JSON.stringify({pass,result},null,2));
+            if(!pass)process.exitCode=1;
+          })();
+          EOF
+          node v134-test.cjs
+      - name: Commit test result
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v134-price-test-result.json
+          git commit -m "Record V13.4 real price test" || exit 0
+          git push origin HEAD:fix-v134-prices-condition-test
