@@ -295,7 +295,7 @@
       liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,liga_price_link:liga.link||oldLiga.link||null,liga_price_checked_at:liga.checkedAt||oldLiga.checkedAt||null,
       myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,myp_price_link:myp.link||oldMyp.link||null,myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
       price_min:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.min||0):oldPrimary.min),
-      price_avg:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.avg||+primary?.min||+primary?.max||0):oldPrimary.avg),
+      price_avg:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.avg||0):oldPrimary.avg),
       price_max:noPrimaryAfterVariantClear?0:(gotNew?(+primary?.max||0):oldPrimary.max),
       currency:'BRL',
       price_source:noPrimaryAfterVariantClear?'Sem preço BR':(gotNew?source:oldPrimary.source),
@@ -508,8 +508,8 @@
 
   function ensureMarketBoard(){
     const board=$v('.market-board');if(!board||$v('#v122MarketSources'))return;
-    const title=board.querySelector('.market-board-title');if(title){title.querySelector('span').textContent='Mercado brasileiro';title.querySelector('small').textContent='Referência: média Liga Pokémon'}
-    const primary=document.createElement('p');primary.id='v122PrimaryNote';primary.className='v122-primary-note';primary.textContent='O valor do fichário usa a média da Liga; MYP é comparação e fallback.';board.appendChild(primary);
+    const title=board.querySelector('.market-board-title');if(title){title.querySelector('span').textContent='Mercado brasileiro';title.querySelector('small').textContent='Liga quando disponível · MYP como fallback'}
+    const primary=document.createElement('p');primary.id='v122PrimaryNote';primary.className='v122-primary-note';primary.textContent='O valor exibido e a soma seguem os seletores do Resumo: mínimo, médio ou máximo.';board.appendChild(primary);
     const wrap=document.createElement('div');wrap.id='v122MarketSources';wrap.className='v122-market-sources';wrap.innerHTML=`
       <section data-market-source="liga"><header><strong>Liga Pokémon</strong><span>principal</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>
       <section data-market-source="myp"><header><strong>MYP Cards</strong><span>comparação</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>`;
