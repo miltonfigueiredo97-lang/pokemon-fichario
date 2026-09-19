@@ -245,8 +245,25 @@
         </div>
         <label>Observações<textarea id="cardNotes" rows="2"></textarea></label>
         <div class="source-links"><a id="mypcardsLink" class="text-link hidden" target="_blank" rel="noopener">MYP Cards</a><a id="ligaSearchLink" class="text-link" target="_blank" rel="noopener">Liga Pokémon</a></div>
-        <div class="dialog-actions between"><button id="btnDeleteSelected" class="btn btn-danger hidden" type="button">Excluir</button><button id="btnSaveCard" class="btn btn-primary" type="button">Salvar no fichário</button></div>
+        <div class="dialog-actions v1417-card-actions"><button id="btnSaveCard" class="btn btn-primary" type="button">Salvar no fichário</button><button id="btnDeleteSelected" class="btn v1417-remove-card hidden" type="button">🗑 Remover esta carta do fichário</button></div>
       </section>
+    </div>
+  </dialog>
+
+  <dialog id="v1417RemoveCardDialog" class="sheet-dialog v1417-remove-card-dialog">
+    <div class="dialog-shell v1417-remove-card-shell">
+      <div class="dialog-head">
+        <div><p class="kicker v14-danger-kicker">REMOVER CARTA</p><h2 id="v1417RemoveCardTitle">Remover esta carta?</h2><p id="v1417RemoveCardMessage" class="muted compact-copy"></p></div>
+        <button class="icon-only" data-v1417-close-remove type="button" aria-label="Cancelar">×</button>
+      </div>
+      <div class="v1417-remove-card-warning">
+        <strong>Esta entrada será apagada deste fichário.</strong>
+        <span>Se a mesma carta existir em outro fichário, a outra cópia não será alterada.</span>
+      </div>
+      <div class="v1417-remove-card-actions">
+        <button id="v1417CancelRemoveCard" class="btn btn-secondary" type="button">Cancelar</button>
+        <button id="v1417ConfirmRemoveCard" class="btn v14-danger-button" type="button">Remover carta</button>
+      </div>
     </div>
   </dialog>
 
