@@ -1,0 +1,30 @@
+name: V13.6 Clube da Liga probe
+on:
+  push:
+    branches:
+      - fix-v136-price-selector-liga
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe alternate Liga host
+        run: |
+          OUT=v136-liga-clube-probe.txt
+          : > "$OUT"
+          for URL in             "https://www.clubedaliga.com.br/api/cardsearch?tcg=2&term=Lugia"             "https://www.clubedaliga.com.br/api/cardsearch?tcg=2&q=Lugia"             "https://www.clubedaliga.com.br/?view=cards/card&card=Lugia-EX&ed=PLS&tcg=2"             "https://www.clubedaliga.com.br/?view=cards/search&card=Lugia-EX&tcg=2"
+          do
+            echo "===== $URL =====" >> "$OUT"
+            curl -L --max-time 30 -sS -D - "$URL" | head -c 18000 >> "$OUT" || true
+            echo >> "$OUT"
+          done
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v136-liga-clube-probe.txt
+          git commit -m "Record V13.6 Clube da Liga probe" || exit 0
+          git push origin HEAD:fix-v136-price-selector-liga
