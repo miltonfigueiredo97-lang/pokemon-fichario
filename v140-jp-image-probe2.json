@@ -1,0 +1,223 @@
+{
+  "listStatus": 200,
+  "items": [
+    {
+      "id": "neo2-040",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "040",
+      "set": {
+        "cardCount": {
+          "official": 56,
+          "total": 57
+        },
+        "id": "neo2",
+        "name": "遺跡をこえて...",
+        "symbol": "https://assets.tcgdex.net/univ/neo/neo2/symbol"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "neo",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/neo/neo2/040/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/neo/neo2/040/high.png",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "E2-067",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon -067/092",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "067",
+      "set": {
+        "cardCount": {
+          "official": 92,
+          "total": 92
+        },
+        "id": "E2",
+        "name": "地図にない町"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "e",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E2/067/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E2/067/high.png",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "E2-068",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon -068/092",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "068",
+      "set": {
+        "cardCount": {
+          "official": 92,
+          "total": 92
+        },
+        "id": "E2",
+        "name": "地図にない町"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "e",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E2/068/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E2/068/high.png",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "PCG6-069",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon（デルタ種）",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "069",
+      "set": {
+        "cardCount": {
+          "official": 86,
+          "total": 86
+        },
+        "id": "PCG6",
+        "name": "ホロンの研究塔"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "PCG",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/PCG/PCG6/069/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/PCG/PCG6/069/high.png",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "E4-071",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "071",
+      "set": {
+        "cardCount": {
+          "official": 88,
+          "total": 91
+        },
+        "id": "E4",
+        "name": "裂けた大地"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "e",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E4/071/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E4/071/high.png",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "E4-072",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "072",
+      "set": {
+        "cardCount": {
+          "official": 88,
+          "total": 91
+        },
+        "id": "E4",
+        "name": "裂けた大地"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "e",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E4/072/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/e/E4/072/high.png",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "id": "PCG4-091",
+      "listImage": null,
+      "jaStatus": 200,
+      "jaImage": null,
+      "jaName": "Umbreon ex",
+      "enStatus": 404,
+      "enImage": null,
+      "enName": null,
+      "localId": "091",
+      "set": {
+        "cardCount": {
+          "official": 106,
+          "total": 106
+        },
+        "id": "PCG4",
+        "name": "金の空、銀の海"
+      },
+      "setDetailStatus": 200,
+      "seriesId": "PCG",
+      "heads": [
+        {
+          "url": "https://assets.tcgdex.net/ja/PCG/PCG4/091/high.webp",
+          "status": 404
+        },
+        {
+          "url": "https://assets.tcgdex.net/ja/PCG/PCG4/091/high.png",
+          "status": 404
+        }
+      ]
+    }
+  ]
+}
