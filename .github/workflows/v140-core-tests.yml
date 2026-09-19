@@ -5,6 +5,7 @@ on:
       - v140-production-fixes
     paths:
       - 'v140.js'
+      - 'v8.js'
       - 'v122.js'
       - 'v140.css'
       - 'index.html'
@@ -43,6 +44,7 @@ jobs:
       - name: Static syntax
         run: |
           node --check script.js
+          node --check v8.js
           node --check v11fix.js
           node --check v122.js
           node --check v140.js
@@ -77,6 +79,7 @@ jobs:
             const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
 
             const js=fs.readFileSync('v140.js','utf8');
+            const railJs=fs.readFileSync('v8.js','utf8');
             const pageJs=fs.readFileSync('v11fix.js','utf8');
             const html=fs.readFileSync('index.html','utf8');
             const css=fs.readFileSync('v140.css','utf8');
@@ -112,7 +115,11 @@ jobs:
               filteredPriceRefresh:/visiblePriceTargetCards/.test(js)&&/updateVisiblePricesV14/.test(js)&&/Atualizar preços visíveis/.test(fs.readFileSync('v122.js','utf8')),
               singleCardPrice:/btnUpdateCardPrice/.test(html)&&/updateEditingCardPriceNow/.test(js)&&/price_priority:100/.test(js),
               persistentPriceState:/price_processing_at/.test(js)&&/price_next_retry_at/.test(js)&&/price_last_error/.test(js),
-              persistentWorkerSource:fs.existsSync('supabase/functions/pokemon-price-worker/index.ts')
+              persistentWorkerSource:fs.existsSync('supabase/functions/pokemon-price-worker/index.ts'),
+              toolbarClearance:/bar\.style\.top=Math\.max\(6,sr\.top-ar\.top-barHeight-5\)\+'px'/.test(js)&&/padding:54px 46px 18px!important/.test(css),
+              summaryStatsRemoved:/#summaryPanel \.summary-grid\{[\s\S]*display:none!important/.test(css),
+              compactSummaryActions:/#summaryPanel \.action-grid\{[\s\S]*repeat\(2,minmax\(0,1fr\)\)/.test(css)&&/#summaryPanel #v12UpdatePrices/.test(css)&&/#summaryPanel #v112Logout/.test(css),
+              usefulDesktopRail:/v149-useful-rail/.test(railJs)&&/dataset\.kind/.test(railJs)&&/Escanear carta/.test(railJs)&&/Abrir páginas/.test(railJs)&&!/Recolher menu/.test(railJs)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};

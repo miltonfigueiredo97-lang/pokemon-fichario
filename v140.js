@@ -174,9 +174,11 @@
     }
     const ar=area.getBoundingClientRect(),sr=spread.getBoundingClientRect();
     if(sr.width<20)return;
+    const barHeight=Math.max(1,bar.getBoundingClientRect().height);
     bar.style.left=(sr.left-ar.left)+'px';
     bar.style.width=sr.width+'px';
     bar.style.maxWidth=sr.width+'px';
+    bar.style.top=Math.max(6,sr.top-ar.top-barHeight-5)+'px';
     bar.style.transform='none';
   }
 

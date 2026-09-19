@@ -143,3 +143,85 @@
 @media print{.v14-unified-topbar{display:none!important}}
 
 .v14-card-price-update{width:100%;margin-top:9px;min-height:34px;font-size:9px;font-weight:900}
+
+
+/* V14.9 — desktop cleanup: reserve a real lane for the toolbar */
+@media(min-width:821px){
+  .binder-stage{
+    padding:54px 46px 18px!important;
+  }
+  .binder-spread{
+    height:min(690px,calc(100dvh - 148px))!important;
+    max-height:calc(100% - 72px)!important;
+  }
+  .v14-unified-topbar{
+    box-shadow:0 8px 24px rgba(0,0,0,.26)!important;
+  }
+}
+
+/* The progress card + lower filter already communicate these counts. */
+#summaryPanel .summary-grid{
+  display:none!important;
+}
+
+/* Compact summary tools instead of one very long vertical list. */
+#summaryPanel .action-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:6px!important;
+}
+#summaryPanel .action-grid .action-btn{
+  min-height:38px!important;
+  padding:7px 8px!important;
+  border-radius:8px!important;
+  font-size:9px!important;
+  line-height:1.25!important;
+  text-align:left!important;
+}
+#summaryPanel #v12UpdatePrices,
+#summaryPanel #v112Logout{
+  grid-column:1/-1;
+}
+#summaryPanel #v12UpdatePrices{
+  color:#58e4ba!important;
+  border-color:rgba(80,224,178,.28)!important;
+  background:rgba(80,224,178,.055)!important;
+}
+#summaryPanel #v112Logout{
+  color:#ff9a9a!important;
+  border-color:rgba(255,95,95,.24)!important;
+  background:rgba(255,95,95,.045)!important;
+}
+#summaryPanel .v123-excel-help{
+  display:none!important;
+}
+
+/* Reworked desktop rail: only direct, useful actions. */
+.v149-useful-rail{
+  gap:5px!important;
+  padding:5px!important;
+  border-radius:14px!important;
+  background:rgba(8,11,14,.78)!important;
+}
+.v149-useful-rail .v11-tool{
+  width:36px!important;
+  height:36px!important;
+  border-radius:10px!important;
+}
+.v149-useful-rail .v11-tool[data-kind="scan"]{
+  color:#72d9ff!important;
+}
+.v149-useful-rail .v11-tool[data-kind="pages"]{
+  color:#d8d5cc!important;
+}
+.v149-useful-rail .v11-tool[data-kind="friends"]{
+  color:#c7d2ff!important;
+}
+
+#summaryPanel #v12UpdatePrices{order:1}
+#summaryPanel #v122ExportExcel{order:2}
+#summaryPanel #v122TemplateExcel{order:3}
+#summaryPanel #v122ImportExcel{order:4}
+#summaryPanel #btnExport{order:5}
+#summaryPanel #btnPrint{order:6}
+#summaryPanel #btnSummarySettings{order:7}
+#summaryPanel #v112Logout{order:8}
