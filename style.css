@@ -120,7 +120,7 @@
 }
 
 
-.price-mode-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.price-mode-controls{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
 .price-mode-controls label{display:flex;flex-direction:column;gap:5px}
 .price-mode-controls label>span{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#8f999f)}
 .price-mode-controls select{width:100%;min-height:36px;border:1px solid var(--line,#2b3136);border-radius:8px;background:#111519;color:#f3f1eb;padding:0 9px;font:700 12px/1 inherit;outline:none}
