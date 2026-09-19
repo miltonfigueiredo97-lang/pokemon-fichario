@@ -1566,12 +1566,50 @@
     patchJapaneseImages();
   }
 
+  function organizeSummaryActionsV14(){
+    const root=document.querySelector('#summaryPanel .action-grid');
+    if(!root)return;
+    const defs=[
+      {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
+      {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
+      {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'CSV e impressão',items:['btnExport','btnPrint']},
+      {id:'settings',icon:'⚙',title:'Configurações',hint:'Aparência e conta',items:['btnSummarySettings','v112Logout']}
+    ];
+
+    for(const def of defs){
+      let details=byId('v1411Group_'+def.id);
+      if(!details){
+        details=document.createElement('details');
+        details.id='v1411Group_'+def.id;
+        details.className='v1411-action-group';
+        const summary=document.createElement('summary');
+        summary.innerHTML='<span class="v1411-action-icon">'+def.icon+'</span><span class="v1411-action-copy"><strong>'+def.title+'</strong><small>'+def.hint+'</small></span><span class="v1411-action-chevron">⌄</span>';
+        const body=document.createElement('div');
+        body.className='v1411-action-body';
+        details.append(summary,body);
+        details.addEventListener('toggle',()=>{
+          if(!details.open)return;
+          root.querySelectorAll('.v1411-action-group[open]').forEach(other=>{if(other!==details)other.open=false});
+        });
+        root.appendChild(details);
+      }
+      const body=details.querySelector('.v1411-action-body');
+      for(const id of def.items){
+        const el=byId(id);
+        if(el&&el.parentElement!==body)body.appendChild(el);
+      }
+    }
+    const fileInput=byId('v122ExcelInput');
+    if(fileInput&&fileInput.parentElement!==root)root.appendChild(fileInput);
+  }
+
   function wireFastAdd(){
     const b=byId('btnAddSelected');if(b)b.onclick=addSelectedFast;
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
     const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
     syncSingleCardPriceButton();
     rewireFilteredPriceButton();
+    organizeSummaryActionsV14();
   }
 
   async function bootV14(){
@@ -1595,6 +1633,10 @@
       wireFastAdd();
       if(cardDialog.open)syncSingleCardPriceButton();
     }).observe(cardDialog,{attributes:true,attributeFilter:['open']});
+    const summaryActions=document.querySelector('#summaryPanel .action-grid');
+    if(summaryActions)new MutationObserver(()=>setTimeout(organizeSummaryActionsV14,0)).observe(summaryActions,{childList:true});
+    setTimeout(organizeSummaryActionsV14,80);
+    setTimeout(organizeSummaryActionsV14,700);
     const area=document.querySelector('.binder-area');
     const spread=document.querySelector('#binderStage .binder-spread');
     if(typeof ResizeObserver!=='undefined'){
