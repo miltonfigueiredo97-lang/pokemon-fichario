@@ -1,4 +1,4 @@
-name: Production V13.4 check
+name: Production V13.4 price check
 on:
   push:
     branches:
@@ -10,23 +10,47 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Probe production
+      - name: Probe current binder cards
         run: |
-          OUT=production-v134-check.txt
-          : > "$OUT"
-          echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
-          echo "===== Lugia V price =====" >> "$OUT"
-          curl -L --max-time 70 -sS "https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia%20V&number=138%2F195&set=Tempestade%20Prateada&setId=swsh12&lang=pt-br&finish=Foil&condition=Nova" >> "$OUT" || true
-          echo >> "$OUT"
-          echo "===== V13.4 frontend markers =====" >> "$OUT"
-          curl -L --max-time 30 -sS "https://pokemon-fichario.vercel.app/v122.js" | grep -Eo "APP_VERSION='V13\.4'|data-condition-key|priceForNewCard" | sort -u >> "$OUT" || true
+          OUT=production-v134-prices.json
+          node - <<'EOF'
+          const fs=require('fs'), https=require('https');
+          const cards=[
+            {
+              key:'lugiaEX',
+              url:'https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia-EX&number=134%2F135&set=Black%20%26%20White%208%3A%20Tempestade%20de%20Plasma&setId=PLS&lang=pt-br&finish=Foil&condition=DM&link=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F38909%2Flugia-ex'
+            },
+            {
+              key:'omanyte',
+              url:'https://pokemon-fichario.vercel.app/api/mypcards-public?name=Omanyte&number=180%2F165&set=151&setId=sv03.5&lang=en&finish=Normal&condition=Nova&link=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F206053%2Fomanyte'
+            },
+            {
+              key:'lugiaV',
+              url:'https://pokemon-fichario.vercel.app/api/mypcards-public?name=Lugia%20V&number=138%2F195&set=Tempestade%20Prateada&setId=swsh12&lang=pt-br&finish=Foil&condition=DM&link=https%3A%2F%2Fmypcards.com%2Fpokemon%2Fproduto%2F174895%2Flugia-v'
+            }
+          ];
+          function get(url){
+            return new Promise(resolve=>{
+              const req=https.get(url,{timeout:70000},res=>{
+                let s='';res.on('data',d=>s+=d);res.on('end',()=>{try{resolve(JSON.parse(s))}catch{resolve({error:'json',raw:s})}});
+              });
+              req.on('timeout',()=>{req.destroy();resolve({error:'timeout'})});
+              req.on('error',e=>resolve({error:e.message}));
+            });
+          }
+          (async()=>{
+            const out={utc:new Date().toISOString()};
+            for(const c of cards)out[c.key]=await get(c.url);
+            fs.writeFileSync('production-v134-prices.json',JSON.stringify(out,null,2));
+          })();
+          EOF
       - name: Commit result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add production-v134-check.txt
-          git commit -m "Record production V13.4 check" || exit 0
+          git add production-v134-prices.json
+          git commit -m "Record production V13.4 current prices" || exit 0
           git push origin HEAD:diagnose-v13-production
