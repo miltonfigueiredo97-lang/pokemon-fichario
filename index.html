@@ -115,7 +115,25 @@
         </section>
         <section class="control-block compact-block">
           <label class="toggle-row"><span>Mostrar valores</span><input id="showValues" type="checkbox"><i></i></label>
-          <div id="totalValueBox" class="value-box hidden"><span>Valor médio salvo</span><strong id="totalValue">R$ 0,00</strong></div>
+          <div class="price-mode-controls">
+            <label>
+              <span>Valor nas cartas</span>
+              <select id="displayPriceMode">
+                <option value="min">Mínimo</option>
+                <option value="avg">Médio</option>
+                <option value="max">Máximo</option>
+              </select>
+            </label>
+            <label>
+              <span>Valor na soma</span>
+              <select id="totalPriceMode">
+                <option value="min">Mínimo</option>
+                <option value="avg">Médio</option>
+                <option value="max">Máximo</option>
+              </select>
+            </label>
+          </div>
+          <div id="totalValueBox" class="value-box hidden"><span id="totalValueLabel">Valor médio salvo</span><strong id="totalValue">R$ 0,00</strong></div>
         </section>
         <section class="control-block compact-block">
           <p class="section-title">FILTRO</p>

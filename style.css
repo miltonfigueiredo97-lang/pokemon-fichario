@@ -118,3 +118,11 @@
   .binder-pocket{padding:4px;border:1px solid rgba(255,255,255,.09)!important;border-radius:6px;background:rgba(13,17,20,.60)}
   .pocket-card{width:auto!important;height:calc(100% - 6px)!important;max-width:calc(100% - 6px)!important;max-height:calc(100% - 6px)!important;aspect-ratio:63/88}
 }
+
+
+.price-mode-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.price-mode-controls label{display:flex;flex-direction:column;gap:5px}
+.price-mode-controls label>span{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#8f999f)}
+.price-mode-controls select{width:100%;min-height:36px;border:1px solid var(--line,#2b3136);border-radius:8px;background:#111519;color:#f3f1eb;padding:0 9px;font:700 12px/1 inherit;outline:none}
+.price-mode-controls select:focus{border-color:#ff6d57}
+@media(max-width:520px){.price-mode-controls{grid-template-columns:1fr}}
