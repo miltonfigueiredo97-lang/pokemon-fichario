@@ -1987,10 +1987,75 @@
     if(fileInput&&fileInput.parentElement!==root)root.appendChild(fileInput);
   }
 
+  function openRemoveCardDialog(){
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    if(!card)return toast('Esta carta ainda não foi salva no fichário.');
+    const binder=V14.binders.find(b=>b.id===card.binder_id);
+    const d=byId('v1417RemoveCardDialog');if(!d)return;
+    d.dataset.cardId=card.id;
+    const title=byId('v1417RemoveCardTitle');
+    const msg=byId('v1417RemoveCardMessage');
+    if(title)title.textContent='Remover '+(card.name||'esta carta')+'?';
+    if(msg)msg.textContent='Ela será removida de "'+(binder?.name||'este fichário')+'" e deixará de existir nessa posição.';
+    if(!d.open)d.showModal();
+  }
+
+  async function confirmRemoveCardFromBinder(){
+    const d=byId('v1417RemoveCardDialog');
+    const id=d?.dataset?.cardId;
+    const card=V14.allCards.find(x=>String(x.id)===String(id));
+    if(!card)return;
+    const btn=byId('v1417ConfirmRemoveCard');
+    busy(btn,true,'Removendo…');
+    try{
+      const {data,error}=await db.from('pokemon_cards')
+        .delete()
+        .eq('id',card.id)
+        .eq('user_id',currentUser.id)
+        .select('id');
+      if(error)throw error;
+      if(!data?.length)throw new Error('Carta não encontrada para remoção.');
+
+      if(V14.singlePriceWatch?.cardId===card.id)V14.singlePriceWatch.cancelled=true;
+      V14.priceQueue=V14.priceQueue.filter(x=>x.id!==card.id);
+      V14.priceJobs.delete(card.id);
+      V14.allCards=V14.allCards.filter(x=>x.id!==card.id);
+      collection=collection.filter(x=>x.id!==card.id);
+
+      hardCloseDialog(d);
+      hardCloseDialog('cardDialog');
+      editingCardId=null;
+      selectedCard=null;
+      selectedMarket=null;
+      pendingPosition=null;
+
+      await loadCardsV14(false);
+      releaseMobileInteraction();
+      toast('Carta removida deste fichário.');
+    }catch(error){
+      console.error(error);
+      toast('Não consegui remover a carta: '+(error?.message||'erro no banco'));
+    }finally{
+      busy(btn,false);
+    }
+  }
+
+  function wireRemoveCardAction(){
+    const remove=byId('btnDeleteSelected');
+    if(remove)remove.onclick=openRemoveCardDialog;
+    const cancel=byId('v1417CancelRemoveCard');
+    if(cancel)cancel.onclick=()=>hardCloseDialog('v1417RemoveCardDialog');
+    const close=byId('v1417RemoveCardDialog')?.querySelector('[data-v1417-close-remove]');
+    if(close)close.onclick=()=>hardCloseDialog('v1417RemoveCardDialog');
+    const confirm=byId('v1417ConfirmRemoveCard');
+    if(confirm)confirm.onclick=confirmRemoveCardFromBinder;
+  }
+
   function wireFastAdd(){
     const b=byId('btnAddSelected');if(b)b.onclick=addSelectedFast;
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
     const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
+    wireRemoveCardAction();
     syncSingleCardPriceButton();
     rewireFilteredPriceButton();
     organizeSummaryActionsV14();

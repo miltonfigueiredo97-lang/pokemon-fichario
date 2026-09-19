@@ -150,7 +150,10 @@ jobs:
               closedDialogTapSafety:/dialog\.sheet-dialog:not\(\[open\]\)/.test(css)&&/pointer-events:none!important/.test(css),
               liveSinglePriceSync:/waitForSinglePrice/.test(js)&&/priceRowHasFreshResult/.test(js)&&/renderFreshSinglePrice/.test(js)&&/Atualizando no servidor/.test(js)&&/Aguardando servidor/.test(js),
               workerKick:/db\.functions\?\.invoke\?\.\('pokemon-price-worker'/.test(js)&&/Access-Control-Allow-Origin/.test(fs.readFileSync('supabase/functions/pokemon-price-worker/index.ts','utf8')),
-              productionOnlyVercel:(()=>{const v=JSON.parse(fs.readFileSync('vercel.json','utf8'));return v.git?.deploymentEnabled?.main===true&&v.git?.deploymentEnabled?.['*']===false})()
+              productionOnlyVercel:(()=>{const v=JSON.parse(fs.readFileSync('vercel.json','utf8'));return v.git?.deploymentEnabled?.main===true&&v.git?.deploymentEnabled?.['*']===false})(),
+              removeSingleCard:/btnDeleteSelected/.test(html)&&/Remover esta carta do fichário/.test(html)&&/openRemoveCardDialog/.test(js)&&/confirmRemoveCardFromBinder/.test(js),
+              removeSingleCardConfirm:/v1417RemoveCardDialog/.test(html)&&/v1417CancelRemoveCard/.test(html)&&/v1417ConfirmRemoveCard/.test(html)&&/outra cópia não será alterada/.test(html),
+              removeSingleCardCss:/v1417-remove-card/.test(css)&&/v1417-remove-card-warning/.test(css)
             };
             const pass=masterPass&&classicPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},image:img.body,assertions};
