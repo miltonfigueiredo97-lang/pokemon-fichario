@@ -12,7 +12,7 @@
     priceQueue:[],
     priceWorkers:0,
     singlePriceWatch:null,
-    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null},
+    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null,lastVisualDescriptors:[],imageDescriptorCache:new Map()},
     setsCache:new Map(),
     seriesCache:new Map(),
     masterPreview:null,
@@ -1885,56 +1885,250 @@
     for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
     return sum/a.length;
   }
-  async function fingerprintForCard(card){
+  function cropRectCanvas(src,x0,y0,x1,y1,width=360){
+    const sw=src.videoWidth||src.naturalWidth||src.width,sh=src.videoHeight||src.naturalHeight||src.height;
+    if(!sw||!sh)return null;
+    const sx=Math.max(0,Math.round(sw*x0)),sy=Math.max(0,Math.round(sh*y0));
+    const cw=Math.max(1,Math.min(sw-sx,Math.round(sw*(x1-x0))));
+    const ch=Math.max(1,Math.min(sh-sy,Math.round(sh*(y1-y0))));
+    const canvas=document.createElement('canvas');
+    canvas.width=width;canvas.height=Math.max(1,Math.round(width*(ch/cw)));
+    canvas.getContext('2d',{willReadFrequently:true}).drawImage(src,sx,sy,cw,ch,0,0,canvas.width,canvas.height);
+    return canvas;
+  }
+  function scannerVisualCanvases(source){
+    const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;
+    if(!sw||!sh)return[];
+    const ratio=63/88,out=[],seen=new Set();
+    const add=(heightFrac,centerY)=>{
+      let ch=sh*heightFrac,cw=ch*ratio;
+      if(cw>sw*.96){cw=sw*.96;ch=cw/ratio}
+      const sx=(sw-cw)/2,sy=Math.max(0,Math.min(sh-ch,sh*centerY-ch/2));
+      const key=[Math.round(sx),Math.round(sy),Math.round(cw),Math.round(ch)].join('|');
+      if(seen.has(key))return;seen.add(key);
+      const canvas=document.createElement('canvas');canvas.width=360;canvas.height=Math.round(360/ratio);
+      canvas.getContext('2d',{willReadFrequently:true}).drawImage(source,sx,sy,cw,ch,0,0,canvas.width,canvas.height);
+      out.push(canvas);
+    };
+    // A carta pode estar dentro de One-Touch/toploader. Variamos escala e eixo Y
+    // para que a comparação visual encontre a borda real da carta, não a do plástico.
+    [0.70,0.78,0.86,0.92].forEach(h=>[0.47,0.50,0.53].forEach(cy=>add(h,cy)));
+    const legacy=scannerCardCanvas(source);if(legacy)out.unshift(legacy);
+    return out.slice(0,13);
+  }
+  function descriptorGrid(source,x0,y0,x1,y1,cols,rows){
+    const crop=cropRectCanvas(source,x0,y0,x1,y1,cols);
+    if(!crop)return null;
+    const c=document.createElement('canvas');c.width=cols;c.height=rows;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,cols,rows);
+    const d=ctx.getImageData(0,0,cols,rows).data,cells=[],lums=[];
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
+      const lum=.299*r+.587*g+.114*b,s=Math.max(.08,r+g+b);
+      cells.push([r/s,g/s,b/s,lum]);lums.push(lum);
+    }
+    const mean=lums.reduce((a,b)=>a+b,0)/Math.max(1,lums.length);
+    const variance=lums.reduce((a,b)=>a+(b-mean)*(b-mean),0)/Math.max(1,lums.length);
+    const sd=Math.max(.08,Math.sqrt(variance));
+    const out=[];
+    for(const cell of cells)out.push(cell[0],cell[1],cell[2],(cell[3]-mean)/sd);
+    return out;
+  }
+  function edgeDescriptor(source,x0=0,y0=0,x1=1,y1=1){
+    const cols=17,rows=23,crop=cropRectCanvas(source,x0,y0,x1,y1,cols);
+    if(!crop)return null;
+    const c=document.createElement('canvas');c.width=cols;c.height=rows;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,cols,rows);
+    const d=ctx.getImageData(0,0,cols,rows).data,g=[];
+    for(let i=0;i<d.length;i+=4)g.push(.299*d[i]+.587*d[i+1]+.114*d[i+2]);
+    const out=[];
+    for(let y=0;y<rows;y++)for(let x=0;x<cols-1;x++)out.push(g[y*cols+x+1]>=g[y*cols+x]?1:0);
+    for(let y=0;y<rows-1;y++)for(let x=0;x<cols;x++)out.push(g[(y+1)*cols+x]>=g[y*cols+x]?1:0);
+    return out;
+  }
+  function visualDescriptor(source){
+    return{
+      full:descriptorGrid(source,.02,.02,.98,.98,12,17),
+      art:descriptorGrid(source,.045,.075,.955,.61,13,8),
+      edge:edgeDescriptor(source,.025,.025,.975,.975)
+    };
+  }
+  function vectorDistance(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
+    return sum/a.length;
+  }
+  function binaryDistance(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let diff=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])diff++;
+    return diff/a.length;
+  }
+  function visualDescriptorDistance(a,b){
+    if(!a||!b)return Number.POSITIVE_INFINITY;
+    const full=vectorDistance(a.full,b.full),art=vectorDistance(a.art,b.art),edge=binaryDistance(a.edge,b.edge);
+    if(!Number.isFinite(full)&&!Number.isFinite(art))return Number.POSITIVE_INFINITY;
+    return (Number.isFinite(art)?art*.58:0)+(Number.isFinite(full)?full*.27:0)+(Number.isFinite(edge)?edge*.15:0);
+  }
+  function bestVisualDistance(reference,targets){
+    if(!reference||!targets?.length)return Number.POSITIVE_INFINITY;
+    let best=Number.POSITIVE_INFINITY;
+    for(const target of targets)best=Math.min(best,visualDescriptorDistance(reference,target));
+    return best;
+  }
+  async function descriptorForCard(card){
     const url=cardImage(card);
     if(!url||url.startsWith('/'))return null;
-    try{
-      const r=await fetch('/api/image-proxy?url='+encodeURIComponent(url),{cache:'force-cache'});
-      if(!r.ok)return null;
-      const blob=await r.blob();
-      const bitmap=await createImageBitmap(blob);
-      const c=document.createElement('canvas');c.width=252;c.height=352;
-      c.getContext('2d').drawImage(bitmap,0,0,c.width,c.height);
-      bitmap.close?.();
-      return imageFingerprint(c);
-    }catch{return null}
+    const cached=V14.scan.imageDescriptorCache.get(url);
+    if(cached)return cached;
+    const job=(async()=>{
+      try{
+        const r=await fetch('/api/image-proxy?url='+encodeURIComponent(url),{cache:'force-cache'});
+        if(!r.ok)return null;
+        const blob=await r.blob(),bitmap=await createImageBitmap(blob);
+        const c=document.createElement('canvas');c.width=360;c.height=Math.round(360/(63/88));
+        c.getContext('2d',{willReadFrequently:true}).drawImage(bitmap,0,0,c.width,c.height);
+        bitmap.close?.();
+        return visualDescriptor(c);
+      }catch{return null}
+    })();
+    V14.scan.imageDescriptorCache.set(url,job);
+    const result=await job;
+    if(!result)V14.scan.imageDescriptorCache.delete(url);
+    return result;
   }
-  async function visuallyRankCandidates(cards){
-    const target=V14.scan.lastFingerprint;
-    if(!target||!cards?.length)return cards||[];
-    const sample=cards.slice(0,8);
+  function scannerNames(hint){
+    const items=[hint?.name,...(hint?.nameCandidates||[]).map(x=>x?.value||x)].map(x=>String(x||'').trim()).filter(Boolean);
+    return [...new Set(items.map(x=>nrm(x)).filter(Boolean))].map(k=>items.find(x=>nrm(x)===k)).slice(0,5);
+  }
+  function scannerNumbers(hint){
+    const items=[hint?.number,...(hint?.numberCandidates||[]).map(x=>x?.value||x)].map(x=>String(x||'').trim()).filter(Boolean);
+    return [...new Set(items)].slice(0,4);
+  }
+  function scanTextScore(card,hint){
+    const names=scannerNames(hint),numbers=scannerNumbers(hint);
+    let score=0;
+    if(names.length){
+      const sim=Math.max(...names.map(name=>nameSimilarity(name,card.name||'')));
+      score+=sim*500;
+      if(sim>=.96)score+=260;else if(sim>=.84)score+=130;
+    }
+    if(numbers.length){
+      const cn=numParts(card.number),printed=String(card.printedTotal||'');
+      let best=0;
+      for(const raw of numbers){
+        const q=numParts(raw);
+        let s=0;
+        if(q.n&&cn.n===q.n)s+=520;
+        if(q.d&&(q.d===cn.d||q.d===printed))s+=300;
+        best=Math.max(best,s);
+      }
+      score+=best;
+    }
+    if(card.languageCode==='pt-br')score+=90;else if(card.languageCode==='en')score+=35;
+    if(card.imageUrl)score+=20;
+    return score;
+  }
+  async function scanCandidatePool(hint,status){
+    const names=scannerNames(hint),numbers=scannerNumbers(hint),langs=['pt-br','en','ja'];
+    const jobs=[];
+    for(const lang of langs){
+      for(const number of numbers.slice(0,2))jobs.push(searchTCGdex(lang,'',number,{live:false}));
+      for(const name of names.slice(0,3))jobs.push(searchTCGdex(lang,name,'',{live:false}));
+      if(names[0]&&numbers[0])jobs.push(searchTCGdex(lang,names[0],numbers[0],{live:false}));
+    }
+    if(status)status.textContent='Nome lido. Buscando impressões candidatas…';
+    const groups=jobs.length?await Promise.all(jobs):[];
+    const cards=dedupe(groups.flat().filter(Boolean));
+    cards.sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint));
+    return cards.slice(0,28);
+  }
+  async function visuallyRankCandidates(cards,hint={}){
+    const targets=V14.scan.lastVisualDescriptors||[];
+    if(!targets.length||!cards?.length)return cards||[];
+    const sample=[...cards].sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint)).slice(0,18);
     const scored=await Promise.all(sample.map(async(card,index)=>{
-      const fp=await fingerprintForCard(card);
-      const d=fingerprintDistance(target,fp);
-      return{card,index,d};
+      const descriptor=await descriptorForCard(card);
+      const distance=bestVisualDistance(descriptor,targets);
+      const textScore=scanTextScore(card,hint);
+      // A imagem decide entre candidatos plausíveis; nome/número evitam que
+      // uma arte parecida de outra carta salte à frente sem evidência textual.
+      const combined=(Number.isFinite(distance)?distance:4.5)-(Math.min(1200,textScore)/1200)*.22+index*.002;
+      card._scanVisualDistance=distance;
+      return{card,index,distance,combined};
     }));
-    scored.sort((a,b)=>{
-      const ad=Number.isFinite(a.d)?a.d+a.index*.045:999+a.index;
-      const bd=Number.isFinite(b.d)?b.d+b.index*.045:999+b.index;
-      return ad-bd;
-    });
+    scored.sort((a,b)=>a.combined-b.combined);
     const ranked=scored.map(x=>x.card);
-    return ranked.concat(cards.slice(sample.length));
+    const used=new Set(ranked.map(card=>[card.apiId,card.languageCode].join('|')));
+    return ranked.concat(cards.filter(card=>!used.has([card.apiId,card.languageCode].join('|'))));
+  }
+  function cleanTitleLine(v){
+    let s=cleanOCRLine(v)
+      .replace(/\b(b[aá]sico|basic|stage\s*\d*|est[aá]gio\s*\d*)\b/ig,' ')
+      .replace(/\b(?:hp|ps)\s*\d{1,4}\b/ig,' ')
+      .replace(/\b\d{2,4}\s*(?:hp|ps)\b/ig,' ')
+      .replace(/\s+/g,' ').trim();
+    s=s.replace(/^[^\p{L}]+|[^\p{L}\p{N}.'\- ]+$/gu,'').trim();
+    return s;
+  }
+  function parseScannerOCR(nameTexts,numberTexts){
+    const names=[];
+    for(const t of nameTexts||[]){
+      const lines=String(t||'').split(/\n+/).map(cleanTitleLine).filter(Boolean);
+      for(let line of lines.slice(0,10)){
+        if(line.length<3||line.length>28)continue;
+        if(/\b(habilidade|ability|energia|energy|fraqueza|weakness|resist|recuo|retreat)\b/i.test(line))continue;
+        if((line.match(/\d/g)||[]).length>2)continue;
+        if(/[A-Za-zÀ-ÿ]{3}/.test(line))names.push(line);
+      }
+    }
+    const allNumbers=(numberTexts||[]).join('\n'),numbers=[];
+    for(const m of allNumbers.matchAll(/(\d{1,4})\s*[\/|Iil]\s*(\d{1,4})/g)){
+      const a=+m[1],b=+m[2];if(a>0&&b>0&&a<=9999&&b<=9999)numbers.push(a+'/'+b);
+    }
+    const count=a=>{const m=new Map();for(const x of a){const k=nrm(x);if(!k)continue;const old=m.get(k)||{value:x,count:0};old.count++;if(x.length<old.value.length+8)old.value=x;m.set(k,old)}return [...m.values()].sort((a,b)=>b.count-a.count||a.value.length-b.value.length)};
+    return{nameCandidates:count(names).slice(0,8),numberCandidates:count(numbers).slice(0,5)};
+  }
+  async function recognizeRegion(region,lang='por+eng'){
+    try{
+      const r=await window.Tesseract.recognize(region,lang);
+      return r?.data?.text||'';
+    }catch{return''}
   }
   async function ocrCard(source,status){
     if(typeof ensureOCR!=='function'||!await ensureOCR())throw new Error('OCR indisponível');
     const full=scannerCardCanvas(source);
     V14.scan.lastFingerprint=imageFingerprint(full);
-    const regions=[
-      cropCanvas(full,0,.30,true),
-      cropCanvas(full,.68,1,true),
-      cropCanvas(full,0,.34,false),
-      cropCanvas(full,.62,1,false)
-    ];
-    const texts=[];
-    for(let i=0;i<regions.length;i++){
-      if(status)status.textContent='Lendo carta · etapa '+(i+1)+'/'+regions.length+'…';
-      try{
-        const r=await window.Tesseract.recognize(regions[i],'por+eng');
-        texts.push(r?.data?.text||'');
-      }catch{}
+    V14.scan.lastVisualDescriptors=scannerVisualCanvases(source).map(visualDescriptor).filter(Boolean);
+
+    const titleRaw=cropRectCanvas(full,.035,.01,.965,.19,900);
+    const titleThreshold=cropRectCanvas(full,.035,.01,.965,.19,900);
+    if(titleThreshold){
+      const ctx=titleThreshold.getContext('2d',{willReadFrequently:true}),im=ctx.getImageData(0,0,titleThreshold.width,titleThreshold.height),d=im.data;
+      for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];const v=g>142?255:0;d[i]=d[i+1]=d[i+2]=v}
+      ctx.putImageData(im,0,0);
     }
-    return parseOCRTexts(texts);
+    const bottomRaw=cropRectCanvas(full,.025,.79,.975,.995,900);
+    const bottomThreshold=cropRectCanvas(full,.025,.79,.975,.995,900);
+    if(bottomThreshold){
+      const ctx=bottomThreshold.getContext('2d',{willReadFrequently:true}),im=ctx.getImageData(0,0,bottomThreshold.width,bottomThreshold.height),d=im.data;
+      for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];const v=g>146?255:0;d[i]=d[i+1]=d[i+2]=v}
+      ctx.putImageData(im,0,0);
+    }
+
+    if(status)status.textContent='Lendo o nome no topo da carta…';
+    const nameTexts=[await recognizeRegion(titleRaw),await recognizeRegion(titleThreshold)];
+    if(status)status.textContent='Lendo o número da carta…';
+    const numberTexts=[await recognizeRegion(bottomRaw),await recognizeRegion(bottomThreshold)];
+    const parsed=parseScannerOCR(nameTexts,numberTexts);
+
+    // Último fallback: se o topo foi muito afetado por brilho/plástico, aproveita
+    // as pistas do parser antigo, mas sem deixar o corpo da carta dominar o nome.
+    if(!parsed.nameCandidates.length||!parsed.numberCandidates.length){
+      const fallback=parseOCRTexts([...nameTexts,...numberTexts]);
+      if(!parsed.nameCandidates.length)parsed.nameCandidates=fallback.nameCandidates||[];
+      if(!parsed.numberCandidates.length)parsed.numberCandidates=fallback.numberCandidates||[];
+    }
+    return parsed;
   }
   function evidenceBest(map){
     return [...map.entries()].sort((a,b)=>b[1].count-a[1].count||b[1].value.length-a[1].value.length)[0]?.[1]||null;
@@ -1942,7 +2136,9 @@
   function mergeEvidence(hint){
     for(const x of hint.nameCandidates||[]){const k=nrm(x.value),old=V14.scan.evidenceNames.get(k)||{value:x.value,count:0};old.count+=x.count;V14.scan.evidenceNames.set(k,old)}
     for(const x of hint.numberCandidates||[]){const k=x.value,old=V14.scan.evidenceNumbers.get(k)||{value:x.value,count:0};old.count+=x.count;V14.scan.evidenceNumbers.set(k,old)}
-    return{name:evidenceBest(V14.scan.evidenceNames)?.value||'',number:evidenceBest(V14.scan.evidenceNumbers)?.value||''};
+    const nameCandidates=[...V14.scan.evidenceNames.values()].sort((a,b)=>b.count-a.count||a.value.length-b.value.length).slice(0,8);
+    const numberCandidates=[...V14.scan.evidenceNumbers.values()].sort((a,b)=>b.count-a.count).slice(0,5);
+    return{name:nameCandidates[0]?.value||'',number:numberCandidates[0]?.value||'',nameCandidates,numberCandidates};
   }
   async function showScanCandidates(hint){
     stopScanner();
@@ -1951,24 +2147,38 @@
     byId('searchLanguage').value='all';
     byId('searchName').value=hint.name||'';
     byId('searchNumber').value=hint.number||'';
-    byId('ocrStatus').textContent='Scanner: '+[hint.name,hint.number].filter(Boolean).join(' · ')+' · confirme a carta abaixo.';
-    await searchCards({live:false});
-    let best=[...catalogResults].slice(0,12);
-    if(!best.length){byId('ocrStatus').textContent='Scanner leu '+[hint.name,hint.number].filter(Boolean).join(' · ')+' mas não encontrou candidato seguro. Ajuste a foto ou use busca manual.';return}
-    best=(await visuallyRankCandidates(best)).slice(0,6);
+    const status=byId('ocrStatus');
+    if(status)status.textContent='Scanner: '+([hint.name,hint.number].filter(Boolean).join(' · ')||'pistas visuais')+' · procurando pela carta…';
+
+    let best=await scanCandidatePool(hint,status);
+    if(!best.length){
+      // Compatibilidade com o fluxo de busca existente.
+      await searchCards({live:false});
+      best=[...catalogResults].slice(0,28);
+    }
+    if(!best.length){
+      if(status)status.textContent='Consegui analisar a foto, mas não encontrei candidatos. Tente enquadrar melhor o topo da carta e o número.';
+      return;
+    }
+
+    if(status)status.textContent='Comparando a arte da sua foto com as imagens das cartas…';
+    best=(await visuallyRankCandidates(best,hint)).slice(0,6);
+    catalogResults=[...best];
+    populateRarityFilter();renderCatalog();
+
     const dlg=byId('v14ScanCandidates'),grid=byId('v14ScanCandidateGrid');
-    byId('v14ScanReadout').textContent='Leitura: '+[hint.name,hint.number].filter(Boolean).join(' · ')+' · escolha a impressão correta.';
-    grid.innerHTML=best.map((c,i)=>{
-      const img=cardImage(c);
-      return '<button type="button" class="catalog-card" data-scan-index="'+i+'">'+(img?'<img src="'+esc(img)+'" alt="'+esc(c.name)+'">':'')+'<strong>'+esc(c.name)+'</strong><small>'+esc(c.setName||'')+' · '+esc(c.number||'')+'</small></button>';
+    byId('v14ScanReadout').textContent='Leitura: '+([hint.name,hint.number].filter(Boolean).join(' · ')||'imagem')+' · resultados ordenados pela semelhança da arte.';
+    grid.innerHTML=best.map((card,i)=>{
+      const img=cardImage(card),distance=card._scanVisualDistance;
+      const visual=Number.isFinite(distance)?'<small>Comparação visual '+Math.max(1,Math.round((1-Math.min(1,distance))*100))+'%</small>':'';
+      return '<button type="button" class="catalog-card" data-scan-index="'+i+'">'+(img?'<img src="'+esc(img)+'" alt="'+esc(card.name)+'">':'')+'<strong>'+esc(card.name)+'</strong><small>'+esc(card.setName||'')+' · '+esc(card.number||'')+'</small>'+visual+'</button>';
     }).join('');
     grid.querySelectorAll('[data-scan-index]').forEach(b=>b.onclick=()=>{
-      const c=best[+b.dataset.scanIndex],key=cardKey(c);
-      catalogSelection.clear();catalogSelection.set(key,c);updateSelectionTray();
-      byId('resultsList')?.dispatchEvent(new Event('click',{bubbles:true}));
+      const card=best[+b.dataset.scanIndex],key=cardKey(card);
+      catalogSelection.clear();catalogSelection.set(key,card);updateSelectionTray();
       if(dlg.open)dlg.close();
       if(byId('addDialog')&&!byId('addDialog').open)byId('addDialog').showModal();
-      setTimeout(()=>{try{const target=[...document.querySelectorAll('#resultsList .catalog-card')].find(x=>x.textContent.includes(c.name));target?.scrollIntoView({block:'center'})}catch{}},80);
+      setTimeout(()=>{try{const target=[...document.querySelectorAll('#resultsList .catalog-card')].find(x=>x.textContent.includes(card.name));target?.scrollIntoView({block:'center'})}catch{}},80);
     });
     if(dlg&&!dlg.open)dlg.showModal();
   }
@@ -1998,7 +2208,7 @@
   }
   async function startScanner(){
     if(isGeneral())return toast('Escolha um fichário antes de escanear e adicionar uma carta.');
-    stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();V14.scan.lastFingerprint=null;
+    stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();V14.scan.lastFingerprint=null;V14.scan.lastVisualDescriptors=[];
     if(byId('addDialog')?.open)byId('addDialog').close();
     if(!byId('scanDialog')?.open)byId('scanDialog').showModal();
     const status=byId('scanLiveStatus');if(status)status.textContent='Abrindo câmera traseira…';
@@ -2016,8 +2226,13 @@
       const img=new Image(),url=URL.createObjectURL(file);
       await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url});
       const hint=await ocrCard(img,status);URL.revokeObjectURL(url);
-      const merged={name:hint.nameCandidates?.[0]?.value||'',number:hint.numberCandidates?.[0]?.value||''};
-      if(!merged.name&&!merged.number){if(status)status.textContent='Não consegui ler nome nem número. Tente uma foto mais reta, focada e sem reflexo.';return}
+      const merged={
+        name:hint.nameCandidates?.[0]?.value||'',
+        number:hint.numberCandidates?.[0]?.value||'',
+        nameCandidates:hint.nameCandidates||[],
+        numberCandidates:hint.numberCandidates||[]
+      };
+      if(!merged.name&&!merged.number){if(status)status.textContent='Não consegui ler o nome no topo nem o número. Tente deixar a carta inteira visível, principalmente a faixa superior.';return}
       await showScanCandidates(merged);
     }catch(e){console.error(e);if(status)status.textContent='Não consegui analisar a foto. Tente outra imagem.'}
   }
