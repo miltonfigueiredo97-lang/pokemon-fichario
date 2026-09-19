@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.6';
+  const APP_VERSION='V13.7';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.7',title:'MYP como única fonte automática',items:[
+      'O fichário usa um único seletor para mínimo, médio ou máximo, aplicado às cartas e à soma total.',
+      'Liga Pokémon foi removida do quadro automático e não é mais consultada ao abrir ou atualizar cartas.',
+      'O botão/link Liga Pokémon continua disponível para consulta manual.',
+      'Atualizar preços agora consulta somente MYP Cards, reduzindo o tempo da atualização.'
+    ]},
     {version:'V13.6',title:'Escolha do valor exibido e somado',items:[
       'Resumo ganhou seletores independentes para valor nas cartas e valor usado na soma: mínimo, médio ou máximo.',
       'As duas escolhas ficam salvas na conta.',
@@ -233,20 +239,22 @@
   }
 
   async function queryBothMarkets(card,finish='Normal',condition='Nova'){
-    const [liga,officialMyp]=await Promise.all([
-      querySource('/api/liga-public','liga',card,finish,condition).catch(error=>({source:'liga',failed:true,error:'exception',message:error?.message||''})),
-      queryOfficialMyp(card)
-    ]);
-    let myp=officialMyp;
-    if(!hasPrice(myp)){
-      const publicMyp=await querySource('/api/mypcards-public','myp',card,finish,condition).catch(error=>({source:'myp',failed:true,error:'exception',message:error?.message||''}));
-      if(hasPrice(publicMyp))myp=publicMyp;
-      else myp={...publicMyp,officialError:officialMyp?.error||'',officialMessage:officialMyp?.message||'',needsMypToken:!!officialMyp?.needsMypToken};
-    }
-    const primary=primaryMarket(liga,myp);
-    const result={source:primarySource(liga,myp),min:Number(primary?.min||0),avg:Number(primary?.avg||0),max:Number(primary?.max||0),link:primary?.link||'',checkedAt:primary?.checkedAt||new Date().toISOString(),liga,myp,finish,condition};
+    const myp=await querySource('/api/mypcards-public','myp',card,finish,condition)
+      .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''}));
+    const primary=hasPrice(myp)?myp:null;
+    const result={
+      source:primary?'MYP Cards':'Sem preço BR',
+      min:Number(primary?.min||0),
+      avg:Number(primary?.avg||0),
+      max:Number(primary?.max||0),
+      link:primary?.link||'',
+      checkedAt:primary?.checkedAt||new Date().toISOString(),
+      liga:null,
+      myp,
+      finish,
+      condition
+    };
     console.groupCollapsed?.(`[Preços] ${card?.name||'Carta'} ${card?.number||''}`);
-    console.log?.('Liga:',liga);
     console.log?.('MYP:',myp);
     console.log?.('Resultado:',result);
     console.groupEnd?.();
@@ -256,47 +264,60 @@
 
   function savedDual(card){
     if(!card)return {source:'Sem preço BR',min:0,avg:0,max:0,link:'',liga:null,myp:null};
-    const liga={source:'Liga Pokémon',min:+card.liga_price_min||0,avg:+card.liga_price_avg||0,max:+card.liga_price_max||0,link:card.liga_price_link||'',checkedAt:card.liga_price_checked_at||null};
-    const myp={source:'MYP Cards',min:+card.myp_price_min||0,avg:+card.myp_price_avg||0,max:+card.myp_price_max||0,link:card.myp_price_link||'',checkedAt:card.myp_price_checked_at||null};
-    const primary=primaryMarket(liga,myp);
-    return {source:primarySource(liga,myp),min:+primary?.min||0,avg:+primary?.avg||0,max:+primary?.max||0,link:primary?.link||'',liga,myp,finish:card.finish||'Normal',condition:card.condition||'Nova'};
+    const myp={
+      source:'MYP Cards',
+      min:+card.myp_price_min||0,
+      avg:+card.myp_price_avg||0,
+      max:+card.myp_price_max||0,
+      link:card.myp_price_link||'',
+      checkedAt:card.myp_price_checked_at||null
+    };
+    return {
+      source:hasPrice(myp)?'MYP Cards':'Sem preço BR',
+      min:+myp.min||0,
+      avg:+myp.avg||0,
+      max:+myp.max||0,
+      link:myp.link||'',
+      liga:null,
+      myp,
+      finish:card.finish||'Normal',
+      condition:card.condition||'Nova'
+    };
   }
 
   function marketPatch(card,dual){
-    const oldLiga={min:+card?.liga_price_min||0,avg:+card?.liga_price_avg||0,max:+card?.liga_price_max||0,link:card?.liga_price_link||'',checkedAt:card?.liga_price_checked_at||null};
-    const oldMyp={min:+card?.myp_price_min||0,avg:+card?.myp_price_avg||0,max:+card?.myp_price_max||0,link:card?.myp_price_link||'',checkedAt:card?.myp_price_checked_at||null};
-
-    // Só substitui uma fonte quando ela realmente devolveu algum preço.
-    // Falha, not_found e 0/0/0 preservam integralmente a última cotação salva.
-    const ligaHasNew=hasPrice(dual?.liga);
+    const oldMyp={
+      min:+card?.myp_price_min||0,
+      avg:+card?.myp_price_avg||0,
+      max:+card?.myp_price_max||0,
+      link:card?.myp_price_link||'',
+      checkedAt:card?.myp_price_checked_at||null
+    };
     const mypHasNew=hasPrice(dual?.myp);
-    const liga=ligaHasNew?dual.liga:oldLiga;
     const myp=mypHasNew?dual.myp:oldMyp;
-    const gotNew=ligaHasNew||mypHasNew;
-
-    const primary=primaryMarket(liga,myp);
-    const source=primarySource(liga,myp);
     const oldPrimary={
-      min:+card?.price_min||0,avg:+card?.price_avg||0,max:+card?.price_max||0,
+      min:+card?.price_min||0,
+      avg:+card?.price_avg||0,
+      max:+card?.price_max||0,
       source:card?.price_source||card?.price_br_source||'Sem preço BR',
       link:card?.price_br_link||card?.price_link||''
     };
 
     return {
-      liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,liga_price_link:liga.link||oldLiga.link||null,liga_price_checked_at:liga.checkedAt||oldLiga.checkedAt||null,
-      myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,myp_price_link:myp.link||oldMyp.link||null,myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
-      price_min:gotNew?(+primary?.min||0):oldPrimary.min,
-      // O painel de mercado mantém média vazia quando existe só uma oferta,
-      // mas o valor principal do fichário precisa continuar útil: usa média
-      // quando existe e, na falta dela, a única/mínima oferta disponível.
-      price_avg:gotNew?(+primary?.avg||+primary?.min||+primary?.max||0):oldPrimary.avg,
-      price_max:gotNew?(+primary?.max||0):oldPrimary.max,
+      myp_price_min:+myp.min||0,
+      myp_price_avg:+myp.avg||0,
+      myp_price_max:+myp.max||0,
+      myp_price_link:myp.link||oldMyp.link||null,
+      myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
+      price_min:mypHasNew?(+myp.min||0):oldPrimary.min,
+      price_avg:mypHasNew?(+myp.avg||+myp.min||+myp.max||0):oldPrimary.avg,
+      price_max:mypHasNew?(+myp.max||0):oldPrimary.max,
       currency:'BRL',
-      price_source:gotNew?source:oldPrimary.source,
-      price_link:gotNew?(primary?.link||oldPrimary.link||ligaSearchUrl(card)):(oldPrimary.link||ligaSearchUrl(card)),
-      price_br_source:gotNew&&source!=='Sem preço BR'?source:(card?.price_br_source||null),
-      price_br_link:gotNew?(primary?.link||card?.price_br_link||null):(card?.price_br_link||null),
-      price_checked_at:gotNew?(primary?.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
+      price_source:mypHasNew?'MYP Cards':oldPrimary.source,
+      price_link:mypHasNew?(myp.link||oldPrimary.link||''):(oldPrimary.link||''),
+      price_br_source:mypHasNew?'MYP Cards':(card?.price_br_source||null),
+      price_br_link:mypHasNew?(myp.link||card?.price_br_link||null):(card?.price_br_link||null),
+      price_checked_at:mypHasNew?(myp.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
     };
   }
 
@@ -319,7 +340,7 @@
           const saved=collection.find(c=>c.id===editingCardId);
           if(!saved)return;
           // Mostra o último valor instantaneamente, mas NÃO para aí:
-          // toda abertura de uma carta existente tenta atualizar Liga + MYP.
+          // toda abertura de uma carta existente tenta atualizar somente a MYP.
           const cached=savedDual(saved);
           selectedMarket=cached;
           setPrices(cached.min,cached.avg,cached.max);
@@ -502,11 +523,21 @@
 
   function ensureMarketBoard(){
     const board=$v('.market-board');if(!board||$v('#v122MarketSources'))return;
-    const title=board.querySelector('.market-board-title');if(title){title.querySelector('span').textContent='Mercado brasileiro';title.querySelector('small').textContent='Referência: média Liga Pokémon'}
-    const primary=document.createElement('p');primary.id='v122PrimaryNote';primary.className='v122-primary-note';primary.textContent='O valor do fichário usa a média da Liga; MYP é comparação e fallback.';board.appendChild(primary);
-    const wrap=document.createElement('div');wrap.id='v122MarketSources';wrap.className='v122-market-sources';wrap.innerHTML=`
-      <section data-market-source="liga"><header><strong>Liga Pokémon</strong><span>principal</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>
-      <section data-market-source="myp"><header><strong>MYP Cards</strong><span>comparação</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>`;
+    const title=board.querySelector('.market-board-title');
+    if(title){
+      title.querySelector('span').textContent='Mercado brasileiro';
+      title.querySelector('small').textContent='Fonte automática: MYP Cards';
+    }
+    const primary=document.createElement('p');
+    primary.id='v122PrimaryNote';
+    primary.className='v122-primary-note';
+    primary.textContent='Os preços automáticos vêm da MYP Cards e respeitam condição + acabamento. O botão Liga Pokémon abaixo continua disponível para consulta manual.';
+    board.appendChild(primary);
+    const wrap=document.createElement('div');
+    wrap.id='v122MarketSources';
+    wrap.className='v122-market-sources v122-market-single';
+    wrap.innerHTML=`
+      <section data-market-source="myp"><header><strong>MYP Cards</strong><span>fonte automática</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>`;
     board.appendChild(wrap);
   }
   function renderSource(key,m,condition){
@@ -527,21 +558,21 @@
   function renderDualMarket(dual,card){
     ensureMarketBoard();
     const condition=dual?.condition||card?.condition||'Nova';
-    renderSource('liga',dual?.liga,condition);
-    renderSource('myp',dual?.myp,condition);
-    const primary=primaryMarket(dual?.liga,dual?.myp);
-    if(primary)try{if(typeof setPrices==='function')setPrices(primary?.min||0,primary?.avg||0,primary?.max||0)}catch{}
+    const myp=dual?.myp;
+    renderSource('myp',myp,condition);
+    if(hasPrice(myp)){
+      try{if(typeof setPrices==='function')setPrices(myp?.min||0,myp?.avg||0,myp?.max||0)}catch{}
+    }
     const status=$v('#marketStatus');
     if(!status)return;
     const variant=`${finishLabel(card?.finish||dual?.finish)} · ${conditionLabel(condition)}`;
-    if(hasAverage(dual?.liga))status.textContent=`Liga Pokémon · ${variant}`;
-    else if(hasAverage(dual?.myp))status.textContent=`Usando MYP Cards · ${variant}`;
-    else if(hasPrice(dual?.liga)||hasPrice(dual?.myp))status.textContent=`Cotação encontrada · ${variant}`;
-    else{
-      const reasons=[];
-      if(dual?.myp?.error)reasons.push('MYP: '+dual.myp.error);
-      if(dual?.liga?.error)reasons.push('Liga: '+dual.liga.error);
-      status.textContent=`${variant} · ${reasons.length?reasons.join(' · '):'sem cotação'} · preço salvo mantido`;
+    if(hasPrice(myp)){
+      const samples=Number(myp?.samples||0);
+      status.textContent=`MYP Cards · ${variant}${samples?` · ${samples} oferta${samples===1?'':'s'}`:''}`;
+    }else if(myp?.error==='variant_not_found'){
+      status.textContent=`MYP Cards · ${variant} · sem oferta para esta condição/acabamento · preço salvo mantido`;
+    }else{
+      status.textContent=`MYP Cards · ${variant} · sem cotação automática · preço salvo mantido`;
     }
   }
 
@@ -608,8 +639,8 @@
     const b=$v('#v12UpdatePrices'),status=$v('#v12PriceProgress');
     if(b)b.disabled=true;
 
-    let updated=0,failed=0,unavailable=0,ligaUpdated=0;
-    const failures=[];
+    let updated=0,failed=0,unavailable=0;
+    const details=[];
 
     try{
       for(let i=0;i<cards.length;i++){
@@ -622,7 +653,6 @@
         if(status)status.textContent=`${card.name} · buscando MYP…`;
 
         try{
-          // 1) MYP é prioridade: lê, salva e atualiza a carta mesmo que a Liga falhe.
           const myp=await querySource('/api/mypcards-public','myp',card,finish,condition);
           if(hasPrice(myp)){
             const partial={
@@ -639,41 +669,17 @@
             };
             await persistDual(card,partial);
             updated++;
+          }else if(myp?.error==='variant_not_found'){
+            unavailable++;
+            details.push(`${card.name}: sem oferta para ${conditionLabel(condition)} / ${finishLabel(finish)}`);
           }else{
-            if(myp?.error==='variant_not_found'){
-              unavailable++;
-              failures.push(`${card.name}: sem oferta MYP para ${conditionLabel(condition)} / ${finishLabel(finish)}`);
-            }else{
-              failed++;
-              failures.push(`${card.name}: MYP ${myp?.error||'sem preço'}`);
-            }
-          }
-
-          // 2) Liga é complementar. Se funcionar, acrescenta os dados; se não,
-          // a cotação da MYP que acabou de ser salva permanece intacta.
-          if(status)status.textContent=`${card.name} · MYP salva · tentando Liga…`;
-          try{
-            const liga=await querySource('/api/liga-public','liga',card,finish,condition);
-            if(hasPrice(liga)){
-              const combined={
-                source:primarySource(liga,myp),
-                min:0,avg:0,max:0,link:'',
-                checkedAt:new Date().toISOString(),
-                liga,
-                myp:hasPrice(myp)?myp:null,
-                finish,
-                condition
-              };
-              await persistDual(card,combined);
-              ligaUpdated++;
-            }
-          }catch(error){
-            console.warn('[Preços] Liga falhou; MYP preservada',card.name,error);
+            failed++;
+            details.push(`${card.name}: ${myp?.error||'sem preço'}`);
           }
         }catch(e){
           failed++;
-          failures.push(`${card.name}: ${e?.message||'erro inesperado'}`);
-          console.error('[Preços] atualização',card.name,e);
+          details.push(`${card.name}: ${e?.message||'erro inesperado'}`);
+          console.error('[Preços] MYP',card.name,e);
         }
       }
 
@@ -682,19 +688,19 @@
       try{renderSummary()}catch{}
 
       if(status){
-        const detail=failures.length?(' · '+failures.slice(0,2).join(' | ')):'';
-        status.textContent=`Concluído: MYP ${updated}/${cards.length} · Liga ${ligaUpdated}/${cards.length} · ${unavailable} sem oferta na condição · ${failed} falha(s)${detail}`;
-        status.title=failures.join('\n');
+        const detail=details.length?(' · '+details.slice(0,2).join(' | ')):'';
+        status.textContent=`Concluído: MYP ${updated}/${cards.length} · ${unavailable} sem oferta na condição · ${failed} falha(s)${detail}`;
+        status.title=details.join('\n');
       }
       toast(updated
         ?`MYP atualizada automaticamente em ${updated}/${cards.length} carta(s).`
         :`A MYP não retornou preço para nenhuma carta.`);
     }finally{
       bulkBusy=false;
-      if(b){b.disabled=false;b.textContent='↻ Atualizar preços · Liga + MYP'}
+      if(b){b.disabled=false;b.textContent='↻ Atualizar preços · MYP'}
     }
   }
-  function rewirePriceButton(){const old=$v('#v12UpdatePrices');if(!old||old.dataset.v122==='1')return;const b=old.cloneNode(true);b.dataset.v122='1';b.textContent='↻ Atualizar preços · Liga + MYP';old.replaceWith(b);b.addEventListener('click',updateAllPrices)}
+  function rewirePriceButton(){const old=$v('#v12UpdatePrices');if(!old||old.dataset.v122==='1')return;const b=old.cloneNode(true);b.dataset.v122='1';b.textContent='↻ Atualizar preços · MYP';old.replaceWith(b);b.addEventListener('click',updateAllPrices)}
 
   function releaseHtml(){return RELEASE_NOTES.map((n,i)=>`<section class="v12-release-item${i===0?' current':''}"><div class="v12-release-head"><strong>${n.version}</strong><span>${n.title}</span></div><ul>${n.items.map(x=>`<li>${x}</li>`).join('')}</ul></section>`).join('')}
   function openNotes(){let d=$v('#v122ReleaseDialog');if(!d){d=document.createElement('dialog');d.id='v122ReleaseDialog';d.className='sheet-dialog v12-release-dialog';d.innerHTML=`<div class="dialog-shell v12-release-shell"><div class="dialog-head"><div><p class="kicker">Pokémon Binder BR</p><h2>Notas da versão</h2><p class="muted">Versão carregada: <strong>${APP_VERSION}</strong></p></div><button class="icon-only" type="button">×</button></div><div class="v12-release-list">${releaseHtml()}</div></div>`;document.body.appendChild(d);d.querySelector('.icon-only').onclick=()=>d.close();d.addEventListener('click',e=>{if(e.target===d)d.close()})}if(!d.open)d.showModal()}
