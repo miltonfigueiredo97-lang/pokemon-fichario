@@ -300,6 +300,16 @@ module.exports=async function handler(req,res){
     });
     const usedFallbackLanguage=sourceLang!==lang||details.some((card,i)=>card&&card.id===list[i]?.id&&lang!=='en'&&!card?.set?.name);
     const value={ok:true,set:{id:set.id||setId,name:setName,series:set?.serie?.name||'',releaseDate:set.releaseDate||'',cardCount:set.cardCount||{},languageCode:lang==='pt'?'pt-br':lang,isPromoSet},entries,sourceLanguage:sourceLang,fallbackLanguageUsed:usedFallbackLanguage};
+    if(String(req.query.debug||'')==='1'){
+      value.debug={
+        expectedCount,
+        listLength:list.length,
+        detailsLength:details.length,
+        rawNonEmpty:rawByCard.filter(x=>x.length).length,
+        rawEmptyIndexes:rawByCard.map((x,i)=>x.length?null:{i,id:list[i]?.id,localId:list[i]?.localId,detail:details[i]}).filter(Boolean),
+        entryIds:[...new Set(entries.map(x=>x.apiId))]
+      };
+    }
     CACHE.set(cacheKey,{at:Date.now(),value});
     return res.status(200).json(value);
   }catch(error){
