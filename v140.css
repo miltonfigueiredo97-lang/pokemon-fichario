@@ -7,7 +7,9 @@
 .v14-binder-controls #v14RenameBinder,.v14-binder-controls #v14DeleteBinder{flex:0 0 32px;width:32px;height:32px;min-height:32px;padding:0;font-size:0;display:grid;place-items:center}
 .v14-binder-controls #v14RenameBinder::before{content:"✎";font-size:15px;line-height:1}
 .v14-binder-controls #v14DeleteBinder::before{content:"🗑";font-size:14px;line-height:1}
-.v14-binder-controls #v14FavoritesOnly{height:32px;min-height:32px;padding:0 9px}
+.v14-binder-controls #v14FavoritesOnly{flex:0 0 34px;width:34px;height:32px;min-height:32px;padding:0;font-size:0;display:grid;place-items:center}
+.v14-binder-controls #v14FavoritesOnly::before{content:"☆";font-size:18px;line-height:1}
+.v14-binder-controls #v14FavoritesOnly.active::before{content:"★"}
 .v14-binder-controls #v14AddBinder{height:32px;min-height:32px;padding:0 10px;white-space:nowrap}
 .v14-no-drag{cursor:pointer!important}
 .v14-price-pending{position:absolute;right:5px;bottom:5px;border:1px solid rgba(255,255,255,.15);border-radius:999px;background:rgba(9,13,16,.88);padding:3px 6px;color:#f0c75b;font-size:7px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
@@ -120,3 +122,5 @@
     padding:2px 1px!important;
   }
 }
+
+@media print{.v14-unified-topbar{display:none!important}}
