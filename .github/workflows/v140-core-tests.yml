@@ -116,6 +116,7 @@ jobs:
               sortGuard:/Movimentação só fica disponível/.test(js),
               scanner:/ocrCard/.test(js)&&/scanLiveTick/.test(js)&&/Confirme a carta/.test(js)&&/visuallyRankCandidates/.test(js)&&/image-proxy/.test(js),
               scannerVisualV1420:/scanCandidatePool/.test(js)&&/scannerVisualCanvases/.test(js)&&/visualDescriptor/.test(js)&&/parseScannerOCR/.test(js)&&/Lendo o nome no topo da carta/.test(js)&&/Comparando a arte da sua foto/.test(js),
+              binderAddCardV1421:/id="v1421AddCard"/.test(js)&&/openAddForPosition\(currentPage\)/.test(js)&&/v1421-add-card/.test(css)&&/classList\.toggle\('hidden',isGeneral\(\)\)/.test(js),
               scannerIndependentNumberSearch:/searchTCGdex\(lang,'',number/.test(js)&&/numberCandidates/.test(js)&&/imageDescriptorCache/.test(js),
               masterSet:/api\/master-set/.test(js)&&/Master Set/.test(js)&&/queueBackgroundPrices\(\[\.\.\.collection\]\)/.test(js),
               japanese:/card-image-fallback/.test(js)&&/jp-card-image/.test(js),
