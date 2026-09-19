@@ -427,9 +427,6 @@
   }
 
   async function priceForNewCard(card,finish,condition){
-    // Cadastro novo prioriza a MYP, que é a fonte que já funciona no backend.
-    // A Liga continua disponível nas atualizações, mas não pode impedir a carta
-    // nova de receber preço/link enquanto estiver bloqueando datacenter.
     const myp=await querySource('/api/mypcards-public','myp',card,finish,condition)
       .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''}));
     const primary=hasPrice(myp)?myp:null;
@@ -440,11 +437,35 @@
       max:Number(primary?.max||0),
       link:primary?.link||'',
       checkedAt:primary?.checkedAt||new Date().toISOString(),
-      liga:null,
-      myp,
-      finish,
-      condition
+      liga:null,myp,finish,condition
     };
+  }
+
+  async function backgroundPriceNewCard(saved,card,finish,condition){
+    try{
+      const full=await resolveFullNumber(card);
+      if(full)card.number=full;
+      const dual=await priceForNewCard(card,finish,condition);
+      if(!hasPrice(dual?.myp))return false;
+      const patch=marketPatch({...saved,...card},dual);
+      if(full)patch.number=full;
+      const{error}=await db.from('pokemon_cards')
+        .update(patch)
+        .eq('id',saved.id)
+        .eq('user_id',currentUser.id);
+      if(error)throw error;
+      Object.assign(saved,patch);
+      try{
+        const local=collection.find(x=>x.id===saved.id);
+        if(local)Object.assign(local,patch);
+        renderSummary();
+        renderBinder();
+      }catch{}
+      return true;
+    }catch(error){
+      console.warn('[Preço em segundo plano]',card?.name,error);
+      return false;
+    }
   }
 
   async function addSelectedV122(){
@@ -461,42 +482,36 @@
     }
 
     const b=$v('#btnAddSelected');
-    if(b){b.disabled=true;b.dataset.old=b.textContent;b.textContent='Buscando preço…'}
+    if(b){b.disabled=true;b.dataset.old=b.textContent;b.textContent='Adicionando…'}
 
+    const queued=[];
     try{
       const positions=freePositions(pendingPosition?.page||currentPage,cards.length),
         maxPage=Math.max(...positions.map(p=>p.page));
       if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);
 
       for(let i=0;i<cards.length;i++){
-        if(i>0)await sleep(900);
         const [key,raw]=cards[i],pos=positions[i],
           finish=finishSelections.get(key),
           condition=conditionSelections.get(key);
-
-        if(b)b.textContent=`Preço ${i+1}/${cards.length}…`;
+        if(b)b.textContent=`Adicionando ${i+1}/${cards.length}…`;
 
         const card={...raw};
-        const full=await resolveFullNumber(card);if(full)card.number=full;
-
-        const dual=await priceForNewCard(card,finish,condition);
-        dual.finishConfirmed=true;
-
-        // O link encontrado precisa acompanhar o objeto da carta já no primeiro save.
-        if(dual?.myp?.link){
-          card.myp_price_link=dual.myp.link;
-          card.price_br_link=dual.myp.link;
-          card.market_edition_pt=dual.myp.editionPt||card.market_edition_pt||'';
-          card.market_name_pt=dual.myp.namePt||card.market_name_pt||card.name;
-        }
-
+        const emptyMarket={
+          source:'Preço atualizando',
+          min:0,avg:0,max:0,link:'',
+          checkedAt:null,liga:null,myp:null,finish,condition
+        };
         const payload=cardPayload(card,{
           page:pos.page,slot:pos.slot,status:'owned',quantity:1,
           condition,finish,finishConfirmed:true,notes:''
-        },dual);
+        },emptyMarket);
+        payload.price_source='Preço atualizando';
+        payload.price_br_source=null;
+        payload.price_checked_at=null;
 
         const {data:existing,error:findErr}=await db.from('pokemon_cards')
-          .select('id,quantity')
+          .select('id,quantity,*')
           .eq('user_id',currentUser.id)
           .eq('card_key',payload.card_key)
           .eq('condition',payload.condition)
@@ -507,14 +522,21 @@
         if(existing){
           const patch={
             quantity:(+existing.quantity||0)+1,
-            finish_confirmed:true,
-            ...marketPatch(card,dual)
+            finish_confirmed:true
           };
-          const{error}=await db.from('pokemon_cards').update(patch).eq('id',existing.id).eq('user_id',currentUser.id);
+          const{data:updated,error}=await db.from('pokemon_cards')
+            .update(patch)
+            .eq('id',existing.id)
+            .eq('user_id',currentUser.id)
+            .select('*').single();
           if(error)throw error;
+          queued.push({saved:updated||{...existing,...patch},card,finish,condition});
         }else{
-          const{error}=await db.from('pokemon_cards').insert(payload);
+          const{data:inserted,error}=await db.from('pokemon_cards')
+            .insert(payload)
+            .select('*').single();
           if(error)throw error;
+          queued.push({saved:inserted,card,finish,condition});
         }
       }
 
@@ -524,7 +546,14 @@
       closeDialog('addDialog');
       currentPage=positions[0]?.page||currentPage;
       await loadCards(false);
-      toast(`${cards.length} carta${cards.length===1?'':'s'} adicionada${cards.length===1?'':'s'} com condição e cotação salvas.`);
+      toast(`${cards.length} carta${cards.length===1?'':'s'} adicionada${cards.length===1?'':'s'}. Preço atualizando em segundo plano.`);
+
+      // Não bloqueia o cadastro: preço continua depois que o modal já fechou.
+      queued.forEach(item=>{
+        backgroundPriceNewCard(item.saved,item.card,item.finish,item.condition)
+          .then(ok=>{if(ok)console.info('[Preço em segundo plano] atualizado:',item.card?.name)})
+          .catch(()=>{});
+      });
     }catch(e){
       console.error(e);
       toast('Não consegui adicionar todas as cartas.');

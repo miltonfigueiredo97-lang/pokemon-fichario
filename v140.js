@@ -13,7 +13,8 @@
     priceWorkers:0,
     scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map()},
     setsCache:new Map(),
-    masterPreview:null
+    masterPreview:null,
+    favoritesOnly:false
   };
   window.PB14=V14;
 
@@ -29,7 +30,7 @@
     if(isGeneral())return settings.general_sort_mode||'manual';
     return activeBinder()?.sort_mode||'manual';
   }
-  function canMove(){return !isGeneral()&&activeSort()==='manual'}
+  function canMove(){return !isGeneral()&&activeSort()==='manual'&&!V14.favoritesOnly}
   function binderForCard(card){return V14.binders.find(b=>b.id===card?.binder_id)||null}
   function currentBinderPages(){
     const b=activeBinder();
@@ -49,8 +50,8 @@
     }
   }
   function physicalCollection(){
-    if(isGeneral())return V14.allCards;
-    return V14.allCards.filter(c=>c.binder_id===V14.activeBinderId);
+    const base=isGeneral()?V14.allCards:V14.allCards.filter(c=>c.binder_id===V14.activeBinderId);
+    return V14.favoritesOnly?base.filter(c=>!!c.is_favorite):base;
   }
   function numberValue(v){
     const m=String(v||'').match(/\d+/);
@@ -72,6 +73,10 @@
       if(mode==='type')return cmpText(a.card_type,b.card_type)||cmpText(a.name,b.name);
       if(mode==='rarity')return cmpText(a.rarity,b.rarity)||cmpText(a.name,b.name);
       if(mode==='number')return cmpText(a.set_name,b.set_name)||numberValue(a.number)-numberValue(b.number)||cmpText(a.finish,b.finish);
+      if(mode==='price_desc'){
+        const av=priceModeValue(a,currentPriceMode()),bv=priceModeValue(b,currentPriceMode());
+        return bv-av||cmpText(a.name,b.name);
+      }
       return 0;
     });
     return arr;
@@ -92,7 +97,9 @@
             '<option value="type">Tipo</option>'+
             '<option value="rarity">Raridade</option>'+
             '<option value="number">Número da coleção</option>'+
+            '<option value="price_desc">Preço · maior → menor</option>'+
           '</select>'+
+          '<button id="v14FavoritesOnly" class="icon-text-btn v14-fav-filter" type="button" aria-pressed="false">☆ Favoritos</button>'+
           '<button id="v14RenameBinder" class="icon-text-btn" type="button">Renomear</button>'+
           '<button id="v14DeleteBinder" class="icon-text-btn" type="button">Excluir</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
@@ -148,6 +155,7 @@
     byId('v14DeleteBinder')?.addEventListener('click',deleteBinder);
     byId('v14BinderSelect')?.addEventListener('change',e=>selectBinder(e.target.value));
     byId('v14SortSelect')?.addEventListener('change',e=>setSortMode(e.target.value));
+    byId('v14FavoritesOnly')?.addEventListener('click',toggleFavoritesFilter);
     byId('v14SetSearch')?.addEventListener('input',queueSetSearch);
     byId('v14MasterLang')?.addEventListener('change',queueSetSearch);
     byId('v14CreateMaster')?.addEventListener('click',createMasterBinder);
@@ -198,8 +206,14 @@
     const rename=byId('v14RenameBinder');if(rename)rename.disabled=isGeneral();
     const del=byId('v14DeleteBinder');if(del)del.disabled=isGeneral()||V14.binders.length<=1;
     const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
+    const fav=byId('v14FavoritesOnly');
+    if(fav){
+      fav.classList.toggle('active',V14.favoritesOnly);
+      fav.setAttribute('aria-pressed',String(V14.favoritesOnly));
+      fav.textContent=V14.favoritesOnly?'★ Favoritos':'☆ Favoritos';
+    }
     const hint=document.querySelector('.binder-hint');
-    if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':'Visualização ordenada · movimentação desativada';
+    if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização ordenada · movimentação desativada');
   }
 
   async function selectBinder(id){
@@ -213,7 +227,7 @@
   }
 
   async function setSortMode(mode){
-    mode=['manual','name','type','rarity','number'].includes(mode)?mode:'manual';
+    mode=['manual','name','type','rarity','number','price_desc'].includes(mode)?mode:'manual';
     currentPage=1;
     if(isGeneral()){
       settings.general_sort_mode=mode;
@@ -223,6 +237,29 @@
       b.sort_mode=mode;
       await db.from('pokemon_binders').update({sort_mode:mode,updated_at:new Date().toISOString()}).eq('id',b.id).eq('user_id',currentUser.id);
     }
+    renderBinderControls();
+    renderAll();
+  }
+
+  function toggleFavoritesFilter(){
+    V14.favoritesOnly=!V14.favoritesOnly;
+    currentPage=1;
+    collection=physicalCollection();
+    renderBinderControls();
+    renderAll();
+  }
+
+  async function toggleFavoriteCard(card){
+    if(!card?.id)return;
+    const next=!card.is_favorite;
+    const {error}=await db.from('pokemon_cards')
+      .update({is_favorite:next})
+      .eq('id',card.id)
+      .eq('user_id',currentUser.id);
+    if(error){toast('Não consegui atualizar o favorito.');return}
+    card.is_favorite=next;
+    const all=V14.allCards.find(x=>x.id===card.id);if(all)all.is_favorite=next;
+    collection=physicalCollection();
     renderBinderControls();
     renderAll();
   }
@@ -443,6 +480,19 @@
     const movable=canMove();
     b.draggable=movable;
     b.classList.toggle('v14-no-drag',!movable);
+
+    const star=document.createElement('span');
+    star.className='v14-favorite-star'+(card.is_favorite?' active':'');
+    star.setAttribute('role','button');
+    star.setAttribute('tabindex','0');
+    star.setAttribute('aria-label',card.is_favorite?'Remover dos favoritos':'Adicionar aos favoritos');
+    star.textContent=card.is_favorite?'★':'☆';
+    const act=e=>{e.preventDefault();e.stopPropagation();toggleFavoriteCard(card)};
+    star.addEventListener('click',act);
+    star.addEventListener('pointerdown',e=>e.stopPropagation());
+    star.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act(e)}});
+    b.appendChild(star);
+
     if(card.price_pending){
       const tag=document.createElement('span');tag.className='v14-price-pending';tag.textContent='Preço…';b.appendChild(tag);
     }
@@ -453,7 +503,7 @@
     return Math.max(1,Math.ceil(orderedViewCards().length/9));
   }
   function renderBinderV14(){
-    if(!isGeneral()&&activeSort()==='manual')return V14.original.renderBinder();
+    if(!isGeneral()&&activeSort()==='manual'&&!V14.favoritesOnly)return V14.original.renderBinder();
     const g=byId('binderSheet');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();
     currentPage=Math.min(Math.max(1,currentPage),pages);
@@ -472,7 +522,7 @@
   }
 
   function renderPagesGridV14(){
-    if(!isGeneral()&&activeSort()==='manual')return V14.original.renderPagesGrid();
+    if(!isGeneral()&&activeSort()==='manual'&&!V14.favoritesOnly)return V14.original.renderPagesGrid();
     const g=byId('pagesGrid');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();g.innerHTML='';
     for(let p=1;p<=pages;p++){
@@ -654,8 +704,20 @@
 
   async function japaneseImageFallback(card){
     if(!card||card.imageUrl||card.languageCode!=='ja')return card?.imageUrl||'';
-    const key=[card.apiId,card.name,card.number].join('|');
+    const key=[card.apiId,card.setId||card.set_id,card.number,card.name].join('|');
     if(V14.jpImageCache.has(key))return V14.jpImageCache.get(key);
+
+    // Fonte prioritária: site oficial japonês, usando coleção + número exatos.
+    const setId=card.setId||card.set_id||'';
+    const local=String(card.number||'').match(/\d+/)?.[0]||'';
+    if(setId&&local){
+      const p=new URLSearchParams({set:setId,localId:local,name:card.name||'',hp:String(card.hp||''),rarity:card.rarity||''});
+      const exact='/api/jp-card-image?'+p.toString();
+      V14.jpImageCache.set(key,exact);
+      return exact;
+    }
+
+    // Último fallback: só aceita imagem equivalente com score seguro.
     try{
       const p=new URLSearchParams({name:card.name||'',number:card.number||'',rarity:card.rarity||'',hp:card.hp||''});
       const r=await fetch('/api/card-image-fallback?'+p.toString());
