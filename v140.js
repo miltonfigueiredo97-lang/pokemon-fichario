@@ -625,7 +625,7 @@
 
     const scope=summaryValueScope();
     const selected=scope==='owned'?raw.filter(c=>(c.collection_status||'owned')==='owned'):
-      scope==='missing'?raw.filter(c=>(c.collection_status||'owned')==='missing'):raw;
+      scope==='missing'?raw.filter(c=>(c.collection_status||'owned')!=='owned'):raw;
     const value=selected.reduce((sum,c)=>{
       const status=c.collection_status||'owned';
       const units=status==='owned'?Math.max(+c.quantity||1,1):1;
@@ -776,6 +776,7 @@
     try{
       const payload=cardPayload(selectedCard,{page,slot,status:selectedStatus,quantity,condition,finish,notes:byId('cardNotes').value.trim()},selectedMarket||{});
       payload.binder_id=binderId;
+      if(existingEditing?.card_key)payload.card_key=existingEditing.card_key;
       if(editingCardId){
         const {error}=await db.from('pokemon_cards').update(payload).eq('id',editingCardId).eq('user_id',currentUser.id);if(error)throw error;
       }else{
