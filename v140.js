@@ -1168,8 +1168,20 @@
   }
 
   function queueBackgroundPrices(cards,{front=false}={}){
+    const source=uniquePriceCards(cards);
+    const mobile=window.matchMedia?.('(max-width:820px)').matches;
+    // Filas grandes já são persistentes no Supabase. Não duplicamos centenas
+    // de consultas/renders no aparelho; no mobile, todo processamento em lote
+    // fica exclusivamente com o worker do servidor.
+    if(mobile||source.length>8){
+      if(mobile){
+        V14.priceQueue.length=0;
+        V14.priceJobs.clear();
+      }
+      return;
+    }
     const add=[];
-    for(const card of uniquePriceCards(cards)){
+    for(const card of source){
       if(!card?.id||V14.priceJobs.has(card.id)||V14.priceQueue.some(x=>x.id===card.id))continue;
       const retryAt=Date.parse(card.price_next_retry_at||0);
       if(retryAt&&retryAt>Date.now())continue;
@@ -1290,6 +1302,40 @@
     b.disabled=!visible;
   }
 
+  async function querySingleCardPriceFast(card){
+    const finish=card.finish||'Normal',condition=card.condition||'Nova';
+    const p=new URLSearchParams({
+      name:String(card.market_name_pt||card.name_pt||card.name||''),
+      number:String(card.number||''),
+      set:String(card.set_name||''),
+      setId:String(card.set_id||''),
+      lang:String(card.language_code||''),
+      finish,condition,
+      fast:'1'
+    });
+    const link=[card.myp_price_link,card.price_br_link,card.price_link].find(v=>/mypcards\.com/i.test(String(v||'')));
+    if(link)p.set('link',link);
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),11000);
+    try{
+      const r=await fetch('/api/mypcards-public?'+p.toString(),{cache:'no-store',signal:controller.signal});
+      const j=await r.json();
+      if(!j?.ok)return{
+        source:'Sem preço BR',min:0,avg:0,max:0,link:j?.link||'',
+        checkedAt:new Date().toISOString(),
+        myp:{source:'MYP Cards',failed:true,error:j?.error||'fast_unavailable',message:j?.message||'',link:j?.link||''}
+      };
+      const myp={
+        source:'MYP Cards',failed:false,provider:j.provider||'Fast Reader',
+        min:Number(j.min||0),avg:Number(j.avg||0),max:Number(j.max||0),
+        link:j.link||'',checkedAt:j.checkedAt||new Date().toISOString(),
+        samples:j.samples??null,availableQuantity:j.availableQuantity??null,
+        exactVariant:j.exactVariant!==false,complete:j.complete===true
+      };
+      return{source:'MYP Cards',min:myp.min,avg:myp.avg,max:myp.max,link:myp.link,checkedAt:myp.checkedAt,myp,finish,condition};
+    }finally{clearTimeout(timer)}
+  }
+
   async function updateEditingCardPriceNow(){
     const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
     if(!card)return toast('Abra uma carta já salva para atualizar o preço.');
@@ -1298,14 +1344,17 @@
     let dual=null;
     try{
       const now=new Date().toISOString();
+      // Nunca marcamos como "processing" antes da consulta do aparelho.
+      // Assim o worker do servidor pode assumir imediatamente se a leitura rápida falhar.
       const pending={
-        price_pending:true,price_processing_at:now,price_requested_at:now,price_next_retry_at:now,
+        price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
         price_attempts:0,price_priority:100,price_last_error:null
       };
-      await db.from('pokemon_cards').update(pending).eq('id',card.id).eq('user_id',currentUser.id);
+      const {error:pendingError}=await db.from('pokemon_cards').update(pending).eq('id',card.id).eq('user_id',currentUser.id);
+      if(pendingError)throw pendingError;
       Object.assign(card,pending);
 
-      dual=await window.queryBothMarketsV122(cardForPrice(card),card.finish||'Normal',card.condition||'Nova');
+      dual=await querySingleCardPriceFast(card);
       const patch=pricePatchFromDual(card,dual);
       if(patch){
         const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
@@ -1321,19 +1370,28 @@
         renderBinder();renderSummary();
         toast('Preço desta carta atualizado.');
       }else{
-        const failure=await finishPriceFailure(card,dual,null,1);
-        if(failure.terminal){
-          if(byId('marketStatus'))byId('marketStatus').textContent='Sem oferta compatível agora';
-          toast('Não encontrei oferta compatível para esta carta.');
-        }else{
-          if(byId('marketStatus'))byId('marketStatus').textContent='Falhou agora · prioridade máxima na fila';
-          toast('Consulta falhou agora; esta carta ficou em primeiro na fila automática.');
-        }
+        const code=dual?.myp?.error||'fast_unavailable';
+        const keepQueued={
+          price_pending:true,price_processing_at:null,price_next_retry_at:new Date().toISOString(),
+          price_priority:100,price_last_error:code
+        };
+        await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
+        applyLocalPricePatch(card.id,keepQueued);
+        if(byId('marketStatus'))byId('marketStatus').textContent='Fila prioritária · servidor atualizando';
+        toast('Consulta rápida encerrada; a carta ficou em prioridade máxima no servidor.');
       }
     }catch(e){
       console.error(e);
-      try{await finishPriceFailure(card,dual,e,1)}catch{}
-      toast('Não consegui atualizar agora; a carta ficou na fila automática.');
+      const keepQueued={
+        price_pending:true,price_processing_at:null,price_next_retry_at:new Date().toISOString(),
+        price_priority:100,price_last_error:e?.name==='AbortError'?'fast_timeout':String(e?.message||'fast_error')
+      };
+      try{
+        await db.from('pokemon_cards').update(keepQueued).eq('id',card.id).eq('user_id',currentUser.id);
+        applyLocalPricePatch(card.id,keepQueued);
+      }catch{}
+      if(byId('marketStatus'))byId('marketStatus').textContent='Fila prioritária · servidor atualizando';
+      toast('A consulta rápida não respondeu; o servidor continuará esta carta em prioridade máxima.');
     }finally{busy(b,false);syncSingleCardPriceButton()}
   }
 

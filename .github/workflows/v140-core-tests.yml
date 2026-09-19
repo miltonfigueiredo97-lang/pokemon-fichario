@@ -138,7 +138,11 @@ jobs:
               japaneseReadableLabels:/api\/set-catalog/.test(js)&&/englishById/.test(js)&&/displaySetName/.test(js),
               releaseOrderedSets:/set-catalog/.test(js)&&/ordem de lançamento/.test(js),
               jpLabelMap:JSON.parse(fs.readFileSync('data/jp-set-labels.json','utf8')).SVLN==='Stellar Tera Type Starter Set Sylveon ex',
-              classicFallback:/jsonOrNull/.test(fs.readFileSync('api/master-set.js','utf8'))&&/fallbackLanguageUsed/.test(fs.readFileSync('api/master-set.js','utf8'))
+              classicFallback:/jsonOrNull/.test(fs.readFileSync('api/master-set.js','utf8'))&&/fallbackLanguageUsed/.test(fs.readFileSync('api/master-set.js','utf8')),
+              noHiddenPriceRefresh:/Abrir uma carta deve ser instantâneo/.test(fs.readFileSync('v122.js','utf8'))&&!/toda abertura de uma carta existente tenta atualizar/.test(fs.readFileSync('v122.js','utf8')),
+              boundedSinglePrice:/querySingleCardPriceFast/.test(js)&&/fast:'1'/.test(js)&&/11000/.test(js)&&/price_processing_at:null/.test(js),
+              mobileNoBulkWorker:/mobile\|\|source\.length>8/.test(js)&&/V14\.priceQueue\.length=0/.test(js),
+              fastPriceApi:/const fast=/.test(fs.readFileSync('api/mypcards-public.js','utf8'))&&/Fast Reader/.test(fs.readFileSync('api/mypcards-public.js','utf8'))&&/fetchJina\(directLink,8000\)/.test(fs.readFileSync('api/mypcards-public.js','utf8'))
             };
             const pass=masterPass&&classicPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},image:img.body,assertions};
