@@ -1,8 +1,18 @@
 {
   "pass": true,
-  "exactCount": 0,
-  "fallbackCount": 20,
-  "names": [
+  "exactPtCount": 0,
+  "fallbackPtCount": 20,
+  "namesPt": [
+    "Umbreon EX",
+    "Umbreon",
+    "Umbreon ex",
+    "Umbreon GX",
+    "Umbreon V",
+    "Umbreon VMAX",
+    "Umbreon e Darkrai GX"
+  ],
+  "fallbackEnCount": 20,
+  "namesEn": [
     "Umbreon",
     "Umbreon δ",
     "Umbreon ★",
