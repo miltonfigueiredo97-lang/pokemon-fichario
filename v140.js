@@ -1094,6 +1094,8 @@
       if(!card?.id||V14.priceJobs.has(card.id)||V14.priceQueue.some(x=>x.id===card.id))continue;
       const retryAt=Date.parse(card.price_next_retry_at||0);
       if(retryAt&&retryAt>Date.now())continue;
+      const processingAt=Date.parse(card.price_processing_at||0);
+      if(processingAt&&processingAt>Date.now()-5*60_000)continue;
       add.push(card);V14.priceJobs.set(card.id,true);
     }
     V14.priceQueue=front?[...add,...V14.priceQueue]:[...V14.priceQueue,...add];
