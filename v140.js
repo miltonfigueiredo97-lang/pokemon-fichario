@@ -13,6 +13,7 @@
     priceWorkers:0,
     scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null},
     setsCache:new Map(),
+    seriesCache:new Map(),
     masterPreview:null,
     favoritesOnly:false
   };
@@ -172,9 +173,13 @@
             '<button id="v14CreateEmpty" class="btn btn-primary" type="button">Criar fichário</button>'+
           '</section>'+
           '<section id="v14SetPane" class="v14-create-pane hidden">'+
-            '<div class="v14-set-search-row"><select id="v14MasterLang"><option value="pt">Português</option><option value="en">Inglês</option><option value="ja">Japonês</option></select><input id="v14SetSearch" type="search" placeholder="Coleção — ex.: Fagulhas Impetuosas"></div>'+
-            '<p id="v14SetStatus" class="form-message">Digite o nome da coleção.</p>'+
-            '<div id="v14SetResults" class="v14-set-results"></div>'+
+            '<div class="v14-master-select-flow">'+
+              '<label>Idioma<select id="v14MasterLang"><option value="pt">Português</option><option value="en">Inglês</option><option value="ja">Japonês</option></select></label>'+
+              '<label>1. Geração<select id="v14SeriesSelect"><option value="">Carregando gerações…</option></select></label>'+
+              '<label>2. Coleção<select id="v14SetSelect" disabled><option value="">Escolha primeiro a geração</option></select></label>'+
+            '</div>'+
+            '<p id="v14SetStatus" class="form-message">Escolha a geração e depois a coleção.</p>'+
+            '<p id="v14PromoNotice" class="v14-promo-notice hidden"></p>'+
             '<div id="v14MasterStep" class="hidden">'+
               '<div class="v14-master-head"><div><strong id="v14MasterTitle">Coleção</strong><small id="v14MasterMeta"></small></div><div><b id="v14OwnedCount">0</b> marcadas como Tenho</div></div>'+
               '<p class="v14-master-help">Marque as variantes que você já possui. As demais entram como Não tenho. Normal, Holo, Reverse, Poké Ball, Master Ball e outras variantes só aparecem quando existem na base.</p>'+
@@ -224,8 +229,16 @@
       await updateSettings({summary_value_scope:value},true);
       renderSummary();
     });
-    byId('v14SetSearch')?.addEventListener('input',queueSetSearch);
-    byId('v14MasterLang')?.addEventListener('change',queueSetSearch);
+    byId('v14MasterLang')?.addEventListener('change',()=>loadGenerationOptions(true));
+    byId('v14SeriesSelect')?.addEventListener('change',()=>loadCollectionsForGeneration());
+    byId('v14SetSelect')?.addEventListener('change',e=>{
+      const setId=e.target.value;
+      if(setId)loadMasterPreview(byId('v14MasterLang')?.value||'pt',setId);
+      else{
+        V14.masterPreview=null;
+        byId('v14MasterStep')?.classList.add('hidden');
+      }
+    });
     byId('v14CreateMaster')?.addEventListener('click',createMasterBinder);
     byId('v14ScanAgain')?.addEventListener('click',()=>{if(byId('v14ScanCandidates')?.open)byId('v14ScanCandidates').close();startScanner()});
   }
@@ -236,6 +249,7 @@
     byId('v14TabSet')?.classList.toggle('active',!empty);
     byId('v14EmptyPane')?.classList.toggle('hidden',!empty);
     byId('v14SetPane')?.classList.toggle('hidden',empty);
+    if(!empty)setTimeout(()=>loadGenerationOptions(false),0);
   }
 
   async function ensureFirstBinder(){
@@ -272,7 +286,7 @@
     }
     const sort=byId('v14SortSelect');if(sort)sort.value=activeSort();
     const rename=byId('v14RenameBinder');if(rename)rename.disabled=isGeneral();
-    const del=byId('v14DeleteBinder');if(del)del.disabled=isGeneral()||V14.binders.length<=1;
+    const del=byId('v14DeleteBinder');if(del)del.disabled=isGeneral();
     const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
     const fav=byId('v14FavoritesOnly');
     if(fav){
@@ -345,14 +359,17 @@
 
   async function deleteBinder(){
     const b=activeBinder();if(!b)return;
-    if(V14.binders.length<=1)return toast('Mantenha pelo menos um fichário.');
-    if(!confirm('Excluir o fichário "'+b.name+'" e todas as cartas que estão somente nele?'))return;
+    if(!confirm('Excluir o fichário "'+b.name+'" e todas as cartas dele? Esta ação não pode ser desfeita.'))return;
     const {error}=await db.from('pokemon_binders').delete().eq('id',b.id).eq('user_id',currentUser.id);
-    if(error)return toast('Não consegui excluir o fichário.');
+    if(error){console.error(error);return toast('Não consegui excluir o fichário: '+(error.message||'erro no banco'))}
     V14.binders=V14.binders.filter(x=>x.id!==b.id);
     V14.allCards=V14.allCards.filter(x=>x.binder_id!==b.id);
-    V14.activeBinderId=V14.binders[0]?.id||'all';
-    await db.from('pokemon_settings').update({current_binder_id:isGeneral()?null:V14.activeBinderId}).eq('user_id',currentUser.id);
+    if(!V14.binders.length){
+      V14.activeBinderId=null;
+      await ensureFirstBinder();
+    }else V14.activeBinderId=V14.binders[0].id;
+    currentPage=1;
+    await db.from('pokemon_settings').update({current_binder_id:V14.activeBinderId}).eq('user_id',currentUser.id);
     collection=physicalCollection();syncLegacySettings();renderBinderControls();renderAll();toast('Fichário excluído.');
   }
 
@@ -368,39 +385,69 @@
     toast('Fichário criado.');
   }
 
-  let setSearchTimer=null;
-  function queueSetSearch(){clearTimeout(setSearchTimer);setSearchTimer=setTimeout(searchSets,260)}
-  async function fetchSets(lang){
-    const key=lang;
-    if(V14.setsCache.has(key))return V14.setsCache.get(key);
-    const r=await fetch('https://api.tcgdex.net/v2/'+lang+'/sets');
+  async function fetchSeries(lang){
+    const key='series|'+lang;
+    if(V14.seriesCache.has(key))return V14.seriesCache.get(key);
+    const r=await fetch('https://api.tcgdex.net/v2/'+lang+'/series',{cache:'force-cache'});
     if(!r.ok)throw new Error('TCGdex '+r.status);
     const data=await r.json();
-    V14.setsCache.set(key,Array.isArray(data)?data:[]);
-    return V14.setsCache.get(key);
+    const list=Array.isArray(data)?data:[];
+    V14.seriesCache.set(key,list);
+    return list;
   }
-  async function searchSets(){
-    const q=nrm(byId('v14SetSearch')?.value);
-    const lang=byId('v14MasterLang')?.value||'pt';
-    if(q.length<2){byId('v14SetResults').innerHTML='';byId('v14SetStatus').textContent='Digite pelo menos 2 letras.';return}
-    byId('v14SetStatus').textContent='Buscando coleções…';
+  async function fetchSeriesDetail(lang,seriesId){
+    const key='series-detail|'+lang+'|'+seriesId;
+    if(V14.seriesCache.has(key))return V14.seriesCache.get(key);
+    const r=await fetch('https://api.tcgdex.net/v2/'+lang+'/series/'+encodeURIComponent(seriesId),{cache:'force-cache'});
+    if(!r.ok)throw new Error('TCGdex '+r.status);
+    const data=await r.json();
+    V14.seriesCache.set(key,data||{});
+    return data||{};
+  }
+  async function loadGenerationOptions(force=false){
+    const lang=byId('v14MasterLang')?.value||'pt',series=byId('v14SeriesSelect'),sets=byId('v14SetSelect');
+    if(!series||!sets)return;
+    if(!force&&series.options.length>1)return;
+    series.disabled=true;sets.disabled=true;
+    series.innerHTML='<option value="">Carregando gerações…</option>';
+    sets.innerHTML='<option value="">Escolha primeiro a geração</option>';
+    byId('v14MasterStep')?.classList.add('hidden');
+    byId('v14PromoNotice')?.classList.add('hidden');
+    V14.masterPreview=null;
     try{
-      const sets=await fetchSets(lang);
-      const score=s=>{
-        const name=nrm(s.name),id=nrm(s.id);
-        if(name===q)return 1000;
-        if(name.startsWith(q))return 800;
-        if(name.includes(q))return 600;
-        const words=q.split(' ').filter(Boolean);
-        return words.reduce((n,w)=>n+(name.includes(w)?80:0),0)+(id.includes(q)?100:0);
-      };
-      const found=sets.map(s=>({s,score:score(s)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,30).map(x=>x.s);
-      byId('v14SetStatus').textContent=found.length+' coleção(ões) encontrada(s).';
-      byId('v14SetResults').innerHTML=found.map(s=>
-        '<button type="button" data-set-id="'+esc(s.id)+'"><strong>'+esc(s.name)+'</strong><small>'+esc(s.id)+' · '+esc(String(s.cardCount?.total||s.cardCount?.official||''))+' cartas</small></button>'
+      const list=await fetchSeries(lang);
+      list.sort((a,b)=>String(b.id||'').localeCompare(String(a.id||''),'en',{numeric:true})||String(b.name||'').localeCompare(String(a.name||'')));
+      series.innerHTML='<option value="">Selecione a geração</option>'+list.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
+      series.disabled=false;
+      byId('v14SetStatus').textContent='Escolha a geração e depois a coleção.';
+    }catch(e){
+      console.error(e);series.innerHTML='<option value="">Erro ao carregar gerações</option>';
+      byId('v14SetStatus').textContent='Não consegui carregar as gerações.';
+    }
+  }
+  async function loadCollectionsForGeneration(){
+    const lang=byId('v14MasterLang')?.value||'pt',seriesId=byId('v14SeriesSelect')?.value||'',sets=byId('v14SetSelect');
+    V14.masterPreview=null;
+    byId('v14MasterStep')?.classList.add('hidden');
+    byId('v14PromoNotice')?.classList.add('hidden');
+    if(!sets)return;
+    if(!seriesId){sets.disabled=true;sets.innerHTML='<option value="">Escolha primeiro a geração</option>';return}
+    sets.disabled=true;sets.innerHTML='<option value="">Carregando coleções…</option>';
+    byId('v14SetStatus').textContent='Carregando coleções da geração…';
+    try{
+      const serie=await fetchSeriesDetail(lang,seriesId),list=Array.isArray(serie.sets)?serie.sets:[];
+      const promo=s=>/promo|black star/i.test(String(s.name||'')+' '+String(s.id||''));
+      list.sort((a,b)=>Number(promo(a))-Number(promo(b))||String(a.name||'').localeCompare(String(b.name||''),'pt-BR',{numeric:true}));
+      sets.innerHTML='<option value="">Selecione a coleção</option>'+list.map(s=>
+        '<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+(promo(s)?' · PROMOS':'')+'</option>'
       ).join('');
-      byId('v14SetResults').querySelectorAll('[data-set-id]').forEach(b=>b.onclick=()=>loadMasterPreview(lang,b.dataset.setId));
-    }catch(e){console.error(e);byId('v14SetStatus').textContent='Não consegui carregar as coleções.'}
+      sets.disabled=false;
+      const promoCount=list.filter(promo).length;
+      byId('v14SetStatus').textContent=list.length+' coleções nesta geração'+(promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
+    }catch(e){
+      console.error(e);sets.innerHTML='<option value="">Erro ao carregar coleções</option>';
+      byId('v14SetStatus').textContent='Não consegui carregar as coleções desta geração.';
+    }
   }
 
   async function loadMasterPreview(lang,setId){
@@ -413,6 +460,15 @@
       V14.masterPreview={...j,owned:new Set(),lang};
       byId('v14MasterTitle').textContent=j.set.name;
       byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
+      const notice=byId('v14PromoNotice');
+      if(notice){
+        if(j.set.isPromoSet){
+          notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
+        }else{
+          notice.textContent='Promos não são misturadas automaticamente com esta coleção. Para cadastrá-las, escolha a coleção de PROMOS da mesma geração ou adicione depois pela busca, manualmente ou pelo scanner.';
+        }
+        notice.classList.remove('hidden');
+      }
       renderMasterGrid();
       byId('v14SetStatus').textContent='Master Set pronto para conferência.';
       byId('v14MasterStep').classList.remove('hidden');
@@ -461,17 +517,25 @@
     nodes.forEach(n=>io.observe(n));
   }
 
+  function nextMasterBinderName(base,setId){
+    const same=V14.binders.filter(b=>b.binder_kind==='set'&&b.set_id===setId);
+    if(!same.length)return base;
+    return base+' ('+(same.length+1)+')';
+  }
   async function createMasterBinder(){
     const p=V14.masterPreview;if(!p)return;
     const btn=byId('v14CreateMaster');busy(btn,true,'Criando fichário…');
+    let createdBinder=null;
     try{
       const pages=Math.max(1,Math.ceil(p.entries.length/9));
       const sortOrder=Math.max(0,...V14.binders.map(b=>+b.sort_order||0))+1;
+      const binderName=nextMasterBinderName(p.set.name,p.set.id);
       const {data:binder,error:be}=await db.from('pokemon_binders').insert({
-        user_id:currentUser.id,name:p.set.name,pages,background:'graphite',sort_order:sortOrder,binder_kind:'set',
+        user_id:currentUser.id,name:binderName,pages,background:'graphite',sort_order:sortOrder,binder_kind:'set',
         set_id:p.set.id,set_name:p.set.name,set_language:p.set.languageCode,master_language:p.set.languageCode,master_total:p.entries.length
       }).select('*').single();
       if(be)throw be;
+      createdBinder=binder;
       const rows=p.entries.map((e,i)=>{
         const owned=p.owned.has(i),page=Math.floor(i/9)+1,slot=i%9+1;
         const base={
@@ -491,14 +555,31 @@
         const {error}=await db.from('pokemon_cards').insert(rows.slice(i,i+100));
         if(error)throw error;
       }
-      V14.binders.push(binder);
+
+      // Troca para o novo fichário e recarrega do banco antes de renderizar.
+      // Sem isto o Master Set era criado corretamente no Supabase, mas aparecia vazio até atualizar a página.
+      V14.activeBinderId=binder.id;
+      V14.favoritesOnly=false;
+      currentPage=1;
+      await db.from('pokemon_settings').update({current_binder_id:binder.id}).eq('user_id',currentUser.id);
+      await loadCardsV14(false);
+
       if(byId('v14BinderDialog')?.open)byId('v14BinderDialog').close();
       V14.masterPreview=null;
-      await selectBinder(binder.id);
       queueBackgroundPrices([...collection]);
-      toast('Master Set criado: '+rows.length+' entradas. Preços de Tenho e Não tenho atualizando em segundo plano.');
-    }catch(e){console.error(e);toast('Erro ao criar Master Set: '+(e.message||e))}
-    finally{busy(btn,false)}
+
+      const ownedCount=rows.filter(x=>x.collection_status==='owned').length;
+      const promoText=p.set.isPromoSet
+        ?' Promos incluídas porque este é um set de promos.'
+        :' Promos desta geração não são adicionadas automaticamente; use a coleção PROMOS, busca manual ou scanner.';
+      toast('Master Set criado: '+rows.length+' entradas · '+ownedCount+' Tenho.'+promoText);
+    }catch(e){
+      console.error(e);
+      if(createdBinder?.id){
+        await db.from('pokemon_binders').delete().eq('id',createdBinder.id).eq('user_id',currentUser.id).catch(()=>{});
+      }
+      toast('Erro ao criar Master Set: '+(e.message||e));
+    }finally{busy(btn,false)}
   }
 
   async function loadCardsV14(show=true){
