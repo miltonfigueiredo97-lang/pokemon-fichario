@@ -409,6 +409,9 @@
         byId('v14MasterStep')?.classList.add('hidden');
       }
     });
+    byId('v1418MarkAll')?.addEventListener('click',()=>markAllMasterOwned(true));
+    byId('v1418ClearAll')?.addEventListener('click',()=>markAllMasterOwned(false));
+    byId('v1418AddAnotherMaster')?.addEventListener('click',addAnotherMasterSet);
     byId('v14CreateMaster')?.addEventListener('click',createMasterBinder);
     byId('v14ScanAgain')?.addEventListener('click',()=>{if(byId('v14ScanCandidates')?.open)byId('v14ScanCandidates').close();startScanner()});
   }
