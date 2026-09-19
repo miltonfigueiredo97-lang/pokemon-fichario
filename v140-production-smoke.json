@@ -1,0 +1,12 @@
+{
+  "rootCode": "200",
+  "jsCode": "200",
+  "masterCode": "200",
+  "rootHasV140": true,
+  "jsHasMultiBinder": true,
+  "jsHasBackgroundPrice": true,
+  "jsHasScanner": true,
+  "masterOk": true,
+  "masterEntries": 453,
+  "pass": true
+}
