@@ -744,8 +744,10 @@
       const r=await fetch('/api/master-set?lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
       const j=await r.json();
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
-      V14.masterPreview={...j,owned:new Set(),lang};
-      byId('v14MasterTitle').textContent=j.set.name;
+      const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
+        .replace(/\s*·\s*PROMOS\s*$/i,'').trim();
+      V14.masterPreview={...j,owned:new Set(),lang,displaySetName:selectedLabel||j.set.name};
+      byId('v14MasterTitle').textContent=V14.masterPreview.displaySetName;
       byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
       const notice=byId('v14PromoNotice');
       if(notice){
@@ -816,10 +818,11 @@
     try{
       const pages=Math.max(1,Math.ceil(p.entries.length/9));
       const sortOrder=Math.max(0,...V14.binders.map(b=>+b.sort_order||0))+1;
-      const binderName=nextMasterBinderName(p.set.name,p.set.id);
+      const displaySetName=p.displaySetName||p.set.name;
+      const binderName=nextMasterBinderName(displaySetName,p.set.id);
       const {data:binder,error:be}=await db.from('pokemon_binders').insert({
         user_id:currentUser.id,name:binderName,pages,background:'graphite',sort_order:sortOrder,binder_kind:'set',
-        set_id:p.set.id,set_name:p.set.name,set_language:p.set.languageCode,master_language:p.set.languageCode,master_total:p.entries.length
+        set_id:p.set.id,set_name:displaySetName,set_language:p.set.languageCode,master_language:p.set.languageCode,master_total:p.entries.length
       }).select('*').single();
       if(be)throw be;
       createdBinder=binder;
