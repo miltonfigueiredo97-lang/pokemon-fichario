@@ -568,49 +568,87 @@
     if(bulkBusy)return;
     let cards=[];try{cards=[...collection]}catch{}
     if(!cards.length){toast('Seu fichário ainda não tem cartas.');return}
+
     bulkBusy=true;
     const b=$v('#v12UpdatePrices'),status=$v('#v12PriceProgress');
     if(b)b.disabled=true;
-    let both=0,one=0,failed=0;
+
+    let updated=0,failed=0,ligaUpdated=0;
     const failures=[];
+
     try{
       for(let i=0;i<cards.length;i++){
-        if(i>0)await sleep(1350);
+        if(i>0)await sleep(700);
         const card=cards[i];
-        if(b)b.textContent=`Atualizando ${i+1}/${cards.length}…`;
-        if(status)status.textContent=`${card.name} · ${finishLabel(card.finish)} · consultando Liga + MYP…`;
+        const finish=normalizeFinish(card.finish);
+        const condition=card.condition||'Nova';
+
+        if(b)b.textContent=`MYP ${i+1}/${cards.length}…`;
+        if(status)status.textContent=`${card.name} · buscando MYP…`;
+
         try{
-          const before={min:+card.price_min||0,avg:+card.price_avg||0,max:+card.price_max||0,source:card.price_source||''};
-          const dual=await queryBothMarkets(card,normalizeFinish(card.finish),card.condition||'Nova');
-          const ligaOk=hasPrice(dual.liga),mypOk=hasPrice(dual.myp);
-          if(ligaOk||mypOk){
-            await persistDual(card,dual);
-            if(ligaOk&&mypOk)both++;else one++;
+          // 1) MYP é prioridade: lê, salva e atualiza a carta mesmo que a Liga falhe.
+          const myp=await querySource('/api/mypcards-public','myp',card,finish,condition);
+          if(hasPrice(myp)){
+            const partial={
+              source:'MYP Cards',
+              min:Number(myp.min||0),
+              avg:Number(myp.avg||0),
+              max:Number(myp.max||0),
+              link:myp.link||'',
+              checkedAt:myp.checkedAt||new Date().toISOString(),
+              liga:null,
+              myp,
+              finish,
+              condition
+            };
+            await persistDual(card,partial);
+            updated++;
           }else{
             failed++;
-            const mReason=dual?.myp?.needsMypToken||dual?.myp?.officialError==='myp_token_required'
-              ?'MYP exige X-Api-Token'
-              :`MYP ${dual?.myp?.error||'sem preço'}`;
-            const lReason=`Liga ${dual?.liga?.error||'sem preço'}`;
-            failures.push(`${card.name}: ${mReason}; ${lReason}`);
-            console.error('[Preços] atualização falhou; preço anterior preservado',card.name,{before,dual});
+            failures.push(`${card.name}: MYP ${myp?.error||'sem preço'}`);
+          }
+
+          // 2) Liga é complementar. Se funcionar, acrescenta os dados; se não,
+          // a cotação da MYP que acabou de ser salva permanece intacta.
+          if(status)status.textContent=`${card.name} · MYP salva · tentando Liga…`;
+          try{
+            const liga=await querySource('/api/liga-public','liga',card,finish,condition);
+            if(hasPrice(liga)){
+              const combined={
+                source:primarySource(liga,myp),
+                min:0,avg:0,max:0,link:'',
+                checkedAt:new Date().toISOString(),
+                liga,
+                myp:hasPrice(myp)?myp:null,
+                finish,
+                condition
+              };
+              await persistDual(card,combined);
+              ligaUpdated++;
+            }
+          }catch(error){
+            console.warn('[Preços] Liga falhou; MYP preservada',card.name,error);
           }
         }catch(e){
           failed++;
           failures.push(`${card.name}: ${e?.message||'erro inesperado'}`);
-          console.error('[Preços] exceção',card.name,e);
+          console.error('[Preços] atualização',card.name,e);
         }
       }
+
       await loadCards(false);
-      const updated=both+one;
+      try{renderAll()}catch{}
+      try{renderSummary()}catch{}
+
       if(status){
         const detail=failures.length?(' · '+failures.slice(0,2).join(' | ')):'';
-        status.textContent=`Concluído: ${updated}/${cards.length} atualizada(s) · ${failed} falha(s)${detail}`;
+        status.textContent=`Concluído: MYP ${updated}/${cards.length} · Liga ${ligaUpdated}/${cards.length} · ${failed} falha(s)${detail}`;
         status.title=failures.join('\n');
       }
       toast(updated
-        ?`Preços atualizados: ${updated}/${cards.length}. Falhas preservaram o valor anterior.`
-        :`Nenhuma fonte retornou preço. Valores anteriores foram preservados.`);
+        ?`MYP atualizada automaticamente em ${updated}/${cards.length} carta(s).`
+        :`A MYP não retornou preço para nenhuma carta.`);
     }finally{
       bulkBusy=false;
       if(b){b.disabled=false;b.textContent='↻ Atualizar preços · Liga + MYP'}
