@@ -78,18 +78,9 @@
   }
 
   function installToolRail(){
-    const stage=$id('binderStage');
-    if(!stage||stage.querySelector('.v11-rail'))return;
-    const rail=document.createElement('div');
-    rail.className='v11-rail v149-useful-rail';
-
-    rail.appendChild(makeTool('add','＋','Adicionar carta',()=>{$id('btnOpenAdd')?.click()}));
-    rail.appendChild(makeTool('scan','⌁','Escanear carta',()=>{$id('btnMobileScan')?.click()}));
-    rail.appendChild(makeTool('pages','▦','Abrir páginas',()=>{$id('btnPages')?.click()}));
-    rail.appendChild(makeTool('friends','♙','Amigos',()=>{$id('btnFriends')?.click()}));
-    rail.appendChild(makeTool('fullscreen','⛶','Tela cheia',toggleFullscreen));
-    stage.appendChild(rail);
-
+    // V14.11: the desktop rail was redundant with the top bar and summary.
+    // Remove any rail left by an older cached build and do not recreate it.
+    document.querySelectorAll('.v11-rail').forEach(el=>el.remove());
     try{
       if(localStorage.getItem('pokemonBinderSummaryCollapsed')==='1')toggleSummary(true);
     }catch(_e){}
