@@ -3,6 +3,12 @@ on:
   push:
     branches:
       - v140-full-overhaul
+    paths:
+      - 'v140.js'
+      - 'api/master-set.js'
+      - 'api/card-image-fallback.js'
+      - 'sw.js'
+      - '.github/workflows/v140-core-tests.yml'
 permissions:
   contents: write
 jobs:
