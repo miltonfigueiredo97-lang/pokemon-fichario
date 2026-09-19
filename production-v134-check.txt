@@ -1,0 +1,7 @@
+UTC: 2026-09-19T01:26:35Z
+===== Lugia V price =====
+{"ok":true,"source":"MYP Cards","provider":"Chromium","mode":"browser-search-page","name":"Lugia V","number":"138/195","edition":"Espada e Escudo 12: Tempestade Prateada (SIT)","finish":"Foil","condition":"Nova","link":"https://mypcards.com/pokemon/produto/174895/lugia-v","min":59.9,"avg":162.31,"max":200,"samples":15,"availableQuantity":1,"exactVariant":true,"complete":true,"checkedAt":"2026-09-19T01:26:57.921Z"}
+===== V13.4 frontend markers =====
+APP_VERSION='V13.4'
+data-condition-key
+priceForNewCard
