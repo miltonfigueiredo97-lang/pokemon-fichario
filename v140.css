@@ -1,12 +1,13 @@
 /* Pokémon Binder BR — V14 */
-.v14-unified-topbar{position:absolute;z-index:75;top:8px;left:50%;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:0;min-width:0;max-width:calc(100% - 150px);padding:4px;border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(8,11,14,.88);backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.26);pointer-events:auto;white-space:nowrap}
+.v14-unified-topbar{position:absolute;z-index:75;top:8px;left:0;transform:none;display:flex;align-items:center;justify-content:flex-start;gap:0;min-width:0;padding:4px;border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(8,11,14,.88);backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.26);pointer-events:auto;white-space:nowrap;box-sizing:border-box;overflow:hidden}
 .v14-unified-topbar .page-center{position:static!important;top:auto!important;left:auto!important;transform:none!important;display:flex!important;align-items:center!important;gap:6px!important;padding:0 9px 0 6px!important;border:0!important;border-right:1px solid rgba(255,255,255,.10)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;pointer-events:auto!important}
 .v14-go-start{height:28px!important;padding:0 8px!important;font-size:8px!important;font-weight:900!important}
 .v14-go-start:disabled{opacity:.32!important;cursor:default!important}
-.v14-binder-controls{position:static;z-index:auto;display:flex;align-items:center;gap:6px;min-width:0;max-width:none;padding:0 0 0 8px;border:0;border-radius:0;background:transparent;backdrop-filter:none;box-shadow:none;overflow:visible;pointer-events:auto}
-.v14-binder-controls select{flex:0 0 auto;height:32px;max-width:190px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#11161a;color:#f0eee8;padding:0 9px;font-size:10px;font-weight:800}
-.v14-binder-controls #v14SortSelect{max-width:220px}
-.v14-binder-search{position:relative;flex:0 1 185px;min-width:135px;height:32px;display:flex;align-items:center;gap:5px;padding:0 8px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#11161a;color:#7f8b91}
+.v14-binder-controls{position:static;z-index:auto;display:flex;align-items:center;gap:6px;flex:1 1 auto;width:auto;min-width:0;max-width:none;padding:0 0 0 8px;border:0;border-radius:0;background:transparent;backdrop-filter:none;box-shadow:none;overflow:hidden;pointer-events:auto}
+.v14-binder-controls select{height:32px;min-width:0;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#11161a;color:#f0eee8;padding:0 9px;font-size:10px;font-weight:800}
+.v14-binder-controls #v14BinderSelect{flex:1 1 180px;max-width:230px}
+.v14-binder-controls #v14SortSelect{flex:1.15 1 210px;max-width:260px}
+.v14-binder-search{position:relative;flex:1 1 165px;min-width:120px;max-width:220px;height:32px;display:flex;align-items:center;gap:5px;padding:0 8px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#11161a;color:#7f8b91}
 .v14-binder-search>span{font-size:14px;line-height:1;pointer-events:none}
 .v14-binder-search input{width:100%;min-width:0;height:30px;border:0!important;outline:0!important;background:transparent!important;color:#f0eee8!important;padding:0!important;font-size:10px!important;font-weight:750!important;box-shadow:none!important}
 .v14-binder-search input::placeholder{color:#788289}
@@ -56,9 +57,10 @@
 #v14ScanCandidateGrid .catalog-card strong{font-size:10px;color:#f4f0e8}
 #v14ScanCandidateGrid .catalog-card small{font-size:8px;color:#879198}
 @media(max-width:1180px) and (min-width:821px){
-  .v14-unified-topbar{max-width:calc(100% - 110px)}
-  .v14-binder-controls select{max-width:150px}
-  .v14-binder-search{flex-basis:145px;min-width:120px}
+  .v14-unified-topbar .page-label{max-width:92px;overflow:hidden;text-overflow:ellipsis}
+  .v14-binder-controls #v14BinderSelect{flex-basis:145px;max-width:175px}
+  .v14-binder-controls #v14SortSelect{flex-basis:170px;max-width:195px}
+  .v14-binder-search{flex-basis:125px;min-width:105px;max-width:155px}
   .v14-binder-controls #v14AddBinder{font-size:0;width:34px;padding:0}
   .v14-binder-controls #v14AddBinder::before{content:"＋";font-size:18px;line-height:1}
 }
@@ -139,3 +141,5 @@
 }
 
 @media print{.v14-unified-topbar{display:none!important}}
+
+.v14-card-price-update{width:100%;margin-top:9px;min-height:34px;font-size:9px;font-weight:900}
