@@ -3,7 +3,7 @@
 .v14-unified-topbar .page-center{position:static!important;top:auto!important;left:auto!important;transform:none!important;display:flex!important;align-items:center!important;gap:7px!important;padding:0 9px 0 6px!important;border:0!important;border-right:1px solid rgba(255,255,255,.10)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;pointer-events:auto!important}
 .v14-binder-controls{position:static;z-index:auto;display:flex;align-items:center;gap:6px;min-width:0;max-width:none;padding:0 0 0 8px;border:0;border-radius:0;background:transparent;backdrop-filter:none;box-shadow:none;overflow:visible;pointer-events:auto}
 .v14-binder-controls select{flex:0 0 auto;height:32px;max-width:190px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#11161a;color:#f0eee8;padding:0 9px;font-size:10px;font-weight:800}
-.v14-binder-controls #v14SortSelect{max-width:175px}
+.v14-binder-controls #v14SortSelect{max-width:230px}
 .v14-binder-controls #v14RenameBinder,.v14-binder-controls #v14DeleteBinder{flex:0 0 32px;width:32px;height:32px;min-height:32px;padding:0;font-size:0;display:grid;place-items:center}
 .v14-binder-controls #v14RenameBinder::before{content:"✎";font-size:15px;line-height:1}
 .v14-binder-controls #v14DeleteBinder::before{content:"🗑";font-size:14px;line-height:1}
@@ -59,7 +59,7 @@
   .v14-binder-controls{position:absolute;top:48px;left:8px;right:8px;width:auto;max-width:none;height:42px;padding:3px;gap:5px;border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(8,11,14,.94);backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.24);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;pointer-events:auto}
   .v14-binder-controls::-webkit-scrollbar{display:none}
   .v14-binder-controls select{height:34px;min-width:138px;max-width:170px;padding:0 8px;font-size:10px}
-  .v14-binder-controls #v14SortSelect{min-width:155px;max-width:175px}
+  .v14-binder-controls #v14SortSelect{min-width:190px;max-width:220px}
   .v14-binder-controls #v14RenameBinder{display:none!important}
   .v14-binder-controls #v14DeleteBinder{display:grid!important;place-items:center;flex:0 0 38px;width:38px;height:34px;min-height:34px;padding:0;font-size:0;color:#ff9b9b}
   .v14-binder-controls #v14DeleteBinder::before{content:"🗑";font-size:16px;line-height:1}
@@ -76,7 +76,7 @@
 }
 @media(max-width:430px){
   .v14-binder-controls select{min-width:128px;max-width:150px}
-  .v14-binder-controls #v14SortSelect{min-width:145px;max-width:160px}
+  .v14-binder-controls #v14SortSelect{min-width:185px;max-width:210px}
 }
 
 .v14-fav-filter.active{border-color:rgba(255,210,70,.65)!important;background:rgba(255,210,70,.12)!important;color:#ffd246!important}
@@ -89,6 +89,9 @@
 .v14-value-scope-control{display:grid;gap:5px;min-width:0}
 .v14-value-scope-control span{font-size:9px;font-weight:850;color:#8f999f;text-transform:uppercase;letter-spacing:.03em}
 .v14-value-scope-control select{width:100%;min-width:0;height:36px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#0d1114;color:#f0eee8;padding:0 9px;font-size:10px;font-weight:800}
+.v14-binder-view-scope{display:grid;gap:6px;margin:0 0 10px}
+.v14-binder-view-scope span{font-size:8px;font-weight:950;color:#9ea4a7;letter-spacing:.08em;text-transform:uppercase}
+.v14-binder-view-scope select{width:100%;height:38px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#0d1114;color:#f0eee8;padding:0 10px;font-size:10px;font-weight:850}
 .v14-fav-filter{white-space:nowrap}
 @media(max-width:620px){.price-mode-controls{grid-template-columns:1fr}}
 
