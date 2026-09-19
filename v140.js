@@ -1191,6 +1191,8 @@
     }finally{busy(b,false)}
   }
 
+  V14.updateVisiblePrices=updateVisiblePricesV14;
+
   function rewireFilteredPriceButton(){
     const old=byId('v12UpdatePrices');if(!old||old.dataset.v148==='1')return;
     const b=old.cloneNode(true);
