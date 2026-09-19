@@ -39,7 +39,7 @@ jobs:
             userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36'
           });
           const page=await context.newPage();
-          const q='Lugia V 138/195';
+          const q='Lugia V';
           const url='https://mypcards.com/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(q);
           let status=0,error='';
           try{
@@ -48,14 +48,14 @@ jobs:
             await page.waitForTimeout(5000);
           }catch(e){error=String(e)}
           const title=await page.title().catch(()=> '');
-          const productLinks=await page.locator('a[href*="/pokemon/produto/"]').evaluateAll(as=>as.map(a=>({
+          const anchors=await page.locator('a').evaluateAll(as=>as.map(a=>({
             text:(a.innerText||a.textContent||'').trim(),
             href:a.href,
             title:a.getAttribute('title')||'',
-            parent:(a.closest('article,li,div')?.innerText||'').trim().slice(0,1200)
-          })).slice(0,100)).catch(()=>[]);
-          const body=(await page.locator('body').innerText().catch(()=> '')).slice(0,12000);
-          fs.writeFileSync('myp-search-result-probe.json',JSON.stringify({status,title,error,url,productLinks,body},null,2));
+            parent:(a.closest('article,li,.produto-item,.produto,.card,div')?.innerText||'').trim().slice(0,1500)
+          })).filter(x=>/Lugia/i.test(x.text+x.title+x.parent)||/pokemon\/produto/i.test(x.href)).slice(0,200)).catch(()=>[]);
+          const body=(await page.locator('body').innerText().catch(()=> '')).slice(0,18000);
+          fs.writeFileSync('myp-search-result-probe2.json',JSON.stringify({status,title,error,url,anchors,body},null,2));
           await browser.close();
           EOF
           node probe.mjs
@@ -64,6 +64,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add myp-search-result-probe.json
-          git commit -m "Record MYP search result probe" || exit 0
+          git add myp-search-result-probe2.json
+          git commit -m "Record broad MYP search result probe" || exit 0
           git push origin HEAD:diagnose-v13-production
