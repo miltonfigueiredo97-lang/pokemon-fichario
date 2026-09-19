@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-myp-edition-filter.txt
+          OUT=debug-myp-auto-final.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,12 +36,12 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "MYP edition-filter discovery" "https://pokemon-fichario.vercel.app/api/myp-browser-diagnostic-temp"
+          probe "MYP full auto discovery final" "https://pokemon-fichario.vercel.app/api/myp-browser-diagnostic-temp"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-myp-edition-filter.txt
+          git add debug-myp-auto-final.txt
           git commit -m "Debug price source responses" || exit 0
           git push
