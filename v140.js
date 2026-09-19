@@ -927,13 +927,17 @@
 
     V14.masterEpoch++;
     V14.masterPreview=null;
-    byId('v14MasterStep')?.classList.add('hidden');
+    byId('v14MasterStep')?.classList.remove('hidden');
     byId('v14PromoNotice')?.classList.add('hidden');
+    const grid=byId('v14MasterGrid');if(grid)grid.innerHTML='';
+    const title=byId('v14MasterTitle');if(title)title.textContent='Escolha outro Master Set';
+    const meta=byId('v14MasterMeta');if(meta)meta.textContent='Os Master Sets já adicionados continuam no fichário.';
+    const owned=byId('v14OwnedCount');if(owned)owned.textContent='0';
     const set=byId('v14SetSelect');if(set)set.value='';
     const status=byId('v14SetStatus');
-    if(status)status.textContent=V14.masterSelections.length+' Master Set'+(V14.masterSelections.length===1?'':'s')+' adicionado'+(V14.masterSelections.length===1?'':'s')+'. Escolha outra coleção.';
+    if(status)status.textContent=V14.masterSelections.length+' Master Set'+(V14.masterSelections.length===1?'':'s')+' adicionado'+(V14.masterSelections.length===1?'':'s')+'. Escolha outra coleção ou crie o fichário agora.';
     renderMasterQueue();
-    toast('Master Set adicionado ao fichário. Escolha o próximo.');
+    toast('Master Set adicionado ao fichário. Você pode escolher outro ou criar agora.');
   }
 
   function masterImage(entry){
