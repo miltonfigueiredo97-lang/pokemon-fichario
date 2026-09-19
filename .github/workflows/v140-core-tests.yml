@@ -1,0 +1,70 @@
+name: V14 core tests
+on:
+  push:
+    branches:
+      - v140-full-overhaul
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Static syntax
+        run: |
+          node --check v140.js
+          node --check api/master-set.js
+          node --check api/card-image-fallback.js
+          node --check sw.js
+      - name: API behavior
+        run: |
+          cat > v140-core-test.cjs <<'EOF'
+          const fs=require('fs');
+          async function invoke(modPath,query){
+            const handler=require('./'+modPath);
+            return await new Promise((resolve,reject)=>{
+              let status=200,headers={};
+              const res={
+                setHeader(k,v){headers[k]=v;},
+                status(n){status=n;return this;},
+                json(v){resolve({status,headers,body:v});}
+              };
+              Promise.resolve(handler({query},res)).catch(reject);
+            });
+          }
+          (async()=>{
+            const master=await invoke('api/master-set.js',{lang:'pt',set:'sv08'});
+            const entries=master.body?.entries||[];
+            const exeggcute=entries.filter(x=>x.apiId==='sv08-001');
+            const masterPass=master.status===200&&master.body?.ok&&entries.length>252&&exeggcute.some(x=>x.finish==='Normal')&&exeggcute.some(x=>x.finish==='Reverse Foil');
+
+            const img=await invoke('api/card-image-fallback.js',{name:'Umbreon ex',number:'091',hp:'',rarity:''});
+            const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
+
+            const js=fs.readFileSync('v140.js','utf8');
+            const assertions={
+              backgroundPrice:/queueBackgroundPrices/.test(js)&&/price_pending/.test(js)&&/Adicionando/.test(js),
+              multiBinder:/pokemon_binders/.test(js)&&/Geral — todos os fichários/.test(js),
+              sortGuard:/Movimentação só fica disponível/.test(js),
+              scanner:/ocrCard/.test(js)&&/scanLiveTick/.test(js)&&/Confirme a carta/.test(js),
+              masterSet:/api\/master-set/.test(js)&&/Master Set/.test(js),
+              japanese:/card-image-fallback/.test(js)
+            };
+            const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
+            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
+            fs.writeFileSync('v140-core-test-result.json',JSON.stringify(out,null,2));
+            if(!pass)process.exitCode=1;
+          })().catch(e=>{fs.writeFileSync('v140-core-test-result.json',JSON.stringify({pass:false,error:String(e),stack:e.stack},null,2));process.exitCode=1});
+          EOF
+          node v140-core-test.cjs
+      - name: Commit result
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v140-core-test-result.json
+          git commit -m "Record V14 core test" || exit 0
+          git push origin HEAD:v140-full-overhaul
