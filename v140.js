@@ -340,7 +340,7 @@
     byId('v14TabEmpty')?.addEventListener('click',()=>switchCreateTab('empty'));
     byId('v14TabSet')?.addEventListener('click',()=>switchCreateTab('set'));
     byId('v14CreateEmpty')?.addEventListener('click',createEmptyBinder);
-    byId('v14AddBinder')?.addEventListener('click',()=>{switchCreateTab('empty');byId('v14BinderDialog')?.showModal()});
+    byId('v14AddBinder')?.addEventListener('click',openBinderCreator);
     byId('v14DeleteBinder')?.addEventListener('click',openDeleteBinderDialog);
     byId('v14CancelDelete')?.addEventListener('click',()=>{const d=byId('v14DeleteDialog');if(d?.open)d.close()});
     byId('v14ConfirmDelete')?.addEventListener('click',confirmDeleteBinder);
@@ -463,13 +463,70 @@
     },80);
   }
 
+  function resetMasterBuilderState({resetCatalog=false}={}){
+    V14.masterPreview=null;
+    const step=byId('v14MasterStep');if(step)step.classList.add('hidden');
+    const notice=byId('v14PromoNotice');if(notice){notice.classList.add('hidden');notice.textContent=''}
+    const grid=byId('v14MasterGrid');if(grid)grid.innerHTML='';
+    const owned=byId('v14OwnedCount');if(owned)owned.textContent='0';
+    const title=byId('v14MasterTitle');if(title)title.textContent='Coleção';
+    const meta=byId('v14MasterMeta');if(meta)meta.textContent='';
+    const status=byId('v14SetStatus');if(status)status.textContent='Escolha a geração e depois a coleção.';
+    const set=byId('v14SetSelect');
+    if(set){
+      set.value='';
+      set.disabled=true;
+      set.innerHTML='<option value="">Escolha primeiro a geração</option>';
+    }
+    const series=byId('v14SeriesSelect');
+    if(series){
+      series.value='';
+      if(resetCatalog){
+        series.disabled=true;
+        series.innerHTML='<option value="">Carregando gerações…</option>';
+      }
+    }
+  }
+
+  function hardCloseDialog(dialog){
+    const d=typeof dialog==='string'?byId(dialog):dialog;
+    if(!d)return;
+    try{if(d.open)d.close()}catch{}
+    // Android/WebView can occasionally leave a dialog/backdrop in the top layer.
+    // Re-check on the next frames and clear any stale open attribute as fallback.
+    requestAnimationFrame(()=>{
+      try{if(d.open)d.close()}catch{}
+      if(d.hasAttribute('open'))d.removeAttribute('open');
+    });
+  }
+
+  function releaseMobileInteraction(){
+    if(!window.matchMedia?.('(max-width:820px)').matches)return;
+    ['v14BinderDialog','v14DeleteDialog','v14ScanCandidates'].forEach(id=>hardCloseDialog(id));
+    document.querySelectorAll('[inert]').forEach(el=>el.removeAttribute('inert'));
+    document.body.style.removeProperty('pointer-events');
+    document.documentElement.style.removeProperty('pointer-events');
+    try{window.setMobileView?.('binder')}catch{}
+    requestAnimationFrame(()=>{try{window.fitBinderV11?.()}catch{}});
+  }
+
+  function openBinderCreator(){
+    resetMasterBuilderState({resetCatalog:true});
+    switchCreateTab('empty');
+    const d=byId('v14BinderDialog');
+    if(d&&!d.open)d.showModal();
+    // Reconcile binder names/existence from the database instead of trusting
+    // an old in-memory list after delete/create cycles.
+    loadBinders().catch(console.warn);
+  }
+
   function switchCreateTab(which){
     const empty=which==='empty';
     byId('v14TabEmpty')?.classList.toggle('active',empty);
     byId('v14TabSet')?.classList.toggle('active',!empty);
     byId('v14EmptyPane')?.classList.toggle('hidden',!empty);
     byId('v14SetPane')?.classList.toggle('hidden',empty);
-    if(!empty)setTimeout(()=>loadGenerationOptions(false),0);
+    if(!empty)setTimeout(()=>loadGenerationOptions(true),0);
   }
 
   async function ensureFirstBinder(){
@@ -640,7 +697,10 @@
       syncLegacySettings();
       renderBinderControls();
       renderAll();
-      if(d?.open)d.close();
+      hardCloseDialog(d);
+      resetMasterBuilderState({resetCatalog:true});
+      releaseMobileInteraction();
+      setTimeout(releaseMobileInteraction,180);
       toast('Fichário e suas cartas foram excluídos permanentemente.');
     }catch(error){
       console.error(error);
@@ -657,8 +717,16 @@
     const {data,error}=await db.from('pokemon_binders').insert({user_id:currentUser.id,name,pages,background:'graphite',sort_order:sortOrder,binder_kind:'custom'}).select('*').single();
     if(error)return toast('Não consegui criar o fichário.');
     V14.binders.push(data);
-    if(byId('v14BinderDialog')?.open)byId('v14BinderDialog').close();
+
+    // Close the modal BEFORE any binder reload/render. On mobile, rendering
+    // while a modal is still in the top layer could leave the whole app inert.
+    hardCloseDialog('v14BinderDialog');
+    resetMasterBuilderState({resetCatalog:true});
+    releaseMobileInteraction();
+
     await selectBinder(data.id);
+    releaseMobileInteraction();
+    setTimeout(releaseMobileInteraction,180);
     toast('Fichário criado.');
   }
 
