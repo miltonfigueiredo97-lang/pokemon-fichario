@@ -1557,7 +1557,8 @@
       setId:String(card.set_id||''),
       lang:String(card.language_code||''),
       finish,condition,
-      fast:'1'
+      fast:'1',
+      _:String(Date.now())
     });
     const link=[card.myp_price_link,card.price_br_link,card.price_link].find(v=>/mypcards\.com/i.test(String(v||'')));
     if(link)p.set('link',link);
