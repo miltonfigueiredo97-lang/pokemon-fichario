@@ -1,0 +1,64 @@
+===== https://www.clubedaliga.com.br/api/cardsearch?tcg=2&term=Lugia =====
+HTTP/2 403 
+date: Sat, 19 Sep 2026 02:18:35 GMT
+content-type: text/plain; charset=UTF-8
+content-length: 17
+cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+referrer-policy: same-origin
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+x-frame-options: SAMEORIGIN
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=A5ZghF2iPZViPVvvPWYyg39DfcHNUdX8DU0XE8AsyUavPjtHxg8Vzni7K7gpwBhmvMQhU16jFAuO6tWyJtL1xMOyYshtuGxoUi4WG2aL6Lbpj23llwHEKAN8j1S%2BEfXcI6FS4P8uX%2Fpv"}]}
+server: cloudflare
+cf-ray: a3d519c6aaa94cbe-MSP
+
+error code: 1005
+
+===== https://www.clubedaliga.com.br/api/cardsearch?tcg=2&q=Lugia =====
+HTTP/2 403 
+date: Sat, 19 Sep 2026 02:18:36 GMT
+content-type: text/plain; charset=UTF-8
+content-length: 17
+cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+referrer-policy: same-origin
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+x-frame-options: SAMEORIGIN
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=2k70QdXNCsSRR9kHNJRBYtqyIq8b72ciRpuI8xsukyXGkM0kNpL%2FUX2D%2FLrzCVvLu%2FgxrvnFjx9vC42FxOhZLEAoxV8iRUHe5mP8F73DJcNgCxY%2B0TgGOZOoASzztYquO%2BNxRKv70KQ3"}]}
+server: cloudflare
+cf-ray: a3d519c6ef57a206-MSP
+
+error code: 1005
+
+===== https://www.clubedaliga.com.br/?view=cards/card&card=Lugia-EX&ed=PLS&tcg=2 =====
+HTTP/2 403 
+date: Sat, 19 Sep 2026 02:18:36 GMT
+content-type: text/plain; charset=UTF-8
+content-length: 17
+cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+referrer-policy: same-origin
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+x-frame-options: SAMEORIGIN
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=8ekji71wh%2FnGXLswRXeFv1w4H9T4csWHjL4688X7U5ulmNIP%2FCg8nWS1R7flGMX%2B0yL5UNICBY9UPo4Jo%2FYgRFdtFrp8ngDHhwLabER0qxrDCspDZAaH8fUs00PnPHOi5X5l4btkUaP2"}]}
+server: cloudflare
+cf-ray: a3d519c75cf1393c-MSP
+
+error code: 1005
+
+===== https://www.clubedaliga.com.br/?view=cards/search&card=Lugia-EX&tcg=2 =====
+HTTP/2 403 
+date: Sat, 19 Sep 2026 02:18:36 GMT
+content-type: text/plain; charset=UTF-8
+content-length: 17
+cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
+expires: Thu, 01 Jan 1970 00:00:01 GMT
+referrer-policy: same-origin
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+x-frame-options: SAMEORIGIN
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=D9fB6xiowkr8FoVhfjb9BbG3JfzOD3BYbiZkSlC7Wb%2BVHiftXnmQAZlQoFzYaSnGSmxv0ynwNRBgRbWD5ZqHA6Uwh1ULi%2B2JLvOqm2PrzeqtmQB6uZmWW8rbJQqZ4wHLiP1COjZHhrkl"}]}
+server: cloudflare
+cf-ray: a3d519c7dd89e82e-ORD
+
+error code: 1005
+
