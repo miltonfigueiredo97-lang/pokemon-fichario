@@ -1,0 +1,53 @@
+name: V14 production smoke
+on:
+  push:
+    branches:
+      - diagnose-v13-production
+    paths:
+      - '.github/workflows/v140-production-smoke.yml'
+permissions:
+  contents: write
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe production
+        run: |
+          BASE="https://pokemon-fichario.vercel.app"
+          ROOT=$(curl -L --max-time 40 -sS -o /tmp/root -w '%{http_code}' "$BASE/" || true)
+          JS=$(curl -L --max-time 40 -sS -o /tmp/js -w '%{http_code}' "$BASE/v140.js" || true)
+          MASTER=$(curl -L --max-time 70 -sS -o /tmp/master -w '%{http_code}' "$BASE/api/master-set?lang=pt&set=sv08" || true)
+          node - <<'EOF'
+          const fs=require('fs');
+          const root=fs.existsSync('/tmp/root')?fs.readFileSync('/tmp/root','utf8'):'';
+          const js=fs.existsSync('/tmp/js')?fs.readFileSync('/tmp/js','utf8'):'';
+          let master={};try{master=JSON.parse(fs.readFileSync('/tmp/master','utf8'))}catch{}
+          const out={
+            rootCode:process.env.ROOT||'',
+            jsCode:process.env.JS||'',
+            masterCode:process.env.MASTER||'',
+            rootHasV140:/v140\.js/.test(root),
+            jsHasMultiBinder:/pokemon_binders/.test(js),
+            jsHasBackgroundPrice:/queueBackgroundPrices/.test(js),
+            jsHasScanner:/scanLiveTick/.test(js),
+            masterOk:master?.ok===true,
+            masterEntries:master?.entries?.length||0
+          };
+          out.pass=out.rootHasV140&&out.jsHasMultiBinder&&out.jsHasBackgroundPrice&&out.jsHasScanner&&out.masterOk&&out.masterEntries>252;
+          fs.writeFileSync('v140-production-smoke.json',JSON.stringify(out,null,2));
+          if(!out.pass)process.exitCode=1;
+          EOF
+        env:
+          ROOT: ""
+          JS: ""
+          MASTER: ""
+      - name: Commit result
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v140-production-smoke.json
+          git commit -m "Record V14 production smoke" || exit 0
+          git push origin HEAD:diagnose-v13-production
