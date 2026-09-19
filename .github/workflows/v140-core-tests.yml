@@ -41,6 +41,7 @@ jobs:
       - name: Static syntax
         run: |
           node --check script.js
+          node --check v11fix.js
           node --check v140.js
           node --check api/master-set.js
           node --check api/card-image-fallback.js
@@ -73,6 +74,7 @@ jobs:
             const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
 
             const js=fs.readFileSync('v140.js','utf8');
+            const pageJs=fs.readFileSync('v11fix.js','utf8');
             const html=fs.readFileSync('index.html','utf8');
             const css=fs.readFileSync('v140.css','utf8');
             const assertions={
@@ -96,7 +98,11 @@ jobs:
               masterPromos:/isPromoSet/.test(js)&&/Promos não são misturadas automaticamente/.test(js),
               mobileDelete:/v14DeleteBinder/.test(js)&&/display:grid!important/.test(css),
               summaryOverlay:/z-index:75/.test(css),
-              desktopUnifiedTopbar:/v14UnifiedTopbar/.test(js)&&/ensureUnifiedTopbar/.test(js)&&/positionUnifiedTopbar/.test(js)&&/v14-unified-topbar/.test(css)&&/border-right:1px solid/.test(css)
+              desktopUnifiedTopbar:/v14UnifiedTopbar/.test(js)&&/ensureUnifiedTopbar/.test(js)&&/positionUnifiedTopbar/.test(js)&&/v14-unified-topbar/.test(css)&&/border-right:1px solid/.test(css),
+              directionalSort:/manual_asc/.test(js)&&/manual_desc/.test(js)&&/name_asc/.test(js)&&/name_desc/.test(js)&&/number_asc/.test(js)&&/number_desc/.test(js),
+              binderViewScope:/binder_view_scope/.test(js)&&/v14BinderViewScope/.test(js)&&/Mostrar no fichário/.test(js),
+              viewScopeCss:/v14-binder-view-scope/.test(css),
+              rapidPageSkip:/cancelPageFlip/.test(pageJs)&&/pageFlipSuppressUntil/.test(pageJs)&&/rapidWindow/.test(pageJs)&&/pageFlipBusy/.test(pageJs)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
