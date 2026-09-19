@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.3-test';
+  const APP_VERSION='V13.3';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -20,6 +20,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.3',title:'Preço automático em cartas novas',items:[
+      'Cartas novas sem link MYP agora pesquisam automaticamente a própria MYP pelo nome.',
+      'O sistema coleta as impressões candidatas, confere número e coleção e escolhe a página correta antes de ler as ofertas.',
+      'Nome da coleção é usado para desempatar cartas com o mesmo número em produtos diferentes.',
+      'Preço e link MYP são salvos já no cadastro da carta quando existe oferta compatível.'
+    ]},
     {version:'V13.2',title:'Busca de cartas progressiva',items:[
       'Corrigido o idioma português do TCGdex: a API usa pt, enquanto o fichário internamente continua usando pt-br.',
       'Nome, número e coleção agora refinam a busca em vez de exigir correspondência exata.',
