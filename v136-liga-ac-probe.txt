@@ -1,6 +1,6 @@
 ===== https://ac.ligamagic.com.br/api/cardsearch?tcg=2&term=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:19:35 GMT
+date: Sat, 19 Sep 2026 02:21:55 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -8,15 +8,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=FJtdd2UO0jVkGi1CSQL%2BD00vBPTQYdExQROI3yCZFzvDY0YO5YhNL180bBjgpJ3JW6l0pguysJcr3aaYLYifzt1qyzRZNVmW6asAnibrQK7OSXZ3YQO4IXlaI6YG8lOVAawTEcde"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=zfHki4zevmgdwkcCNj%2Bm4GMT3f9IfkUITj3JWhCf7UAFnbc8cL2BSfglgUGykUxModGSLLXEaCNvVsiZB6I8IqLD%2BQkRo9lVw3F1ITJdhb0JLud7sbYEdfRwbGKdIA6Hi4GLLUca"}]}
 server: cloudflare
-cf-ray: a3d51b38796e8e06-IAD
+cf-ray: a3d51ea7993c10d8-ORD
 
 error code: 1005
 
 ===== https://ac.ligamagic.com.br/api/cardsearch?tcg=2&q=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:19:35 GMT
+date: Sat, 19 Sep 2026 02:21:55 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -24,15 +24,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=jrosgE6Y%2FfY8E0jx%2BfZbz6QqRVHbsLntq%2BmWLDFiYGNv8SAD87FP5WMPKS3x3Gw0zcWdBR%2Fe5CgUF%2BAGEYzdgKe5usQIiZ%2F5tjiG3PFBGGq36aVu%2FzVBXqltWGeFrW1SbCSzVFMk"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=No%2Bn305dUqJm6chiyi2Np%2BobtPnfITV9dShrmwoNvOSsxNyKM%2F300BKPf8ZfUJ6S1XDUIZ53vAo0C%2FgoPqqDq4if3M3wTbGIB5s7XdGLbmL1RHFWiaCTLav5l74B61F1z%2B2sVXZf"}]}
 server: cloudflare
-cf-ray: a3d51b38a96be713-IAD
+cf-ray: a3d51ea7deb868d7-ORD
 
 error code: 1005
 
 ===== https://ac.ligamagic.com.br/api/cardsearch?tcg=2&query=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:19:35 GMT
+date: Sat, 19 Sep 2026 02:21:55 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -40,15 +40,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=VGNibhXiURDGjjiQIdrUFiBkh4fSjCtc6GFLHZna%2FHhBB0jsja9WGmQwh6ZsQXuKi7wE5iLbZFtKN4Vr7UmK%2BzCh1TkCbbQA29KxXcpyQzDoM7L0E8dQRgt%2F2%2BSODw0s%2Fe9pqqoI"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=krekoh4hLHGeVVtBBeEQg05PEWjAefCnr0FnMVY8dJ7%2BX0r0RKyglJxBe%2Fswl8tzU6kMZqfzR0boUQGG7RRO%2FCm%2Bzjp4OAP2P895c8RMjX4IzNv29egPvmtxJlqHjr9hSBhpDNQD"}]}
 server: cloudflare
-cf-ray: a3d51b38eafdc984-IAD
+cf-ray: a3d51ea818db5624-ORD
 
 error code: 1005
 
 ===== https://ac.ligamagic.com.br/api/cardsearch?tcg=2&search=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:19:35 GMT
+date: Sat, 19 Sep 2026 02:21:55 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -56,15 +56,15 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=g5FTKIcPHOYcV%2Fnps8kytlt%2FpugEK%2Bb4w5azgefIiUJXuN4xBaCDNLk8XPKzd%2FKUT1Q9oSmIy4TKLnUEGqaoyBHRiT5M57uSAQSPz3Qz3Fq%2BSVtvu0l%2BesNQyAYgFD10fovsbIr9"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=Z%2Bwip4Jnm%2FRNWN2WPDsIJGBA0LSMW%2Bub%2BJdCKlgtP8j0A3J0B9LSmKSlNn7%2B74XFJNlBSk3egUdb4w2P%2BBs6%2Bpst6Q96c8HM29lGSzdw37EG0LtQEhb5KOVkxdEJ4MogzbbOlC6i"}]}
 server: cloudflare
-cf-ray: a3d51b391ec189b1-IAD
+cf-ray: a3d51ea848ceead8-ORD
 
 error code: 1005
 
 ===== https://ac.ligamagic.com.br/api/cardsearch?tcg=2&category=cards&term=Lugia =====
 HTTP/2 403 
-date: Sat, 19 Sep 2026 02:19:35 GMT
+date: Sat, 19 Sep 2026 02:21:55 GMT
 content-type: text/plain; charset=UTF-8
 content-length: 17
 cache-control: private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0
@@ -72,9 +72,9 @@ expires: Thu, 01 Jan 1970 00:00:01 GMT
 referrer-policy: same-origin
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 x-frame-options: SAMEORIGIN
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=vVgOoIYCBaRI%2FOojSg5dmnjMQXRybckSVaPja0Jj0O72rQX%2BeXEfqBCP7y29u8Notk44ctKmY1blu5dDxX1rzVUCNEgwkaUmrVFGZ0kB8OJUPyn5QHGyfT0ZGnhojbhx7T%2BNdx%2BF"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=Hnt5P06BVkudmyWv8pKUw3%2BxQzwuSU%2BvjGbtj5msePPYzyuWAYRnft78BDou9eyj4PWT7lAOgdLnvwXanxU%2FNZUQW7k8eSKQ0Tt1GExST%2BfTF2kM6t1Ep7CxljSKKVt9iqBWVerf"}]}
 server: cloudflare
-cf-ray: a3d51b395b6b1d4c-IAD
+cf-ray: a3d51ea88ad1000a-ORD
 
 error code: 1005
 
