@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.9';
+  const APP_VERSION='V14.0';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,15 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.0',title:'Fichários múltiplos, Master Sets e scanner novo',items:[
+      'Adição de cartas ficou imediata; a MYP atualiza preços em segundo plano.',
+      'Cartas japonesas sem imagem recebem fallback seguro quando existe correspondência confiável.',
+      'Scanner foi refeito com múltiplas regiões de OCR e confirmação por candidatos.',
+      'Agora existem fichários ilimitados, seletor, renomear, excluir e visão Geral.',
+      'Ordenação por ordem física, nome, tipo, raridade e número; arrastar só funciona na ordem física.',
+      'Novo fichário pode ser vazio ou um Master Set gerado de uma coleção do TCGdex.',
+      'Master Sets usam variantes reais da coleção, incluindo Normal, Holo, Reverse e variantes especiais quando disponíveis.'
+    ]},
     {version:'V13.9',title:'Preço MYP respeita o idioma da carta',items:[
       'Ofertas da MYP agora são filtradas também pelo idioma antes de calcular mínimo, médio e máximo.',
       'Carta PT-BR ignora anúncios em Chinês, Inglês, Japonês e outros idiomas.',
