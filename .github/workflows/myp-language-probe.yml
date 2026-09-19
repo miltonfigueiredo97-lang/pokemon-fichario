@@ -1,0 +1,53 @@
+name: Probe MYP offer language
+on:
+  push:
+    branches:
+      - fix-v139-myp-language-filter
+    paths:
+      - '.github/workflows/myp-language-probe.yml'
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - run: |
+          cat > probe.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+          const browser=await chromium.launch({headless:true});
+          const context=await browser.newContext({locale:'pt-BR',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36'});
+          const page=await context.newPage();
+          const url='https://mypcards.com/pokemon/produto/146483/mew-v';
+          const resp=await page.goto(url,{waitUntil:'domcontentloaded',timeout:90000});
+          await page.waitForTimeout(5000);
+          const data=await page.evaluate(()=>({
+            httpStatus:0,
+            title:document.querySelector('h1')?.textContent?.trim()||document.title,
+            rows:[...document.querySelectorAll('tr')].filter(tr=>tr.querySelector('.estoque-lista-precoestoque .moeda')).map(tr=>({
+              text:(tr.innerText||'').trim(),
+              html:tr.outerHTML.slice(0,7000),
+              imgs:[...tr.querySelectorAll('img')].map(img=>({src:img.src,alt:img.alt,title:img.title,class:img.className})),
+              classes:[...tr.querySelectorAll('*')].map(el=>el.className).filter(x=>typeof x==='string'&&/idioma|language|pais|flag|bandeira/i.test(x)).slice(0,30)
+            })).slice(0,40)
+          }));
+          data.httpStatus=resp?.status()||0;
+          fs.writeFileSync('myp-language-probe.json',JSON.stringify(data,null,2));
+          await browser.close();
+          EOF
+          node probe.mjs
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add myp-language-probe.json
+          git commit -m "Record MYP language probe" || exit 0
+          git push origin HEAD:fix-v139-myp-language-filter
