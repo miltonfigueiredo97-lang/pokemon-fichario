@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.4.1';
+  const APP_VERSION='V13.5';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.5',title:'Cotação por condição real',items:[
+      'MYP calcula mínimo, médio e máximo somente entre ofertas da condição escolhida.',
+      'Acabamento vazio na MYP conta como acabamento padrão da impressão; acabamentos explicitamente diferentes são excluídos.',
+      'O painel mostra claramente a condição considerada e a quantidade de ofertas usadas.',
+      'A lógica da Liga também permanece condicionada por estado/acabamento quando a fonte responde; o bloqueio de acesso da Liga é tratado separadamente.'
+    ]},
     {version:'V13.4.1',title:'Atualização real pelo botão',items:[
       'O botão Atualizar preços consulta e salva MYP primeiro, sem esperar a Liga.',
       'A Liga passa a ser complementar: falha nela não impede nem apaga a cotação MYP.',
@@ -122,6 +128,10 @@
   function primaryMarket(liga,myp){return hasAverage(liga)?liga:(hasAverage(myp)?myp:(hasPrice(liga)?liga:(hasPrice(myp)?myp:null)))}
   function primarySource(liga,myp){const p=primaryMarket(liga,myp);return p===liga?'Liga Pokémon':(p===myp?'MYP Cards':'Sem preço BR')}
   function finishLabel(v){return FINISHES.find(([value])=>value===v)?.[1]||v||'Normal / não foil'}
+  function conditionLabel(v){
+    const c=String(v||'Nova').trim().toUpperCase();
+    return ({NOVA:'Nova / NM',NM:'Near Mint (NM)',SP:'Pouco jogada (SP)',MP:'Moderadamente jogada (MP)',HP:'Muito jogada (HP)',DM:'Danificada (DM)',D:'Danificada (DM)'})[c]||v||'Nova / NM';
+  }
   function normalizeFinish(v){const n=norm(v);if(!n)return'Normal';if(n.includes('master'))return'Masterball Foil';if(n.includes('poke')&&n.includes('ball'))return'Pokeball Foil';if(n.includes('reverse'))return'Reverse Foil';if(n.includes('full art'))return'Full-Art';if(n.includes('promo'))return'Promo';if(n==='holo'||n.includes('holograf')||n==='foil')return'Foil';if(n.includes('especial'))return'Especial';return'Normal'}
   function normalizeCondition(v){const s=String(v||'Nova').trim().toUpperCase();return['NM','SP','MP','HP','DM'].includes(s)?s:(s==='NOVA'?'Nova':'Nova')}
   function statusToInternal(v){const n=norm(v);if(n==='quero'||n==='wishlist')return'wanted';if(n==='pedido'||n==='encomendado')return'ordered';if(n==='nao tenho'||n==='faltando'||n==='missing')return'missing';return'owned'}
@@ -494,24 +504,39 @@
       <section data-market-source="myp"><header><strong>MYP Cards</strong><span>comparação</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>`;
     board.appendChild(wrap);
   }
-  function renderSource(key,m){const box=$v(`[data-market-source="${key}"]`);if(!box)return;['min','avg','max'].forEach(k=>{const el=box.querySelector(`[data-price="${k}"]`);if(el)el.textContent=Number(m?.[k]||0)?fmt(m[k]):'—'});box.classList.toggle('no-data',!hasPrice(m))}
+  function renderSource(key,m,condition){
+    const box=$v(`[data-market-source="${key}"]`);if(!box)return;
+    ['min','avg','max'].forEach(k=>{
+      const el=box.querySelector(`[data-price="${k}"]`);
+      if(el)el.textContent=Number(m?.[k]||0)?fmt(m[k]):'—';
+    });
+    const meta=box.querySelector('header span');
+    if(meta){
+      const samples=Number(m?.samples||0);
+      meta.textContent=hasPrice(m)
+        ? `${conditionLabel(condition)}${samples?` · ${samples} oferta${samples===1?'':'s'}`:''}`
+        : `${conditionLabel(condition)} · sem dados`;
+    }
+    box.classList.toggle('no-data',!hasPrice(m));
+  }
   function renderDualMarket(dual,card){
     ensureMarketBoard();
-    renderSource('liga',dual?.liga);
-    renderSource('myp',dual?.myp);
+    const condition=dual?.condition||card?.condition||'Nova';
+    renderSource('liga',dual?.liga,condition);
+    renderSource('myp',dual?.myp,condition);
     const primary=primaryMarket(dual?.liga,dual?.myp);
     if(primary)try{if(typeof setPrices==='function')setPrices(primary?.min||0,primary?.avg||0,primary?.max||0)}catch{}
     const status=$v('#marketStatus');
     if(!status)return;
-    if(hasAverage(dual?.liga))status.textContent=`Liga Pokémon · média válida · ${finishLabel(card?.finish||dual?.finish)}`;
-    else if(hasAverage(dual?.myp))status.textContent=`Liga sem média válida · usando média MYP · ${finishLabel(card?.finish||dual?.finish)}`;
-    else if(hasPrice(dual?.liga)||hasPrice(dual?.myp))status.textContent=`Cotação encontrada · ${finishLabel(card?.finish||dual?.finish)} · condição ${dual?.condition||card?.condition||'Nova'}`;
+    const variant=`${finishLabel(card?.finish||dual?.finish)} · ${conditionLabel(condition)}`;
+    if(hasAverage(dual?.liga))status.textContent=`Liga Pokémon · ${variant}`;
+    else if(hasAverage(dual?.myp))status.textContent=`Usando MYP Cards · ${variant}`;
+    else if(hasPrice(dual?.liga)||hasPrice(dual?.myp))status.textContent=`Cotação encontrada · ${variant}`;
     else{
       const reasons=[];
-      if(dual?.myp?.needsMypToken||dual?.myp?.officialError==='myp_token_required')reasons.push('MYP: falta X-Api-Token');
-      else if(dual?.myp?.error)reasons.push('MYP: '+dual.myp.error);
+      if(dual?.myp?.error)reasons.push('MYP: '+dual.myp.error);
       if(dual?.liga?.error)reasons.push('Liga: '+dual.liga.error);
-      status.textContent=(reasons.length?reasons.join(' · '):'Nenhuma fonte retornou preço')+' · preço salvo mantido';
+      status.textContent=`${variant} · ${reasons.length?reasons.join(' · '):'sem cotação'} · preço salvo mantido`;
     }
   }
 
