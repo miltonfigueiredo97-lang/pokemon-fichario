@@ -154,7 +154,28 @@ module.exports=async function handler(req,res){
       if(fallback){set=fallback;sourceLang='en'}
     }
     if(!set)throw new Error('Coleção não encontrada no TCGdex.');
-    const list=Array.isArray(set.cards)?set.cards:[];
+
+    let list=Array.isArray(set.cards)?[...set.cards]:[];
+    const expectedCount=Math.max(
+      Number(set?.cardCount?.official||0),
+      Number(set?.cardCount?.total||0)
+    );
+    // Some localized set indexes are incomplete even when the set itself exists
+    // (Celebrations Classic Collection PT is a real example). Complete only
+    // the missing card IDs from EN; each card still prefers the requested
+    // language when its detail is fetched below.
+    if(lang!=='en'&&expectedCount&&list.length<expectedCount){
+      const enSet=await jsonOrNull(BASE+'/en/sets/'+encodeURIComponent(setId));
+      const enCards=Array.isArray(enSet?.cards)?enSet.cards:[];
+      const seenIds=new Set(list.map(x=>String(x?.id||'')));
+      for(const item of enCards){
+        if(!seenIds.has(String(item?.id||''))){
+          list.push(item);
+          seenIds.add(String(item?.id||''));
+        }
+      }
+    }
+
     const details=await pool(list,18,async item=>{
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
       if(preferred)return {...preferred,__variantLang:lang};
