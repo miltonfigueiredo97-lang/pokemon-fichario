@@ -1,0 +1,40 @@
+name: V13.6 Lugia V condition test
+on:
+  push:
+    branches:
+      - fix-v136-price-selector-liga
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Test Lugia V conditions
+        run: |
+          cat > v136-lugia-v-test.cjs <<'EOF'
+          const fs=require('fs');
+          const {findAndScrapeMypBrowser}=require('./lib/myp-browser');
+          (async()=>{
+            const base={name:'Lugia V',number:'138/195',set:'Tempestade Prateada',setId:'swsh12',lang:'pt-br',finish:'Foil'};
+            const out={};
+            for(const condition of ['DM','HP','MP','SP','Nova']){
+              out[condition]=await findAndScrapeMypBrowser('https://mypcards.com/pokemon/produto/174895/lugia-v',{...base,condition});
+            }
+            fs.writeFileSync('v136-lugia-v-result.json',JSON.stringify(out,null,2));
+          })();
+          EOF
+          node v136-lugia-v-test.cjs
+      - name: Commit result
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v136-lugia-v-result.json
+          git commit -m "Record Lugia V condition test" || exit 0
+          git push origin HEAD:fix-v136-price-selector-liga
