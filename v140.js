@@ -357,10 +357,12 @@
     });
     byId('v14BinderViewScope')?.addEventListener('change',e=>{
       V14.viewScope=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
+      try{activeStatusFilter='all'}catch{}
       currentPage=1;
       renderBinder();
       renderPagesGrid();
       renderBinderControls();
+      renderSummary();
     });
     byId('v14MasterLang')?.addEventListener('change',()=>loadGenerationOptions(true));
     byId('v14SeriesSelect')?.addEventListener('change',()=>loadCollectionsForGeneration());
@@ -939,6 +941,13 @@
     if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value=binderViewScope();
     if(byId('totalValueLabel'))byId('totalValueLabel').textContent='Valor '+priceModeLabel(currentPriceMode())+' · '+scopeLabel;
     if(byId('totalValue'))byId('totalValue').textContent=money(value);
+  }
+
+  function setStatusFilterV14(status){
+    V14.viewScope='all';
+    if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value='all';
+    currentPage=1;
+    return V14.original.setStatusFilter(status);
   }
 
   async function moveCardV14(card,page,slot){
@@ -1538,7 +1547,7 @@
 
   function patchFunctions(){
     V14.original={
-      loadCards,updateSettings,applySettings,renderBinder,renderSummary,renderPagesGrid,renderPocketCard,moveCard,contextAction,openAddForPosition,addPage,saveSelectedCard
+      loadCards,updateSettings,applySettings,renderBinder,renderSummary,renderPagesGrid,renderPocketCard,moveCard,contextAction,openAddForPosition,addPage,saveSelectedCard,setStatusFilter
     };
     loadCards=loadCardsV14;
     updateSettings=updateSettingsV14;
@@ -1547,6 +1556,7 @@
     renderSummary=renderSummaryV14;
     renderPagesGrid=renderPagesGridV14;
     renderPocketCard=renderPocketCardV14;
+    setStatusFilter=setStatusFilterV14;
     moveCard=moveCardV14;
     contextAction=contextActionV14;
     openAddForPosition=openAddV14;
