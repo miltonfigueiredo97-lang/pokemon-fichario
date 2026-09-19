@@ -13,6 +13,20 @@ on:
       - 'api/jp-card-image.js'
       - 'sw.js'
       - '.github/workflows/v140-core-tests.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'v140.js'
+      - 'v140.css'
+      - 'index.html'
+      - 'script.js'
+      - 'api/master-set.js'
+      - 'api/card-image-fallback.js'
+      - 'api/jp-card-image.js'
+      - 'api/image-proxy.js'
+      - 'sw.js'
+      - '.github/workflows/v140-core-tests.yml'
 permissions:
   contents: write
 jobs:
@@ -30,6 +44,7 @@ jobs:
           node --check api/master-set.js
           node --check api/card-image-fallback.js
           node --check api/jp-card-image.js
+          node --check api/image-proxy.js
           node --check sw.js
       - name: API behavior
         run: |
@@ -63,7 +78,7 @@ jobs:
               backgroundPrice:/queueBackgroundPrices/.test(js)&&/price_pending/.test(js)&&/Adicionando/.test(js),
               multiBinder:/pokemon_binders/.test(js)&&/Geral — todos os fichários/.test(js),
               sortGuard:/Movimentação só fica disponível/.test(js),
-              scanner:/ocrCard/.test(js)&&/scanLiveTick/.test(js)&&/Confirme a carta/.test(js),
+              scanner:/ocrCard/.test(js)&&/scanLiveTick/.test(js)&&/Confirme a carta/.test(js)&&/visuallyRankCandidates/.test(js)&&/image-proxy/.test(js),
               masterSet:/api\/master-set/.test(js)&&/Master Set/.test(js)&&/Preços de Tenho e Não tenho/.test(js),
               japanese:/card-image-fallback/.test(js)&&/jp-card-image/.test(js),
               priceSort:/price_desc/.test(js)&&/price_asc/.test(js)&&/maior → menor/.test(js)&&/menor → maior/.test(js),
