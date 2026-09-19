@@ -95,7 +95,7 @@ jobs:
 
             const jp151=await invoke('api/master-set.js',{lang:'ja',set:'SV2a'});
             const jpEntries=jp151.body?.entries||[];
-            const jpCharm=jpEntries.filter(x=>x.apiId==='SV2a-004');
+            const jpCharm=jpEntries.filter(x=>String(x.apiId||'').toLowerCase()==='sv2a-004');
             const jp151Pass=jp151.status===200&&jp151.body?.ok&&
               jpCharm.length===3&&
               jpCharm.some(x=>x.variantType==='normal'&&x.finish==='Normal')&&
@@ -181,6 +181,7 @@ jobs:
             const pass=masterPass&&classicPass&&set151Pass&&jp151Pass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},set151:{status:set151.status,entries:entries151.length,charm004},jp151:{status:jp151.status,entries:jpEntries.length,charm004:jpCharm},image:img.body,assertions};
             fs.writeFileSync('v140-core-test-result.json',JSON.stringify(out,null,2));
+            console.log(JSON.stringify(out,null,2));
             if(!pass)process.exitCode=1;
           })().catch(e=>{fs.writeFileSync('v140-core-test-result.json',JSON.stringify({pass:false,error:String(e),stack:e.stack},null,2));process.exitCode=1});
           EOF
