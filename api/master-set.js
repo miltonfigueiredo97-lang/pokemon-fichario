@@ -157,16 +157,16 @@ module.exports=async function handler(req,res){
     const list=Array.isArray(set.cards)?set.cards:[];
     const details=await pool(list,18,async item=>{
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
-      if(preferred)return preferred;
+      if(preferred)return {...preferred,__variantLang:lang};
       if(lang!=='en'){
         const english=await jsonOrNull(BASE+'/en/cards/'+encodeURIComponent(item.id));
-        if(english)return english;
+        if(english)return {...english,__variantLang:'en'};
       }
-      return item;
+      return {...item,__variantLang:sourceLang};
     });
     const setName=set.name||setId;
     const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
-    const rawByCard=details.map(card=>(!card||card.__error)?[]:rawVariantsOf(card,lang));
+    const rawByCard=details.map(card=>(!card||card.__error)?[]:rawVariantsOf(card,card.__variantLang||lang));
     const profile=buildSetVariantProfile(rawByCard);
     const entries=[];
     for(let i=0;i<details.length;i++){
