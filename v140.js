@@ -415,8 +415,7 @@
     byId('v14PromoNotice')?.classList.add('hidden');
     V14.masterPreview=null;
     try{
-      const list=await fetchSeries(lang);
-      list.sort((a,b)=>String(b.id||'').localeCompare(String(a.id||''),'en',{numeric:true})||String(b.name||'').localeCompare(String(a.name||'')));
+      const list=[...(await fetchSeries(lang))].reverse();
       series.innerHTML='<option value="">Selecione a geração</option>'+list.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
       series.disabled=false;
       byId('v14SetStatus').textContent='Escolha a geração e depois a coleção.';
@@ -576,7 +575,7 @@
     }catch(e){
       console.error(e);
       if(createdBinder?.id){
-        await db.from('pokemon_binders').delete().eq('id',createdBinder.id).eq('user_id',currentUser.id).catch(()=>{});
+        try{await db.from('pokemon_binders').delete().eq('id',createdBinder.id).eq('user_id',currentUser.id)}catch{}
       }
       toast('Erro ao criar Master Set: '+(e.message||e));
     }finally{busy(btn,false)}
