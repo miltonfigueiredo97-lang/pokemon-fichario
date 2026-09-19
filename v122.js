@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.4';
+  const APP_VERSION='V13.4.1';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.4.1',title:'Atualização real pelo botão',items:[
+      'O botão Atualizar preços consulta e salva MYP primeiro, sem esperar a Liga.',
+      'A Liga passa a ser complementar: falha nela não impede nem apaga a cotação MYP.',
+      'O teste de preço agora pode ser feito com o banco zerado, sem preenchimento manual.'
+    ]},
     {version:'V13.4',title:'Preços completos e condição no scan',items:[
       'MYP agora usa o menor preço e o preço médio publicados pela própria página e calcula o maior anúncio regular da carta.',
       'Cartas novas consultam e salvam o preço da MYP antes de entrar no fichário; a Liga não bloqueia mais esse cadastro.',
