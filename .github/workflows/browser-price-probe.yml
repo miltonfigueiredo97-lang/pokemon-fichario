@@ -39,25 +39,23 @@ jobs:
             userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36'
           });
           const page=await context.newPage();
+          const q='Lugia V 138/195';
+          const url='https://mypcards.com/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(q);
           let status=0,error='';
           try{
-            const resp=await page.goto('https://mypcards.com/pokemon',{waitUntil:'domcontentloaded',timeout:90000});
+            const resp=await page.goto(url,{waitUntil:'domcontentloaded',timeout:90000});
             status=resp?.status()||0;
             await page.waitForTimeout(5000);
           }catch(e){error=String(e)}
           const title=await page.title().catch(()=> '');
-          const forms=await page.locator('form').evaluateAll(fs=>fs.map(f=>({
-            action:f.action,
-            method:f.method,
-            html:f.outerHTML.slice(0,4000)
-          })).slice(0,20)).catch(()=>[]);
-          const inputs=await page.locator('input').evaluateAll(xs=>xs.map(x=>({
-            name:x.name,id:x.id,type:x.type,placeholder:x.placeholder,value:x.value
+          const productLinks=await page.locator('a[href*="/pokemon/produto/"]').evaluateAll(as=>as.map(a=>({
+            text:(a.innerText||a.textContent||'').trim(),
+            href:a.href,
+            title:a.getAttribute('title')||'',
+            parent:(a.closest('article,li,div')?.innerText||'').trim().slice(0,1200)
           })).slice(0,100)).catch(()=>[]);
-          const links=await page.locator('a').evaluateAll(as=>as.map(a=>({
-            text:(a.innerText||'').trim(),href:a.href
-          })).filter(x=>/buscar|pesquis|search/i.test(x.text)||/search|busca|pesquisa/i.test(x.href)).slice(0,100)).catch(()=>[]);
-          fs.writeFileSync('myp-search-form-probe.json',JSON.stringify({status,title,error,forms,inputs,links},null,2));
+          const body=(await page.locator('body').innerText().catch(()=> '')).slice(0,12000);
+          fs.writeFileSync('myp-search-result-probe.json',JSON.stringify({status,title,error,url,productLinks,body},null,2));
           await browser.close();
           EOF
           node probe.mjs
@@ -66,6 +64,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add myp-search-form-probe.json
-          git commit -m "Record MYP search form probe" || exit 0
+          git add myp-search-result-probe.json
+          git commit -m "Record MYP search result probe" || exit 0
           git push origin HEAD:diagnose-v13-production
