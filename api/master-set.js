@@ -93,6 +93,14 @@ function rawVariantsOf(card,lang){
   const seen=new Set();
   return out.filter(v=>{if(seen.has(v.key))return false;seen.add(v.key);return true});
 }
+function inferUniformSetVariants(cardCount,expectedCount){
+  if(!expectedCount)return{};
+  const out={};
+  if(Number(cardCount?.normal||0)>=expectedCount)out.normal=true;
+  if(Number(cardCount?.holo||0)>=expectedCount)out.holo=true;
+  if(Number(cardCount?.reverse||0)>=expectedCount)out.reverse=true;
+  return out;
+}
 function synthesizeMissingSetBriefs(list,setId,expectedCount){
   const out=[...list];
   if(!expectedCount||out.length>=expectedCount)return out;
@@ -121,6 +129,9 @@ function synthesizeMissingSetBriefs(list,setId,expectedCount){
     makeLocal=n=>String(n).padStart(width,'0');
   }
 
+  if(!makeLocal&&String(setId||'').toLowerCase()==='cel25cc'&&expectedCount===25){
+    makeLocal=n=>'CC'+String(n).padStart(3,'0');
+  }
   if(!makeLocal)return out;
   const seen=new Set(out.map(x=>{
     const explicit=String(x?.localId||'').trim();
@@ -228,7 +239,11 @@ module.exports=async function handler(req,res){
         const english=await jsonOrNull(BASE+'/en/cards/'+encodeURIComponent(item.id));
         if(english)return {...english,__variantLang:'en'};
       }
-      return {...item,__variantLang:sourceLang};
+      return {
+        ...item,
+        variants:Object.keys(item?.variants||{}).length?item.variants:inferUniformSetVariants(set.cardCount,expectedCount),
+        __variantLang:sourceLang
+      };
     });
     const setName=set.name||setId;
     const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
