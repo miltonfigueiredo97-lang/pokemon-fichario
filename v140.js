@@ -11,6 +11,7 @@
     priceJobs:new Map(),
     priceQueue:[],
     priceWorkers:0,
+    singlePriceWatch:null,
     scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null},
     setsCache:new Map(),
     seriesCache:new Map(),
@@ -1415,9 +1416,136 @@
 
   function syncSingleCardPriceButton(){
     const b=byId('btnUpdateCardPrice');if(!b)return;
-    const visible=!!editingCardId&&!!V14.allCards.find(x=>x.id===editingCardId);
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    const visible=!!card;
+    const watching=!!(V14.singlePriceWatch&&V14.singlePriceWatch.cardId===editingCardId);
     b.classList.toggle('hidden',!visible);
-    b.disabled=!visible;
+    b.disabled=!visible||watching;
+    if(watching)b.textContent=V14.singlePriceWatch.label||'Atualizando preço…';
+    else if(visible&&card.price_pending&&Number(card.price_priority||0)>=1000){
+      // If the editor was reopened while a manual refresh is still running,
+      // resume watching the database instead of requiring a page refresh.
+      setTimeout(()=>resumeSinglePriceWatch(card),0);
+    }
+  }
+
+  function setSinglePriceWatchLabel(label){
+    const watch=V14.singlePriceWatch;
+    if(!watch)return;
+    watch.label=label;
+    const b=byId('btnUpdateCardPrice');
+    if(b&&editingCardId===watch.cardId){
+      b.disabled=true;
+      b.textContent=label;
+    }
+    if(byId('marketStatus')&&editingCardId===watch.cardId)byId('marketStatus').textContent=label;
+  }
+
+  function kickPriceWorkerNow(){
+    try{
+      const task=db.functions?.invoke?.('pokemon-price-worker',{body:{reason:'manual-single-card'}});
+      if(task?.catch)task.catch(e=>console.warn('[V14 worker kick]',e));
+    }catch(e){console.warn('[V14 worker kick]',e)}
+  }
+
+  function priceRowHasFreshResult(row,requestedAt){
+    const checked=Date.parse(row?.price_checked_at||row?.myp_price_checked_at||0);
+    const requested=Date.parse(requestedAt||0);
+    const hasPrice=Number(row?.price_min||0)>0||Number(row?.price_avg||0)>0||Number(row?.price_max||0)>0;
+    return hasPrice&&checked>=requested-1000&&row?.price_pending===false;
+  }
+
+  function renderFreshSinglePrice(cardId,row){
+    applyLocalPricePatch(cardId,row);
+    if(editingCardId===cardId){
+      setPrices(row.price_min,row.price_avg,row.price_max);
+      selectedMarket={
+        source:row.price_source||row.price_br_source||'MYP Cards',
+        min:Number(row.price_min||0),avg:Number(row.price_avg||0),max:Number(row.price_max||0),
+        link:row.myp_price_link||row.price_br_link||row.price_link||'',
+        checkedAt:row.price_checked_at||row.myp_price_checked_at||null
+      };
+      if(byId('marketStatus'))byId('marketStatus').textContent='MYP Cards · atualizado agora';
+      const link=selectedMarket.link;
+      if(link&&byId('mypcardsLink')){
+        byId('mypcardsLink').href=link;
+        byId('mypcardsLink').classList.remove('hidden');
+      }
+    }
+    try{renderBinder();renderSummary()}catch{}
+  }
+
+  async function waitForSinglePrice(card,requestedAt,{resume=false}={}){
+    const cardId=card.id;
+    if(V14.singlePriceWatch?.cardId===cardId)return V14.singlePriceWatch.promise;
+    if(V14.singlePriceWatch)V14.singlePriceWatch.cancelled=true;
+
+    const watch={cardId,requestedAt,cancelled:false,label:'Atualizando preço…',promise:null};
+    V14.singlePriceWatch=watch;
+    syncSingleCardPriceButton();
+
+    watch.promise=(async()=>{
+      const started=Date.now();
+      let lastKick=0;
+      let consecutiveErrors=0;
+      while(!watch.cancelled&&Date.now()-started<5*60_000){
+        if(Date.now()-lastKick>25_000){
+          kickPriceWorkerNow();
+          lastKick=Date.now();
+        }
+
+        const {data,error}=await db.from('pokemon_cards')
+          .select('id,price_min,price_avg,price_max,currency,price_source,price_link,price_br_source,price_br_link,myp_price_link,myp_price_checked_at,price_checked_at,price_pending,price_processing_at,price_requested_at,price_next_retry_at,price_attempts,price_priority,price_last_error')
+          .eq('id',cardId).eq('user_id',currentUser.id).maybeSingle();
+
+        if(error){
+          consecutiveErrors++;
+          if(consecutiveErrors>=3)setSinglePriceWatchLabel('Reconectando ao preço…');
+        }else if(!data){
+          setSinglePriceWatchLabel('Carta não encontrada.');
+          return{state:'missing'};
+        }else{
+          consecutiveErrors=0;
+          applyLocalPricePatch(cardId,data);
+          if(priceRowHasFreshResult(data,requestedAt)){
+            renderFreshSinglePrice(cardId,data);
+            return{state:'updated',data};
+          }
+          const sameRequest=Date.parse(data.price_requested_at||0)>=Date.parse(requestedAt||0)-1000;
+          if(sameRequest&&data.price_pending===false&&data.price_last_error){
+            setSinglePriceWatchLabel('Sem cotação disponível');
+            return{state:'unavailable',data};
+          }
+          setSinglePriceWatchLabel(data.price_processing_at?'Atualizando no servidor…':'Aguardando servidor…');
+        }
+
+        const elapsed=Date.now()-started;
+        await sleep(elapsed<30_000?1500:4000);
+      }
+      return{state:'timeout'};
+    })();
+
+    try{
+      const result=await watch.promise;
+      if(result.state==='updated')toast(resume?'Preço atualizado automaticamente.':'Preço desta carta atualizado.');
+      else if(result.state==='unavailable')toast('O servidor concluiu, mas não encontrou cotação compatível.');
+      else if(result.state==='timeout')toast('O servidor ainda está tentando. O preço aparecerá automaticamente quando concluir.');
+      return result;
+    }finally{
+      if(V14.singlePriceWatch===watch)V14.singlePriceWatch=null;
+      const b=byId('btnUpdateCardPrice');
+      if(b&&editingCardId===cardId){
+        b.textContent=b.dataset.old||'↻ Atualizar preço desta carta';
+        b.disabled=false;
+      }
+      syncSingleCardPriceButton();
+    }
+  }
+
+  function resumeSinglePriceWatch(card){
+    if(!card?.id||V14.singlePriceWatch?.cardId===card.id)return;
+    const requestedAt=card.price_requested_at||new Date().toISOString();
+    waitForSinglePrice(card,requestedAt,{resume:true}).catch(e=>console.warn('[V14 resume price watch]',e));
   }
 
   async function querySingleCardPriceFast(card){
