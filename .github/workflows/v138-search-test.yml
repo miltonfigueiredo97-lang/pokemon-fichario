@@ -1,0 +1,39 @@
+name: V13.8 fuzzy search test
+on:
+  push:
+    branches:
+      - v138-live-fuzzy-search
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test TCGdex fuzzy fallback
+        run: |
+          node - <<'EOF'
+          const fs=require('fs');
+          async function q(name){
+            const p=new URLSearchParams({name,'pagination:itemsPerPage':'20'});
+            const r=await fetch('https://api.tcgdex.net/v2/en/cards?'+p);
+            return {status:r.status,items:await r.json()};
+          }
+          (async()=>{
+            const exact=await q('umbreom ex');
+            const fallback=await q('umbreo');
+            const names=[...new Set((fallback.items||[]).map(x=>x.name))];
+            const pass=Array.isArray(exact.items)&&exact.items.length===0&&names.some(x=>/umbreon/i.test(x));
+            fs.writeFileSync('v138-search-test.json',JSON.stringify({pass,exactCount:exact.items?.length||0,fallbackCount:fallback.items?.length||0,names:names.slice(0,20)},null,2));
+            if(!pass)process.exitCode=1;
+          })();
+          EOF
+      - name: Commit result
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v138-search-test.json
+          git commit -m "Record V13.8 fuzzy search test" || exit 0
+          git push origin HEAD:v138-live-fuzzy-search
