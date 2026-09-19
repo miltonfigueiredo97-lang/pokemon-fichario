@@ -258,7 +258,6 @@
             '<option value="price_asc">Preço · menor → maior</option>'+
             '<option value="price_desc">Preço · maior → menor</option>'+
           '</select>'+
-          '<button id="v1421AddCard" class="btn v1421-add-card" type="button">＋ Carta</button>'+
           '<button id="v14DeleteBinder" class="v14-delete-binder" type="button" aria-label="Excluir fichário">🗑 Excluir fichário</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
         host.appendChild(wrap);
@@ -366,10 +365,6 @@
     byId('v14TabEmpty')?.addEventListener('click',()=>switchCreateTab('empty'));
     byId('v14TabSet')?.addEventListener('click',()=>switchCreateTab('set'));
     byId('v14CreateEmpty')?.addEventListener('click',createEmptyBinder);
-    byId('v1421AddCard')?.addEventListener('click',()=>{
-      if(isGeneral())return;
-      openAddForPosition(currentPage);
-    });
     byId('v14AddBinder')?.addEventListener('click',openBinderCreator);
     byId('v14DeleteBinder')?.addEventListener('click',openDeleteBinderDialog);
     byId('v14CancelDelete')?.addEventListener('click',()=>{const d=byId('v14DeleteDialog');if(d?.open)d.close()});
@@ -609,11 +604,6 @@
     if(del){
       del.disabled=isGeneral();
       del.classList.toggle('hidden',isGeneral());
-    }
-    const topAdd=byId('v1421AddCard');
-    if(topAdd){
-      topAdd.disabled=isGeneral();
-      topAdd.classList.toggle('hidden',isGeneral());
     }
     const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
     const hint=document.querySelector('.binder-hint');
@@ -1190,7 +1180,25 @@
       const pocket=document.createElement('div');pocket.className='binder-pocket v14-ordered-pocket';
       const c=slice[slot];
       if(c)pocket.appendChild(renderPocketCard(c));
-      else{const empty=document.createElement('div');empty.className='v14-empty-ordered';empty.textContent='';pocket.appendChild(empty)}
+      else if(!isGeneral()){
+        const add=document.createElement('button');
+        add.className='pocket-empty-btn v1425-slot-add';
+        add.type='button';
+        add.textContent='＋';
+        add.title='Adicionar carta neste fichário';
+        add.setAttribute('aria-label','Adicionar carta neste fichário');
+        add.onclick=()=>{
+          // Em uma visualização ordenada/filtrada o bolso da tela é virtual.
+          // Abrimos no primeiro bolso físico livre a partir da página atual.
+          openAddForPosition(currentPage);
+        };
+        pocket.appendChild(add);
+      }else{
+        const empty=document.createElement('div');
+        empty.className='v14-empty-ordered';
+        empty.textContent='';
+        pocket.appendChild(empty);
+      }
       g.appendChild(pocket);
     }
     byId('pageLabel').textContent='Página '+currentPage+' · '+currentPage+'/'+pages;
