@@ -25,7 +25,8 @@
   function activeBinder(){
     return V14.binders.find(b=>b.id===V14.activeBinderId)||null;
   }
-  function isGeneral(){return V14.activeBinderId==='all'}
+  function isFavorites(){return V14.activeBinderId==='favorites'}
+  function isGeneral(){return V14.activeBinderId==='all'||isFavorites()}
   function activeSort(){
     if(isGeneral())return settings.general_sort_mode||'manual';
     return activeBinder()?.sort_mode||'manual';
@@ -44,21 +45,71 @@
       settings.binder_pages=Math.max(1,+b.pages||1);
       settings.binder_background=b.background||'graphite';
     }else{
-      settings.binder_name='Geral';
-      settings.binder_pages=Math.max(1,Math.ceil(V14.allCards.length/9));
+      settings.binder_name=isFavorites()?'Favoritas':'Geral';
+      settings.binder_pages=Math.max(1,Math.ceil(groupedVirtualCards(physicalCollection()).length/9));
       settings.binder_background='graphite';
     }
   }
   function physicalCollection(){
     const base=isGeneral()?V14.allCards:V14.allCards.filter(c=>c.binder_id===V14.activeBinderId);
-    return V14.favoritesOnly?base.filter(c=>!!c.is_favorite):base;
+    return (isFavorites()||V14.favoritesOnly)?base.filter(c=>!!c.is_favorite):base;
   }
   function numberValue(v){
     const m=String(v||'').match(/\d+/);
     return m?Number(m[0]):999999;
   }
+  function canonicalCardIdentityKey(card){
+    const raw=String(card?.card_key||cardKey(card)||'').replace(/\|variant:[^|]+$/i,'');
+    const lang=card?.language_code||card?.languageCode||'';
+    const finish=card?.finish||'Normal';
+    return [raw,lang,finish].join('|');
+  }
+  function groupedVirtualCards(cards){
+    const groups=new Map();
+    for(const card of cards||[]){
+      const key=canonicalCardIdentityKey(card);
+      if(!groups.has(key))groups.set(key,[]);
+      groups.get(key).push(card);
+    }
+    const out=[];
+    const priceFields=[
+      'price_min','price_avg','price_max','price_source','price_link','price_checked_at',
+      'price_br_source','price_br_link','myp_price_min','myp_price_avg','myp_price_max',
+      'myp_price_link','myp_price_checked_at','currency'
+    ];
+    for(const rows of groups.values()){
+      const owned=rows.filter(x=>(x.collection_status||'owned')==='owned');
+      const representative=owned[0]||rows[0];
+      const priced=[...rows].sort((a,b)=>{
+        const at=Date.parse(a.myp_price_checked_at||a.price_checked_at||a.updated_at||0)||0;
+        const bt=Date.parse(b.myp_price_checked_at||b.price_checked_at||b.updated_at||0)||0;
+        return bt-at;
+      }).find(x=>Number(x.price_avg||x.price_min||x.price_max||x.myp_price_avg||x.myp_price_min||x.myp_price_max))||representative;
+      const quantity=owned.reduce((sum,x)=>sum+Math.max(0,+x.quantity||0),0);
+      const status=owned.length?'owned':
+        rows.some(x=>x.collection_status==='ordered')?'ordered':
+        rows.some(x=>x.collection_status==='wanted')?'wanted':'missing';
+      const grouped={...representative,
+        quantity,
+        collection_status:status,
+        is_favorite:rows.some(x=>!!x.is_favorite),
+        price_pending:rows.some(x=>!!x.price_pending),
+        _grouped:true,
+        _group_count:rows.length,
+        _group_ids:rows.map(x=>x.id),
+        _group_cards:rows
+      };
+      for(const field of priceFields)if(priced?.[field]!=null)grouped[field]=priced[field];
+      out.push(grouped);
+    }
+    return out;
+  }
+  function summaryValueScope(){
+    return ['all','owned','missing'].includes(settings.summary_value_scope)?settings.summary_value_scope:'all';
+  }
   function orderedViewCards(){
-    const arr=[...physicalCollection()];
+    const source=physicalCollection();
+    const arr=isGeneral()?groupedVirtualCards(source):[...source];
     const mode=activeSort();
     if(mode==='manual'){
       if(isGeneral()){
@@ -73,9 +124,9 @@
       if(mode==='type')return cmpText(a.card_type,b.card_type)||cmpText(a.name,b.name);
       if(mode==='rarity')return cmpText(a.rarity,b.rarity)||cmpText(a.name,b.name);
       if(mode==='number')return cmpText(a.set_name,b.set_name)||numberValue(a.number)-numberValue(b.number)||cmpText(a.finish,b.finish);
-      if(mode==='price_desc'){
+      if(mode==='price_desc'||mode==='price_asc'){
         const av=priceModeValue(a,currentPriceMode()),bv=priceModeValue(b,currentPriceMode());
-        return bv-av||cmpText(a.name,b.name);
+        return (mode==='price_desc'?bv-av:av-bv)||cmpText(a.name,b.name);
       }
       return 0;
     });
@@ -98,6 +149,7 @@
             '<option value="rarity">Raridade</option>'+
             '<option value="number">Número da coleção</option>'+
             '<option value="price_desc">Preço · maior → menor</option>'+
+            '<option value="price_asc">Preço · menor → maior</option>'+
           '</select>'+
           '<button id="v14FavoritesOnly" class="icon-text-btn v14-fav-filter" type="button" aria-pressed="false">☆ Favoritos</button>'+
           '<button id="v14RenameBinder" class="icon-text-btn" type="button">Renomear</button>'+
@@ -146,6 +198,16 @@
       document.body.appendChild(d);
     }
 
+    if(!byId('v14ValueScope')){
+      const controls=document.querySelector('.price-mode-controls');
+      if(controls){
+        const label=document.createElement('label');
+        label.className='v14-value-scope-control';
+        label.innerHTML='<span>Somar valor de</span><select id="v14ValueScope" aria-label="Cartas consideradas no valor"><option value="all">Todas as cartas</option><option value="owned">Só as que tenho</option><option value="missing">Só as que não tenho</option></select>';
+        controls.appendChild(label);
+      }
+    }
+
     document.querySelectorAll('[data-v14-close]').forEach(b=>b.onclick=()=>{const d=byId(b.dataset.v14Close);if(d?.open)d.close()});
     byId('v14TabEmpty')?.addEventListener('click',()=>switchCreateTab('empty'));
     byId('v14TabSet')?.addEventListener('click',()=>switchCreateTab('set'));
@@ -156,6 +218,12 @@
     byId('v14BinderSelect')?.addEventListener('change',e=>selectBinder(e.target.value));
     byId('v14SortSelect')?.addEventListener('change',e=>setSortMode(e.target.value));
     byId('v14FavoritesOnly')?.addEventListener('click',toggleFavoritesFilter);
+    byId('v14ValueScope')?.addEventListener('change',async e=>{
+      const value=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
+      settings.summary_value_scope=value;
+      await updateSettings({summary_value_scope:value},true);
+      renderSummary();
+    });
     byId('v14SetSearch')?.addEventListener('input',queueSetSearch);
     byId('v14MasterLang')?.addEventListener('change',queueSetSearch);
     byId('v14CreateMaster')?.addEventListener('click',createMasterBinder);
@@ -198,7 +266,7 @@
   function renderBinderControls(){
     const sel=byId('v14BinderSelect');
     if(sel){
-      sel.innerHTML='<option value="all">Geral — todos os fichários</option>'+
+      sel.innerHTML='<option value="all">Geral — todos os fichários</option><option value="favorites">★ Favoritas</option>'+
         V14.binders.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+'</option>').join('');
       sel.value=V14.activeBinderId||'all';
     }
@@ -208,9 +276,9 @@
     const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
     const fav=byId('v14FavoritesOnly');
     if(fav){
-      fav.classList.toggle('active',V14.favoritesOnly);
-      fav.setAttribute('aria-pressed',String(V14.favoritesOnly));
-      fav.textContent=V14.favoritesOnly?'★ Favoritos':'☆ Favoritos';
+      fav.classList.toggle('active',isFavorites());
+      fav.setAttribute('aria-pressed',String(isFavorites()));
+      fav.textContent=isFavorites()?'★ Favoritas':'☆ Favoritas';
     }
     const hint=document.querySelector('.binder-hint');
     if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização ordenada · movimentação desativada');
@@ -218,6 +286,7 @@
 
   async function selectBinder(id){
     V14.activeBinderId=id||'all';
+    V14.favoritesOnly=isFavorites();
     currentPage=1;
     await db.from('pokemon_settings').update({current_binder_id:isGeneral()?null:V14.activeBinderId}).eq('user_id',currentUser.id);
     collection=physicalCollection();
@@ -227,7 +296,7 @@
   }
 
   async function setSortMode(mode){
-    mode=['manual','name','type','rarity','number','price_desc'].includes(mode)?mode:'manual';
+    mode=['manual','name','type','rarity','number','price_desc','price_asc'].includes(mode)?mode:'manual';
     currentPage=1;
     if(isGeneral()){
       settings.general_sort_mode=mode;
@@ -241,24 +310,24 @@
     renderAll();
   }
 
-  function toggleFavoritesFilter(){
-    V14.favoritesOnly=!V14.favoritesOnly;
-    currentPage=1;
-    collection=physicalCollection();
-    renderBinderControls();
-    renderAll();
+  async function toggleFavoritesFilter(){
+    await selectBinder(isFavorites()?'all':'favorites');
   }
 
   async function toggleFavoriteCard(card){
     if(!card?.id)return;
-    const next=!card.is_favorite;
+    const identity=canonicalCardIdentityKey(card);
+    const matches=V14.allCards.filter(x=>canonicalCardIdentityKey(x)===identity);
+    const ids=matches.map(x=>x.id).filter(Boolean);
+    if(!ids.length)return;
+    const next=!matches.some(x=>!!x.is_favorite);
     const {error}=await db.from('pokemon_cards')
       .update({is_favorite:next})
-      .eq('id',card.id)
-      .eq('user_id',currentUser.id);
+      .eq('user_id',currentUser.id)
+      .in('id',ids);
     if(error){toast('Não consegui atualizar o favorito.');return}
+    for(const row of matches)row.is_favorite=next;
     card.is_favorite=next;
-    const all=V14.allCards.find(x=>x.id===card.id);if(all)all.is_favorite=next;
     collection=physicalCollection();
     renderBinderControls();
     renderAll();
@@ -414,7 +483,7 @@
         payload.user_id=currentUser.id;
         payload.binder_id=binder.id;
         payload.card_key=(payload.card_key||cardKey(base))+'|variant:'+String(e.variantKey||e.variantLabel||e.finish);
-        payload.price_pending=owned;
+        payload.price_pending=true;
         payload.price_checked_at=null;
         return payload;
       });
@@ -426,9 +495,8 @@
       if(byId('v14BinderDialog')?.open)byId('v14BinderDialog').close();
       V14.masterPreview=null;
       await selectBinder(binder.id);
-      const ownedCards=collection.filter(c=>c.collection_status==='owned');
-      queueBackgroundPrices(ownedCards);
-      toast('Master Set criado: '+rows.length+' entradas. Preços atualizando em segundo plano.');
+      queueBackgroundPrices([...collection]);
+      toast('Master Set criado: '+rows.length+' entradas. Preços de Tenho e Não tenho atualizando em segundo plano.');
     }catch(e){console.error(e);toast('Erro ao criar Master Set: '+(e.message||e))}
     finally{busy(btn,false)}
   }
@@ -443,6 +511,8 @@
     syncLegacySettings();
     renderBinderControls();
     renderAll();
+    const pending=V14.allCards.filter(c=>!!c.price_pending);
+    if(pending.length)setTimeout(()=>queueBackgroundPrices(pending),60);
     if(show)toast('Fichário atualizado.');
   }
 
@@ -541,10 +611,30 @@
 
   function renderSummaryV14(){
     const oldPages=settings.binder_pages;
-    if(isGeneral())settings.binder_pages=Math.max(1,Math.ceil(collection.length/9));
+    const oldCollection=collection;
+    const raw=physicalCollection();
+    const view=isGeneral()?groupedVirtualCards(raw):oldCollection;
+    if(isGeneral()){
+      collection=view;
+      settings.binder_pages=Math.max(1,Math.ceil(view.length/9));
+    }
     V14.original.renderSummary();
+    collection=oldCollection;
     settings.binder_pages=oldPages;
     if(isGeneral())byId('sumEmpty').textContent='—';
+
+    const scope=summaryValueScope();
+    const selected=scope==='owned'?raw.filter(c=>(c.collection_status||'owned')==='owned'):
+      scope==='missing'?raw.filter(c=>(c.collection_status||'owned')==='missing'):raw;
+    const value=selected.reduce((sum,c)=>{
+      const status=c.collection_status||'owned';
+      const units=status==='owned'?Math.max(+c.quantity||1,1):1;
+      return sum+priceModeValue(c,currentPriceMode())*units;
+    },0);
+    const scopeLabel={all:'Todas',owned:'Tenho',missing:'Não tenho'}[scope];
+    if(byId('v14ValueScope'))byId('v14ValueScope').value=scope;
+    if(byId('totalValueLabel'))byId('totalValueLabel').textContent='Valor '+priceModeLabel(currentPriceMode())+' · '+scopeLabel;
+    if(byId('totalValue'))byId('totalValue').textContent=money(value);
   }
 
   async function moveCardV14(card,page,slot){
