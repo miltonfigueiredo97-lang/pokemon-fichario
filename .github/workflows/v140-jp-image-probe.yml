@@ -26,15 +26,26 @@ jobs:
             for(const x of (list.data||[]).slice(0,8)){
               const d=await j('https://api.tcgdex.net/v2/ja/cards/'+encodeURIComponent(x.id));
               const en=await j('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(x.id)).catch(()=>({status:0,data:null}));
-              out.items.push({id:x.id,listImage:x.image||null,jaStatus:d.status,jaImage:d.data?.image||null,jaName:d.data?.name||x.name,enStatus:en.status,enImage:en.data?.image||null,enName:en.data?.name||null,localId:d.data?.localId||x.localId,set:d.data?.set||x.set});
+              const card=d.data||x;
+              const setId=card.set?.id||x.set?.id||'';
+              const setDetail=setId?await j('https://api.tcgdex.net/v2/ja/sets/'+encodeURIComponent(setId)).catch(()=>({status:0,data:null})):{status:0,data:null};
+              const seriesId=setDetail.data?.serie?.id||setDetail.data?.series?.id||card.set?.serie?.id||'';
+              const local=String(card.localId||x.localId||'');
+              const candidates=seriesId&&setId&&local?[
+                `https://assets.tcgdex.net/ja/${seriesId}/${setId}/${local}/high.webp`,
+                `https://assets.tcgdex.net/ja/${seriesId}/${setId}/${local}/high.png`
+              ]:[];
+              const heads=[];
+              for(const u of candidates){const rr=await fetch(u,{method:'HEAD'}).catch(()=>null);heads.push({url:u,status:rr?.status||0})}
+              out.items.push({id:x.id,listImage:x.image||null,jaStatus:d.status,jaImage:card.image||null,jaName:card.name||x.name,enStatus:en.status,enImage:en.data?.image||null,enName:en.data?.name||null,localId:local,set:card.set||x.set,setDetailStatus:setDetail.status,seriesId,heads});
             }
-            fs.writeFileSync('v140-jp-image-probe.json',JSON.stringify(out,null,2));
+            fs.writeFileSync('v140-jp-image-probe2.json',JSON.stringify(out,null,2));
           })();
           EOF
       - name: Commit result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add v140-jp-image-probe.json
+          git add v140-jp-image-probe2.json
           git commit -m "Record Japanese image probe" || exit 0
           git push origin HEAD:v140-background-jp-scan
