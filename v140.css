@@ -649,56 +649,33 @@ dialog.sheet-dialog:not([open]){
 }
 
 
-/* V14.21 — direct add-card action inside a real binder */
-.v1421-add-card{
-  flex:0 0 auto!important;
-  height:32px!important;
-  min-height:32px!important;
-  padding:0 10px!important;
-  border:1px solid rgba(63,224,173,.32)!important;
-  border-radius:9px!important;
-  background:rgba(63,224,173,.08)!important;
+/* V14.25 — add cards from the empty binder pocket itself */
+.v1425-slot-add{
+  width:44%!important;
+  max-width:88px!important;
+  min-width:42px!important;
+  aspect-ratio:63/88!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px dashed rgba(255,255,255,.20)!important;
+  border-radius:8px!important;
+  background:rgba(255,255,255,.018)!important;
+  color:rgba(255,255,255,.35)!important;
+  font-size:24px!important;
+  font-weight:500!important;
+  transition:.14s ease!important;
+}
+.v1425-slot-add:hover{
+  border-color:rgba(63,224,173,.52)!important;
+  background:rgba(63,224,173,.06)!important;
   color:#67e3bb!important;
-  font-size:9px!important;
-  font-weight:950!important;
-  white-space:nowrap!important;
-}
-.v1421-add-card:hover:not(:disabled){
-  border-color:rgba(63,224,173,.62)!important;
-  background:rgba(63,224,173,.15)!important;
-  color:#9af0d3!important;
-}
-.v1421-add-card.hidden,
-.v1421-add-card:disabled{
-  display:none!important;
-}
-@media(max-width:1180px) and (min-width:821px){
-  .v1421-add-card{
-    width:34px!important;
-    padding:0!important;
-    font-size:0!important;
-  }
-  .v1421-add-card::before{
-    content:"＋";
-    font-size:18px;
-    line-height:1;
-  }
+  transform:scale(1.03)!important;
 }
 @media(max-width:820px){
-  .v14-binder-controls #v1421AddCard{
-    flex:0 0 auto!important;
-    height:34px!important;
-    min-height:34px!important;
-    padding:0 10px!important;
-    font-size:0!important;
-  }
-  .v14-binder-controls #v1421AddCard::after{
-    content:"＋ Carta";
-    font-size:10px;
-    font-weight:950;
-  }
-  .v14-binder-controls #v1421AddCard.hidden,
-  .v14-binder-controls #v1421AddCard:disabled{
-    display:none!important;
+  .v1425-slot-add{
+    width:46%!important;
+    min-width:34px!important;
+    font-size:22px!important;
+    touch-action:manipulation!important;
   }
 }
