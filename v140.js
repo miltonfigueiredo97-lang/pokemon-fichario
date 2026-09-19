@@ -15,6 +15,7 @@
     setsCache:new Map(),
     seriesCache:new Map(),
     masterPreview:null,
+    masterEpoch:0,
     favoritesOnly:false,
     binderSearchQuery:'',
     binderSearchMatches:[],
@@ -469,6 +470,7 @@
   }
 
   function resetMasterBuilderState({resetCatalog=false}={}){
+    V14.masterEpoch++;
     V14.masterPreview=null;
     const step=byId('v14MasterStep');if(step)step.classList.add('hidden');
     const notice=byId('v14PromoNotice');if(notice){notice.classList.add('hidden');notice.textContent=''}
@@ -755,6 +757,7 @@
     return data||{};
   }
   async function loadGenerationOptions(force=false){
+    const epoch=V14.masterEpoch;
     const lang=byId('v14MasterLang')?.value||'pt',series=byId('v14SeriesSelect'),sets=byId('v14SetSelect');
     if(!series||!sets)return;
     if(!force&&series.options.length>1)return;
@@ -766,10 +769,12 @@
     V14.masterPreview=null;
     try{
       const list=[...(await fetchSeries(lang))];
+      if(epoch!==V14.masterEpoch)return;
       let englishById=new Map();
       if(lang==='ja'){
         try{
           const en=await fetchSeries('en');
+          if(epoch!==V14.masterEpoch)return;
           englishById=new Map(en.map(s=>[String(s.id||'').toLowerCase(),s.name||s.id]));
         }catch{}
       }
@@ -785,6 +790,7 @@
     }
   }
   async function loadCollectionsForGeneration(){
+    const epoch=V14.masterEpoch;
     const lang=byId('v14MasterLang')?.value||'pt',seriesId=byId('v14SeriesSelect')?.value||'',sets=byId('v14SetSelect');
     V14.masterPreview=null;
     byId('v14MasterStep')?.classList.add('hidden');
@@ -796,6 +802,7 @@
     try{
       const r=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
       const catalog=await r.json();
+      if(epoch!==V14.masterEpoch)return;
       if(!catalog?.ok)throw new Error(catalog?.message||'Falha ao carregar as coleções');
       const list=Array.isArray(catalog.sets)?catalog.sets:[];
       sets.innerHTML='<option value="">Selecione a coleção</option>'+list.map(s=>
@@ -811,11 +818,13 @@
   }
 
   async function loadMasterPreview(lang,setId){
+    const epoch=V14.masterEpoch;
     byId('v14SetStatus').textContent='Carregando cartas e variantes do Master Set…';
     byId('v14MasterStep').classList.add('hidden');
     try{
       const r=await fetch('/api/master-set?lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
       const j=await r.json();
+      if(epoch!==V14.masterEpoch)return;
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
       const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
         .replace(/\s*·\s*PROMOS\s*$/i,'').trim();
