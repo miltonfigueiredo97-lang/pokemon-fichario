@@ -12,6 +12,8 @@ let currentUser=null,currentProfile=null,collection=[],currentPage=1,activeStatu
 let settings={binder_name:"Meu Fichário",binder_pages:1,binder_background:"graphite",show_values:false,display_price_mode:"avg",total_price_mode:"avg"};
 let selectedCard=null,selectedStatus="owned",selectedMarket=null,editingCardId=null,pendingPosition=null;
 let friendships=[],profilesById=new Map(),catalogResults=[],catalogSelection=new Map(),contextCard=null,draggedCard=null,ocrLoaded=false;
+let catalogSearchSeq=0,catalogSearchTimer=null;
+const catalogSearchCache=new Map();
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
 const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\p{L}\p{N}\s]/gu," ").replace(/\s+/g," ").trim();
@@ -65,33 +67,96 @@ function tcgNameVariants(value){
   const broad=words.length>1?words[0]:"";
   return [...new Set([raw,clean,broad].filter(Boolean))];
 }
-async function searchTCGdex(lang,name,number){
-  const apiLang=tcgApiLang(lang),n=numParts(number).n,queries=[];
-  const names=tcgNameVariants(name);
-  // Busca progressiva: mais específica primeiro, depois relaxa o nome.
+function levenshtein(a,b){
+  a=norm(a);b=norm(b);
+  if(a===b)return 0;
+  if(!a.length)return b.length;
+  if(!b.length)return a.length;
+  let prev=Array.from({length:b.length+1},(_,i)=>i),cur=new Array(b.length+1);
+  for(let i=1;i<=a.length;i++){
+    cur[0]=i;
+    for(let j=1;j<=b.length;j++){
+      const cost=a[i-1]===b[j-1]?0:1;
+      cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+cost);
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[b.length];
+}
+function nameSimilarity(a,b){
+  const x=norm(a),y=norm(b),m=Math.max(x.length,y.length);
+  if(!m)return 1;
+  return 1-levenshtein(x,y)/m;
+}
+function fuzzyNamePrefixes(value){
+  const clean=String(value||"").replace(/[-_]+/g," ").replace(/\s+/g," ").trim();
+  if(!clean)return[];
+  const suffix=/^(ex|gx|v|vmax|vstar|break|lv\.?x)$/i;
+  const words=clean.split(/\s+/).filter(Boolean);
+  while(words.length>1&&suffix.test(words[words.length-1]))words.pop();
+  const base=words.join(" ").trim();
+  if(base.length<4)return[];
+  const lengths=[base.length-1,base.length-2,Math.ceil(base.length*.7),4,3]
+    .filter(n=>n>=3&&n<base.length);
+  return [...new Set(lengths.map(n=>base.slice(0,n).trim()).filter(x=>x.length>=3))];
+}
+async function fetchTCGdexList(apiLang,q){
+  const p=new URLSearchParams();
+  if(q.name)p.set("name",q.name);
+  if(q.localId)p.set("localId",q.localId);
+  p.set("pagination:itemsPerPage","60");
+  const key=apiLang+"|"+p.toString();
+  const cached=catalogSearchCache.get(key);
+  if(cached&&Date.now()-cached.at<5*60*1000)return cached.items;
+  try{
+    const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards?${p}`);
+    if(!r.ok)return[];
+    const a=await r.json();
+    const items=Array.isArray(a)?a:[];
+    catalogSearchCache.set(key,{at:Date.now(),items});
+    return items;
+  }catch(e){
+    console.warn("TCGdex list",apiLang,q,e);
+    return[];
+  }
+}
+async function searchTCGdex(lang,name,number,options={}){
+  const apiLang=tcgApiLang(lang),n=numParts(number).n;
+  const names=tcgNameVariants(name),seenIds=new Map();
+  let fuzzyUsed=false,fuzzyTerm="";
+
+  const addList=items=>{
+    for(const x of items||[])if(x?.id&&!seenIds.has(x.id))seenIds.set(x.id,x);
+  };
+
+  // Primeiro tenta exatamente o que o usuário escreveu, do mais específico ao amplo.
   for(const candidate of names){
-    if(n)queries.push({name:candidate,localId:n});
-    queries.push({name:candidate});
+    if(n)addList(await fetchTCGdexList(apiLang,{name:candidate,localId:n}));
+    addList(await fetchTCGdexList(apiLang,{name:candidate}));
+    if(seenIds.size>=24)break;
   }
-  if(n)queries.push({localId:n});
-  const seenQueries=new Set,out=[];
-  for(const q of queries){
-    const qKey=(q.name||"")+"|"+(q.localId||"");
-    if(seenQueries.has(qKey))continue;
-    seenQueries.add(qKey);
-    const p=new URLSearchParams();
-    if(q.name)p.set("name",q.name);
-    if(q.localId)p.set("localId",q.localId);
-    p.set("pagination:itemsPerPage","60");
-    try{
-      const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards?${p}`);
-      if(!r.ok)continue;
-      const a=await r.json();
-      if(!Array.isArray(a))continue;
-      const d=await Promise.all(a.slice(0,36).map(x=>fetchTCGdexCard(lang,x.id,x)));
-      out.push(...d.filter(Boolean));
-    }catch(e){console.warn("TCGdex",apiLang,q,e)}
+  if(!seenIds.size&&n)addList(await fetchTCGdexList(apiLang,{localId:n}));
+
+  // Se não achou nada, relaxa apenas o nome. Ex.: "umbreom ex" -> "umbreo"
+  // e depois o ranking por distância coloca "Umbreon ex" no topo.
+  if(!seenIds.size&&String(name||"").trim()){
+    for(const prefix of fuzzyNamePrefixes(name)){
+      const items=await fetchTCGdexList(apiLang,{name:prefix});
+      if(items.length){
+        addList(items);
+        fuzzyUsed=true;
+        fuzzyTerm=prefix;
+        break;
+      }
+    }
   }
+
+  const limit=options.live?24:36;
+  const list=[...seenIds.values()].slice(0,limit);
+  const details=await Promise.all(list.map(x=>fetchTCGdexCard(lang,x.id,x)));
+  const out=details.filter(Boolean);
+  out.fuzzyUsed=fuzzyUsed;
+  out.fuzzyTerm=fuzzyTerm;
   return out;
 }
 async function fetchTCGdexCard(lang,id,fallback=null){
@@ -103,34 +168,91 @@ async function fetchTCGdexCard(lang,id,fallback=null){
   }catch{return fallback?mapTCG(fallback,lang):null}
 }
 function mapTCG(c,lang){const s=c.set||{};return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId:s.id||"",number:String(c.localId||""),printedTotal:String(s.cardCount?.official||""),rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",imageUrl:c.image||"",pricing:c.pricing||null}}
-function rank(cards,q){const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);return [...cards].sort((a,b)=>score(b)-score(a));function score(c){let s=0,cn=norm(c.name),cs=norm(c.setName),ci=norm(c.setId),nn=numParts(c.number).n;if(c.source==="MYP Cards")s+=140+(+c.marketScore||0)*.15;if(c.languageCode==="pt-br")s+=320;else if(c.languageCode==="en")s+=100;else if(c.languageCode==="ja")s+=70;if(q.language!=="all"&&c.languageCode===q.language)s+=250;if(qn){if(cn===qn)s+=360;else if(cn.includes(qn)||qn.includes(cn))s+=180;else s-=140}if(num.n){if(nn===num.n)s+=430;else s-=240;if(num.d&&(numParts(c.number).d===num.d||c.printedTotal===num.d))s+=220}if(set&&(cs.includes(set)||ci.includes(set)))s+=240;if(c.market?.avg||c.market?.min)s+=70;if(c.imageUrl)s+=15;return s}}
+function rank(cards,q){
+  const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);
+  return [...cards].sort((a,b)=>score(b)-score(a));
+  function score(c){
+    let s=0,cn=norm(c.name),cs=norm(c.setName),ci=norm(c.setId),nn=numParts(c.number).n;
+    if(c.source==="MYP Cards")s+=140+(+c.marketScore||0)*.15;
+    if(c.languageCode==="pt-br")s+=320;else if(c.languageCode==="en")s+=100;else if(c.languageCode==="ja")s+=70;
+    if(q.language!=="all"&&c.languageCode===q.language)s+=250;
+    if(qn){
+      if(cn===qn)s+=500;
+      else if(cn.includes(qn)||qn.includes(cn))s+=280;
+      else{
+        const sim=nameSimilarity(qn,cn);
+        if(sim>=.88)s+=260;
+        else if(sim>=.78)s+=190;
+        else if(sim>=.66)s+=80;
+        else s-=140;
+      }
+    }
+    if(num.n){
+      if(nn===num.n)s+=430;else s-=240;
+      if(num.d&&(numParts(c.number).d===num.d||c.printedTotal===num.d))s+=220;
+    }
+    if(set&&(cs.includes(set)||ci.includes(set)))s+=240;
+    if(c.market?.avg||c.market?.min)s+=70;
+    if(c.imageUrl)s+=15;
+    return s;
+  }
+}
 function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.apiId,c.languageCode,c.name,c.number,c.setId].join("|");if(seen.has(k))return false;seen.add(k);return true})}
-async function searchCards(){
+async function searchCards(options={}){
+  const live=!!options.live,requestId=++catalogSearchSeq;
   let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
-  if(!raw&&!number){toast("Digite nome ou número.");return}
+
+  const typedLetters=norm(raw).replace(/\s+/g,"").length;
+  if(!raw&&!number){
+    catalogResults=[];
+    populateRarityFilter();
+    renderCatalog();
+    $("searchStatus").textContent="";
+    return;
+  }
+  if(live&&!number&&typedLetters<3){
+    catalogResults=[];
+    populateRarityFilter();
+    renderCatalog();
+    $("searchStatus").textContent="Digite pelo menos 3 letras para buscar automaticamente.";
+    return;
+  }
+
   const inline=raw.match(/^(.*?)(?:\s+)(\d{1,4})(?:\/(\d{1,4}))?$/);
   if(inline&&!number){raw=inline[1].trim();number=inline[2]+(inline[3]?`/${inline[3]}`:"")}
+
   const b=$("btnSearchCards");
-  busy(b,true,"Buscando...");
-  $("searchStatus").textContent="Procurando as opções mais próximas...";
+  if(!live)busy(b,true,"Buscando...");
+  $("searchStatus").textContent=live?"Buscando enquanto você digita…":"Procurando as opções mais próximas…";
+
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
-    // O catálogo vem do TCGdex. MYP é usada depois, para preço da carta escolhida;
-    // a pesquisa do catálogo não depende de token da MYP.
-    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number)));
+    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live})));
+    if(requestId!==catalogSearchSeq)return;
+
     let results=dedupe(groups.flat());
-    // Idioma selecionado é filtro real, não apenas bônus de ranking.
     if(language!=="all")results=results.filter(c=>c.languageCode===language);
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,80);
     populateRarityFilter();
     renderCatalog();
+
     const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
     const refinement=[number&&`nº ${number}`,setHint&&`coleção "${setHint}"`].filter(Boolean).join(" · ");
-    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${refinement?` · priorizando ${refinement}`:""}.`;
+    const fuzzy=groups.some(g=>g.fuzzyUsed);
+    const best=fuzzy&&catalogResults[0]?.name?catalogResults[0].name:"";
+    const correction=best&&norm(best)!==norm(raw)?` · mais próximo: “${best}”`:"";
+    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${correction}${refinement?` · priorizando ${refinement}`:""}.`;
   }catch(e){
+    if(requestId!==catalogSearchSeq)return;
     console.error(e);
     $("searchStatus").textContent="Erro ao buscar.";
-  }finally{busy(b,false)}
+  }finally{
+    if(!live&&requestId===catalogSearchSeq)busy(b,false);
+  }
+}
+function queueLiveCatalogSearch(delay=420){
+  clearTimeout(catalogSearchTimer);
+  catalogSearchTimer=setTimeout(()=>searchCards({live:true}),delay);
 }
 function populateRarityFilter(){const sel=$("resultRarityFilter"),current=sel.value;const rs=[...new Set(catalogResults.map(c=>c.rarity).filter(Boolean))].sort();sel.innerHTML='<option value="all">Todas as raridades</option>'+rs.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");if(rs.includes(current))sel.value=current}
 function renderCatalog(){const g=$("resultsList"),rar=$("resultRarityFilter").value;g.innerHTML="";catalogResults.filter(c=>rar==="all"||c.rarity===rar).forEach(c=>{const key=cardKey(c),sel=catalogSelection.has(key),el=document.createElement("button");el.type="button";el.className="catalog-card"+(sel?" selected":"");const img=cardImage(c),p=c.market?.avg||c.market?.min||0;el.innerHTML=`<span class="catalog-check">✓</span>${img?`<img src="${esc(img)}" loading="lazy">`:""}<h3>${esc(c.name)}</h3><p>${esc(c.setName||"-")} · ${esc(c.number||"-")}</p><div class="catalog-tags"><span>${esc(c.language||"-")}</span>${c.languageCode==="pt-br"?'<span class="br">PT-BR</span>':""}${c.rarity?`<span>${esc(c.rarity)}</span>`:""}${p?`<span class="br">${money(p)}</span>`:""}</div>`;el.onclick=()=>toggleCatalogCard(c);g.appendChild(el)})}
@@ -161,7 +283,7 @@ async function updateFriendship(id,status){const{error}=await db.from("pokemon_f
 async function removeFriendship(id){await db.from("pokemon_friendships").delete().eq("id",id);await loadFriendships()}
 async function viewFriendBinder(p){if(!p)return;const{data,error}=await db.from("pokemon_cards").select("*").eq("user_id",p.user_id).order("binder_page").order("binder_slot");if(error)return toast("Esse fichário não está disponível.");$("friendBinderTitle").textContent=`@${p.username}`;const g=$("friendBinderGrid");g.innerHTML="";(data||[]).forEach(c=>{const e=document.createElement("div");e.className="friend-card";const img=cardImage(c);e.innerHTML=`${img?`<img src="${esc(img)}">`:""}<strong>${esc(c.name)}</strong><small>${esc(c.set_name||"")} · ${esc(c.number||"")}</small>`;g.appendChild(e)});closeDialog("friendsDialog");openDialog("friendBinderDialog")}
 function setup3d(){const el=$("card3d");el.addEventListener("pointermove",e=>{if(el.classList.contains("flipped"))return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.querySelector(".card-3d-inner").style.transform=`rotateY(${x*18}deg) rotateX(${-y*18}deg)`});el.addEventListener("pointerleave",()=>{if(!el.classList.contains("flipped"))el.querySelector(".card-3d-inner").style.transform="rotateY(0) rotateX(0)"});el.addEventListener("dblclick",()=>el.classList.toggle("flipped"))}
-function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=searchCards;$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchCards()}});$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=async()=>{await loadFriendships();openDialog("friendsDialog")};$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
+function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber","searchSet"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=async()=>{await loadFriendships();openDialog("friendsDialog")};$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
 async function registerPWA(){if("serviceWorker"in navigator)try{await navigator.serviceWorker.register("/sw.js")}catch(e){console.warn(e)}}
 async function boot(){bindEvents();registerPWA();const{data}=await db.auth.getSession();await renderAuthState(data.session);db.auth.onAuthStateChange((_e,s)=>setTimeout(()=>renderAuthState(s),0))}
 document.addEventListener("DOMContentLoaded",boot);
