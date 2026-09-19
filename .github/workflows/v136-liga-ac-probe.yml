@@ -1,0 +1,30 @@
+name: V13.6 Liga autocomplete probe
+on:
+  push:
+    branches:
+      - fix-v136-price-selector-liga
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe autocomplete API
+        run: |
+          OUT=v136-liga-ac-probe.txt
+          : > "$OUT"
+          for URL in             "https://ac.ligamagic.com.br/api/cardsearch?tcg=2&term=Lugia"             "https://ac.ligamagic.com.br/api/cardsearch?tcg=2&q=Lugia"             "https://ac.ligamagic.com.br/api/cardsearch?tcg=2&query=Lugia"             "https://ac.ligamagic.com.br/api/cardsearch?tcg=2&search=Lugia"             "https://ac.ligamagic.com.br/api/cardsearch?tcg=2&category=cards&term=Lugia"
+          do
+            echo "===== $URL =====" >> "$OUT"
+            curl -L --max-time 30 -sS -D - "$URL" | head -c 12000 >> "$OUT" || true
+            echo >> "$OUT"
+          done
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v136-liga-ac-probe.txt
+          git commit -m "Record V13.6 Liga autocomplete probe" || exit 0
+          git push origin HEAD:fix-v136-price-selector-liga
