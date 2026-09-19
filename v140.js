@@ -16,6 +16,7 @@
     setsCache:new Map(),
     seriesCache:new Map(),
     masterPreview:null,
+    masterSelections:[],
     masterEpoch:0,
     favoritesOnly:false,
     binderSearchQuery:'',
@@ -133,7 +134,10 @@
   }
   function orderedViewCards(){
     const physical=physicalCollection();
-    const arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical)];
+    let arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical)];
+    if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
+      arr=arr.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
+    }
     const mode=activeSort();
     const direction=mode.endsWith('_desc')?-1:1;
     const baseMode=mode.replace(/_(asc|desc)$/,'');
@@ -287,8 +291,10 @@
             '<div id="v14MasterStep" class="hidden">'+
               '<div class="v14-master-head"><div><strong id="v14MasterTitle">Coleção</strong><small id="v14MasterMeta"></small></div><div><b id="v14OwnedCount">0</b> marcadas como Tenho</div></div>'+
               '<p class="v14-master-help">Marque as variantes que você já possui. As demais entram como Não tenho. Normal, Holo, Reverse, Poké Ball, Master Ball e outras variantes só aparecem quando existem na base.</p>'+
+              '<div class="v1418-master-bulk"><button id="v1418MarkAll" class="btn btn-secondary" type="button">✓ Marcar todas como Tenho</button><button id="v1418ClearAll" class="btn btn-secondary" type="button">Limpar marcações</button></div>'+
               '<div id="v14MasterGrid" class="v14-master-grid"></div>'+
-              '<button id="v14CreateMaster" class="btn btn-primary full" type="button">Criar Master Set</button>'+
+              '<div id="v1418MasterQueue" class="v1418-master-queue hidden"></div>'+
+              '<div class="v1418-master-actions"><button id="v1418AddAnotherMaster" class="btn btn-secondary" type="button">＋ Adicionar outro Master Set</button><button id="v14CreateMaster" class="btn btn-primary" type="button">Criar Master Set</button></div>'+
             '</div>'+
           '</section>'+
         '</div>';
