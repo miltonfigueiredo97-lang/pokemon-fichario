@@ -335,6 +335,8 @@
     refitSoon();
   }
 
+  window.cancelBinderPageFlipV14=cancelPageFlip;
+
   function startPageFlip(direction){
     if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
     const now=performance.now();

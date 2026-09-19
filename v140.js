@@ -15,7 +15,9 @@
     setsCache:new Map(),
     seriesCache:new Map(),
     masterPreview:null,
-    favoritesOnly:false
+    favoritesOnly:false,
+    binderSearchMatches:[],
+    binderSearchLookup:new Map()
   };
   window.PB14=V14;
 
@@ -161,17 +163,18 @@
   function positionUnifiedTopbar(){
     const area=document.querySelector('.binder-area');
     const bar=byId('v14UnifiedTopbar');
-    const sheet=document.querySelector('.binder-sheet-wrap');
-    if(!area||!bar||!sheet)return;
+    const spread=document.querySelector('#binderStage .binder-spread');
+    if(!area||!bar||!spread)return;
     if(window.matchMedia('(max-width:820px)').matches){
       bar.style.removeProperty('left');
+      bar.style.removeProperty('max-width');
       return;
     }
-    const ar=area.getBoundingClientRect(),sr=sheet.getBoundingClientRect();
+    const ar=area.getBoundingClientRect(),sr=spread.getBoundingClientRect();
+    if(sr.width<20)return;
     const desired=sr.left-ar.left+(sr.width/2);
-    const half=Math.max(1,bar.getBoundingClientRect().width/2);
-    const center=Math.max(half+10,Math.min(ar.width-half-10,desired));
-    bar.style.left=center+'px';
+    bar.style.left=desired+'px';
+    bar.style.maxWidth=Math.max(520,sr.width-8)+'px';
   }
 
   function ensureUnifiedTopbar(){
@@ -186,6 +189,16 @@
       host.insertBefore(bar,host.firstChild);
     }
     if(pageCenter.parentElement!==bar)bar.appendChild(pageCenter);
+    if(!byId('v14GoStart')){
+      const start=document.createElement('button');
+      start.id='v14GoStart';
+      start.className='mini-btn v14-go-start';
+      start.type='button';
+      start.title='Voltar ao início do fichário';
+      start.setAttribute('aria-label','Voltar ao início do fichário');
+      start.textContent='↤ Início';
+      pageCenter.insertBefore(start,byId('btnPages')||null);
+    }
     return bar;
   }
 
@@ -198,6 +211,7 @@
         wrap.className='v14-binder-controls';
         wrap.innerHTML=
           '<select id="v14BinderSelect" aria-label="Fichário"></select>'+
+          '<label class="v14-binder-search" title="Pesquisar dentro deste fichário"><span>⌕</span><input id="v14BinderSearch" type="search" list="v14BinderSearchList" autocomplete="off" placeholder="Buscar carta…"><datalist id="v14BinderSearchList"></datalist></label>'+
           '<select id="v14SortSelect" aria-label="Ordenação">'+
             '<option value="manual_asc">Ordem do fichário · 0 → X</option>'+
             '<option value="manual_desc">Ordem do fichário · X → 0</option>'+
@@ -295,6 +309,21 @@
     byId('v14DeleteBinder')?.addEventListener('click',deleteBinder);
     byId('v14BinderSelect')?.addEventListener('change',e=>selectBinder(e.target.value));
     byId('v14SortSelect')?.addEventListener('change',e=>setSortMode(e.target.value));
+    byId('v14GoStart')?.addEventListener('click',goToBinderStart);
+    byId('v14BinderSearch')?.addEventListener('input',updateBinderSearchSuggestions);
+    byId('v14BinderSearch')?.addEventListener('change',e=>openBinderSearchSelection(e.target.value));
+    byId('v14BinderSearch')?.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const exact=V14.binderSearchLookup.get(e.currentTarget.value);
+        const card=exact||V14.binderSearchMatches[0];
+        if(card)goToBinderSearchCard(card);
+        else if(e.currentTarget.value.trim())toast('Carta não encontrada neste fichário.');
+      }else if(e.key==='Escape'){
+        e.currentTarget.value='';
+        updateBinderSearchSuggestions({currentTarget:e.currentTarget});
+      }
+    });
     byId('v14FavoritesOnly')?.addEventListener('click',toggleFavoritesFilter);
     byId('v14ValueScope')?.addEventListener('change',async e=>{
       const value=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
@@ -323,6 +352,104 @@
     });
     byId('v14CreateMaster')?.addEventListener('click',createMasterBinder);
     byId('v14ScanAgain')?.addEventListener('click',()=>{if(byId('v14ScanCandidates')?.open)byId('v14ScanCandidates').close();startScanner()});
+  }
+
+  function syncTopbarNavigation(){
+    const start=byId('v14GoStart');
+    if(start)start.disabled=currentPage<=1;
+  }
+
+  function goToBinderStart(){
+    try{window.cancelBinderPageFlipV14?.({suppress:true})}catch{}
+    currentPage=1;
+    renderBinder();
+    renderPagesGrid();
+    syncTopbarNavigation();
+  }
+
+  function binderSearchLabel(card){
+    const binder=isGeneral()?binderForCard(card):null;
+    return [
+      card.name||'Carta',
+      card.number?'#'+card.number:'',
+      card.set_name||'',
+      binder?.name||''
+    ].filter(Boolean).join(' · ');
+  }
+
+  function binderSearchScore(card,query){
+    const q=nrm(query);
+    if(!q)return 0;
+    const name=nrm(card.name),number=nrm(card.number),set=nrm(card.set_name),finish=nrm(card.finish);
+    const all=[name,number,set,finish].join(' ');
+    let score=0;
+    if(name===q)score+=1000;
+    else if(name.startsWith(q))score+=700;
+    else if(name.includes(q))score+=500;
+    if(number===q||number.replace(/\s/g,'')===q.replace(/\s/g,''))score+=650;
+    else if(number.includes(q))score+=300;
+    if(set.includes(q))score+=180;
+    if(finish.includes(q))score+=80;
+    const words=q.split(' ').filter(Boolean);
+    score+=words.reduce((sum,w)=>sum+(all.includes(w)?45:0),0);
+    return score;
+  }
+
+  function updateBinderSearchSuggestions(e){
+    const input=e?.currentTarget||byId('v14BinderSearch');
+    const list=byId('v14BinderSearchList');
+    if(!input||!list)return;
+    const q=input.value.trim();
+    V14.binderSearchLookup.clear();
+    V14.binderSearchMatches=[];
+    list.innerHTML='';
+    if(!q)return;
+    const cards=orderedViewCards();
+    const found=cards.map((card,index)=>({card,index,score:binderSearchScore(card,q)}))
+      .filter(x=>x.score>0)
+      .sort((a,b)=>b.score-a.score||a.index-b.index)
+      .slice(0,20)
+      .map(x=>x.card);
+    V14.binderSearchMatches=found;
+    for(const card of found){
+      let label=binderSearchLabel(card),unique=label,n=2;
+      while(V14.binderSearchLookup.has(unique))unique=label+' · '+n++;
+      V14.binderSearchLookup.set(unique,card);
+      const option=document.createElement('option');
+      option.value=unique;
+      list.appendChild(option);
+    }
+  }
+
+  function openBinderSearchSelection(value){
+    const card=V14.binderSearchLookup.get(value);
+    if(card)goToBinderSearchCard(card);
+  }
+
+  function goToBinderSearchCard(card){
+    const cards=orderedViewCards();
+    let page=1;
+    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
+      page=Math.max(1,+card.binder_page||1);
+    }else{
+      const index=cards.findIndex(c=>String(c.id)===String(card.id)||c._group_ids?.includes?.(card.id));
+      if(index<0)return toast('Essa carta não está visível com os filtros atuais.');
+      page=Math.floor(index/9)+1;
+    }
+    try{window.cancelBinderPageFlipV14?.({suppress:true})}catch{}
+    currentPage=page;
+    renderBinder();
+    renderPagesGrid();
+    syncTopbarNavigation();
+    const input=byId('v14BinderSearch');
+    if(input)input.value=binderSearchLabel(card);
+    setTimeout(()=>{
+      const target=[...document.querySelectorAll('#binderSheet .pocket-card')].find(el=>String(el.dataset.id)===String(card.id));
+      if(!target)return;
+      target.classList.add('v14-search-hit');
+      target.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'smooth'});
+      setTimeout(()=>target.classList.remove('v14-search-hit'),1700);
+    },80);
   }
 
   function switchCreateTab(which){
@@ -379,6 +506,7 @@
     const hint=document.querySelector('.binder-hint');
     if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização filtrada/ordenada · movimentação desativada');
     if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value=binderViewScope();
+    syncTopbarNavigation();
     requestAnimationFrame(positionUnifiedTopbar);
   }
 
@@ -386,6 +514,9 @@
     V14.activeBinderId=id||'all';
     V14.favoritesOnly=isFavorites();
     currentPage=1;
+    if(byId('v14BinderSearch'))byId('v14BinderSearch').value='';
+    V14.binderSearchMatches=[];
+    V14.binderSearchLookup.clear();
     await db.from('pokemon_settings').update({current_binder_id:isGeneral()?null:V14.activeBinderId}).eq('user_id',currentUser.id);
     collection=physicalCollection();
     syncLegacySettings();
@@ -738,7 +869,11 @@
     return Math.max(1,Math.ceil(orderedViewCards().length/9));
   }
   function renderBinderV14(){
-    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly)return V14.original.renderBinder();
+    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
+      const out=V14.original.renderBinder();
+      syncTopbarNavigation();
+      return out;
+    }
     const g=byId('binderSheet');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();
     currentPage=Math.min(Math.max(1,currentPage),pages);
@@ -754,6 +889,7 @@
     byId('pageLabel').textContent='Página '+currentPage+' · '+currentPage+'/'+pages;
     byId('prevPage').disabled=currentPage<=1;
     byId('nextPage').disabled=currentPage>=pages;
+    syncTopbarNavigation();
   }
 
   function renderPagesGridV14(){
@@ -1252,11 +1388,11 @@
     const add=byId('addDialog');
     if(add)new MutationObserver(()=>wireFastAdd()).observe(add,{attributes:true,attributeFilter:['open']});
     const area=document.querySelector('.binder-area');
-    const sheet=document.querySelector('.binder-sheet-wrap');
+    const spread=document.querySelector('#binderStage .binder-spread');
     if(typeof ResizeObserver!=='undefined'){
       const ro=new ResizeObserver(()=>positionUnifiedTopbar());
       if(area)ro.observe(area);
-      if(sheet)ro.observe(sheet);
+      if(spread)ro.observe(spread);
     }
     window.addEventListener('resize',positionUnifiedTopbar,{passive:true});
     setTimeout(positionUnifiedTopbar,60);
