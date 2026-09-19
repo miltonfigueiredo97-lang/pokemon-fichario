@@ -57,8 +57,23 @@ function variantsOf(card){
     if(v.wPromo)out.push({key:'w-promo',label:'W Promo',finish:'Promo',order:5});
   }
   if(!out.length)out.push({key:'base',label:'Normal',finish:'Normal',order:0});
+
+  // TCGdex variants_detailed can contain several internal variantIds for the
+  // same physical finish. A Master Set needs one pocket per physical variant,
+  // not one pocket per internal marketplace/printing identifier.
+  const semanticKey=v=>{
+    const finish=String(v.finish||'Especial');
+    if(finish!=='Especial')return finish;
+    return 'Especial|'+String(v.label||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  };
   const seen=new Set();
-  return out.filter(x=>{const k=x.key+'|'+x.finish;if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
+  return out.filter(x=>{
+    const k=semanticKey(x);
+    if(seen.has(k))return false;
+    seen.add(k);
+    x.key=k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'base';
+    return true;
+  }).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
 }
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');

@@ -551,3 +551,99 @@ dialog.sheet-dialog:not([open]){
 @media(max-width:820px){
   .v1417-remove-card-actions{grid-template-columns:1fr!important}
 }
+
+
+/* V14.18 — Master Set bulk selection + multiple sets in one binder */
+.v1418-master-bulk{
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:7px!important;
+  margin:8px 0 10px!important;
+}
+.v1418-master-bulk .btn{
+  min-height:34px!important;
+  padding:0 11px!important;
+  font-size:9px!important;
+}
+.v1418-master-actions{
+  display:grid!important;
+  grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)!important;
+  gap:8px!important;
+  margin-top:10px!important;
+}
+.v1418-master-actions .btn{
+  min-height:42px!important;
+}
+.v1418-master-queue{
+  display:grid!important;
+  gap:6px!important;
+  margin:10px 0 0!important;
+  padding:9px!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  border-radius:10px!important;
+  background:rgba(7,10,13,.48)!important;
+}
+.v1418-master-queue.hidden{display:none!important}
+.v1418-master-queue-head{
+  display:flex!important;
+  align-items:end!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+  padding:0 2px 3px!important;
+}
+.v1418-master-queue-head strong{
+  color:#eeeae1!important;
+  font-size:10px!important;
+  font-weight:950!important;
+}
+.v1418-master-queue-head small{
+  color:#7e888e!important;
+  font-size:8px!important;
+}
+.v1418-master-queue-item{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+  padding:7px 8px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  border-radius:8px!important;
+  background:#11161a!important;
+}
+.v1418-master-queue-item>span{
+  min-width:0!important;
+  display:grid!important;
+  gap:2px!important;
+}
+.v1418-master-queue-item strong{
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  color:#f0ede6!important;
+  font-size:9px!important;
+}
+.v1418-master-queue-item small{
+  color:#78838a!important;
+  font-size:8px!important;
+}
+.v1418-master-queue-item button{
+  flex:0 0 28px!important;
+  width:28px!important;
+  height:28px!important;
+  border:1px solid rgba(255,85,85,.24)!important;
+  border-radius:7px!important;
+  background:rgba(255,55,55,.06)!important;
+  color:#ff8e8e!important;
+  font-weight:950!important;
+}
+@media(max-width:820px){
+  .v1418-master-bulk,
+  .v1418-master-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+  }
+  .v1418-master-bulk .btn,
+  .v1418-master-actions .btn{
+    width:100%!important;
+  }
+}
