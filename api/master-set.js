@@ -71,6 +71,7 @@ function variantsOf(card){
     const k=semanticKey(x);
     if(seen.has(k))return false;
     seen.add(k);
+    x.key=k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'base';
     return true;
   }).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label));
 }
