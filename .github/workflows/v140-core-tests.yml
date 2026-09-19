@@ -5,8 +5,11 @@ on:
       - v140-full-overhaul
     paths:
       - 'v140.js'
+      - 'script.js'
+      - 'v122.js'
       - 'api/master-set.js'
       - 'api/card-image-fallback.js'
+      - 'api/jp-card-image.js'
       - 'sw.js'
       - '.github/workflows/v140-core-tests.yml'
 permissions:
@@ -24,6 +27,9 @@ jobs:
           node --check v140.js
           node --check api/master-set.js
           node --check api/card-image-fallback.js
+          node --check api/jp-card-image.js
+          node --check script.js
+          node --check v122.js
           node --check sw.js
       - name: API behavior
         run: |
@@ -34,9 +40,11 @@ jobs:
             return await new Promise((resolve,reject)=>{
               let status=200,headers={};
               const res={
+                statusCode:200,
                 setHeader(k,v){headers[k]=v;},
-                status(n){status=n;return this;},
-                json(v){resolve({status,headers,body:v});}
+                status(n){status=n;this.statusCode=n;return this;},
+                json(v){resolve({status:this.statusCode||status,headers,body:v});},
+                end(v){resolve({status:this.statusCode||status,headers,body:v||null});}
               };
               Promise.resolve(handler({query},res)).catch(reject);
             });
@@ -50,6 +58,9 @@ jobs:
             const img=await invoke('api/card-image-fallback.js',{name:'Umbreon ex',number:'091',hp:'',rarity:''});
             const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
 
+            const jp=await invoke('api/jp-card-image.js',{set:'PCG4',localId:'091'});
+            const jpPass=jp.status===302&&/^https:\/\/www\.pokemon-card\.com\//.test(jp.headers?.Location||'');
+
             const js=fs.readFileSync('v140.js','utf8');
             const assertions={
               backgroundPrice:/queueBackgroundPrices/.test(js)&&/price_pending/.test(js)&&/Adicionando/.test(js),
@@ -57,10 +68,10 @@ jobs:
               sortGuard:/Movimentação só fica disponível/.test(js),
               scanner:/ocrCard/.test(js)&&/scanLiveTick/.test(js)&&/Confirme a carta/.test(js),
               masterSet:/api\/master-set/.test(js)&&/Master Set/.test(js),
-              japanese:/card-image-fallback/.test(js)
+              japanese:/jp-card-image|card-image-fallback/.test(js)
             };
-            const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
-            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
+            const pass=masterPass&&imagePass&&jpPass&&Object.values(assertions).every(Boolean);
+            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,jp:{status:jp.status,location:jp.headers?.Location||''},assertions};
             fs.writeFileSync('v140-core-test-result.json',JSON.stringify(out,null,2));
             if(!pass)process.exitCode=1;
           })().catch(e=>{fs.writeFileSync('v140-core-test-result.json',JSON.stringify({pass:false,error:String(e),stack:e.stack},null,2));process.exitCode=1});
