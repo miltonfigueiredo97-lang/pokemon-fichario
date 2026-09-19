@@ -11,6 +11,7 @@ on:
       - 'api/master-set.js'
       - 'api/card-image-fallback.js'
       - 'api/jp-card-image.js'
+      - 'api/image-proxy.js'
       - 'sw.js'
       - '.github/workflows/v140-core-tests.yml'
   pull_request:
