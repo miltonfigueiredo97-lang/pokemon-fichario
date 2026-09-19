@@ -231,6 +231,15 @@ module.exports=async function handler(req,res){
       }
     }
     list=synthesizeMissingSetBriefs(list,set.id||setId,expectedCount);
+    // TCGdex's public index for Celebrations Classic Collection is known to
+    // omit two briefs even though all 25 card endpoints exist. Use the set's
+    // canonical CC001..CC025 local IDs so no card disappears from the Master Set.
+    if(String(set.id||setId).toLowerCase()==='cel25cc'&&expectedCount===25){
+      list=Array.from({length:25},(_,i)=>{
+        const localId='CC'+String(i+1).padStart(3,'0');
+        return {id:(set.id||setId)+'-'+localId,localId,name:localId};
+      });
+    }
 
     const details=await pool(list,18,async item=>{
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
