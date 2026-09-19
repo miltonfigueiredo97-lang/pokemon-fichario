@@ -48,3 +48,11 @@
 .v14-favorite-star{position:absolute;top:5px;right:5px;z-index:8;display:grid;place-items:center;width:26px;height:26px;border-radius:999px;background:rgba(8,11,13,.8);border:1px solid rgba(255,255,255,.16);color:#d9dde0;font-size:17px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.32)}
 .v14-favorite-star:hover,.v14-favorite-star:focus-visible{transform:scale(1.08);outline:none;border-color:rgba(255,210,70,.7)}
 .v14-favorite-star.active{color:#ffd246;background:rgba(31,25,5,.9);border-color:rgba(255,210,70,.72);text-shadow:0 0 10px rgba(255,210,70,.32)}
+
+/* V14.1 — filtros de valor, favoritas e visão agregada */
+.price-mode-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:end}
+.v14-value-scope-control{display:grid;gap:5px;min-width:0}
+.v14-value-scope-control span{font-size:9px;font-weight:850;color:#8f999f;text-transform:uppercase;letter-spacing:.03em}
+.v14-value-scope-control select{width:100%;min-width:0;height:36px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#0d1114;color:#f0eee8;padding:0 9px;font-size:10px;font-weight:800}
+.v14-fav-filter{white-space:nowrap}
+@media(max-width:620px){.price-mode-controls{grid-template-columns:1fr}.v14-binder-controls #v14DeleteBinder{display:none}}
