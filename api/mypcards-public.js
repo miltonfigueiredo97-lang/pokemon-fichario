@@ -1,6 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
-const { scrapeMypBrowser } = require('../lib/myp-browser');
+const { findAndScrapeMypBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -141,24 +141,25 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   const directLink=safeMypProductUrl(link);
-  if(directLink){
-    const browserKey='browser:'+normalize(name)+'|'+number+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+directLink;
+  {
+    const browserKey='browser:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
-      const market=await scrapeMypBrowser(directLink,{name,number,set,lang,finish,condition});
+      const market=await findAndScrapeMypBrowser(directLink||'',{name,number,set,setId:String(req.query.setId||'').trim(),lang,finish,condition});
       if(market?.ok&&hasAnyMarket(market)){
+        const resolvedLink=safeMypProductUrl(market.link)||directLink||'';
         const out={
           ok:true,
           source:'MYP Cards',
           provider:'Chromium',
-          mode:'browser-page',
+          mode:directLink?'browser-page':'browser-search-page',
           name,
           number,
-          edition:set,
+          edition:market.edition||set,
           finish,
           condition,
-          link:directLink,
+          link:resolvedLink,
           min:Number(market.min||0),
           avg:Number(market.avg||0),
           max:Number(market.max||0),
@@ -171,17 +172,19 @@ module.exports=async function handler(req,res){
         CACHE.set(browserKey,{value:out,expires:Date.now()+10*60*1000});
         return res.status(200).json(out);
       }
-      if(market?.error==='variant_not_found'||market?.error==='wrong_product'){
+      if(['variant_not_found','wrong_product','product_not_found'].includes(market?.error)){
         const out={
           ok:false,
           error:market.error,
           source:'MYP Cards',
           provider:'Chromium',
-          mode:'browser-page',
-          link:directLink,
-          message:market.error==='variant_not_found'
-            ?'A página foi lida, mas não há oferta com este acabamento + condição.'
-            :'O link salvo não corresponde à carta consultada.'
+          mode:directLink?'browser-page':'browser-search-page',
+          link:safeMypProductUrl(market?.link)||directLink||'',
+          message:market?.message||(market.error==='variant_not_found'
+            ?'A página correta foi localizada, mas não há oferta com este acabamento + condição.'
+            :market.error==='wrong_product'
+              ?'O link salvo não corresponde à carta consultada.'
+              :'A busca da MYP não encontrou a impressão correta.')
         };
         CACHE.set(browserKey,{value:out,expires:Date.now()+3*60*1000});
         return res.status(200).json(out);
