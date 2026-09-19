@@ -26,6 +26,7 @@ async function fetchPrice(card: any){
     finish:String(card.finish||"Normal"),
     condition:String(card.condition||"Nova")
   });
+  if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
   const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
   if(link)q.set("link",link);
   const controller=new AbortController();
@@ -57,7 +58,7 @@ Deno.serve(async(req:Request)=>{
   const staleIso=new Date(now.getTime()-STALE_MS).toISOString();
 
   const {data:candidates,error:listError}=await db.from("pokemon_cards")
-    .select("id,user_id,name,number,set_name,set_id,language_code,finish,condition,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at")
+    .select("id,user_id,name,number,set_name,set_id,language_code,finish,condition,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at,price_priority")
     .eq("price_pending",true)
     .lte("price_next_retry_at",nowIso)
     .or("price_processing_at.is.null,price_processing_at.lt."+staleIso)
