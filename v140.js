@@ -1556,6 +1556,9 @@
   function wireFastAdd(){
     const b=byId('btnAddSelected');if(b)b.onclick=addSelectedFast;
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
+    const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
+    syncSingleCardPriceButton();
+    rewireFilteredPriceButton();
   }
 
   async function bootV14(){
@@ -1574,6 +1577,11 @@
     }).observe(app,{attributes:true,attributeFilter:['class']});
     const add=byId('addDialog');
     if(add)new MutationObserver(()=>wireFastAdd()).observe(add,{attributes:true,attributeFilter:['open']});
+    const cardDialog=byId('cardDialog');
+    if(cardDialog)new MutationObserver(()=>{
+      wireFastAdd();
+      if(cardDialog.open)syncSingleCardPriceButton();
+    }).observe(cardDialog,{attributes:true,attributeFilter:['open']});
     const area=document.querySelector('.binder-area');
     const spread=document.querySelector('#binderStage .binder-spread');
     if(typeof ResizeObserver!=='undefined'){
