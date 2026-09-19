@@ -488,9 +488,10 @@
     },80);
   }
 
-  function resetMasterBuilderState({resetCatalog=false}={}){
+  function resetMasterBuilderState({resetCatalog=false,keepSelections=false}={}){
     V14.masterEpoch++;
     V14.masterPreview=null;
+    if(!keepSelections)V14.masterSelections=[];
     const step=byId('v14MasterStep');if(step)step.classList.add('hidden');
     const notice=byId('v14PromoNotice');if(notice){notice.classList.add('hidden');notice.textContent=''}
     const grid=byId('v14MasterGrid');if(grid)grid.innerHTML='';
@@ -512,6 +513,7 @@
         series.innerHTML='<option value="">Carregando gerações…</option>';
       }
     }
+    renderMasterQueue();
   }
 
   function hardCloseDialog(dialog){
@@ -870,6 +872,64 @@
       byId('v14SetStatus').textContent='Master Set pronto para conferência.';
       byId('v14MasterStep').classList.remove('hidden');
     }catch(e){console.error(e);byId('v14SetStatus').textContent='Erro ao montar a coleção: '+(e.message||e)}
+  }
+
+  function masterSelectionKey(p){
+    return String(p?.lang||p?.set?.languageCode||'')+'|'+String(p?.set?.id||'');
+  }
+
+  function masterPreviewsForCreate(){
+    const out=[...V14.masterSelections];
+    if(V14.masterPreview){
+      const key=masterSelectionKey(V14.masterPreview);
+      const ix=out.findIndex(x=>masterSelectionKey(x)===key);
+      if(ix>=0)out[ix]=V14.masterPreview;
+      else out.push(V14.masterPreview);
+    }
+    return out;
+  }
+
+  function renderMasterQueue(){
+    const box=byId('v1418MasterQueue');
+    const create=byId('v14CreateMaster');
+    if(!box||!create)return;
+    const list=V14.masterSelections;
+    box.classList.toggle('hidden',!list.length);
+    box.innerHTML=list.length
+      ?'<div class="v1418-master-queue-head"><strong>Master Sets no fichário</strong><small>'+list.length+' adicionado'+(list.length===1?'':'s')+'</small></div>'+
+        list.map((p,i)=>'<div class="v1418-master-queue-item"><span><strong>'+esc(p.displaySetName||p.set?.name||'Master Set')+'</strong><small>'+p.entries.length+' entradas · '+p.owned.size+' Tenho</small></span><button type="button" data-v1418-remove-master="'+i+'" aria-label="Remover Master Set">×</button></div>').join('')
+      :'';
+    box.querySelectorAll('[data-v1418-remove-master]').forEach(b=>b.onclick=()=>{
+      V14.masterSelections.splice(+b.dataset.v1418RemoveMaster,1);
+      renderMasterQueue();
+    });
+    const total=masterPreviewsForCreate().length;
+    create.textContent=total>1?'Criar fichário com '+total+' Master Sets':'Criar Master Set';
+  }
+
+  function markAllMasterOwned(owned){
+    const p=V14.masterPreview;if(!p)return;
+    p.owned=owned?new Set(p.entries.map((_,i)=>i)):new Set();
+    renderMasterGrid();
+  }
+
+  function addAnotherMasterSet(){
+    const p=V14.masterPreview;
+    if(!p)return toast('Escolha e carregue um Master Set primeiro.');
+    const key=masterSelectionKey(p);
+    const ix=V14.masterSelections.findIndex(x=>masterSelectionKey(x)===key);
+    if(ix>=0)V14.masterSelections[ix]=p;
+    else V14.masterSelections.push(p);
+
+    V14.masterEpoch++;
+    V14.masterPreview=null;
+    byId('v14MasterStep')?.classList.add('hidden');
+    byId('v14PromoNotice')?.classList.add('hidden');
+    const set=byId('v14SetSelect');if(set)set.value='';
+    const status=byId('v14SetStatus');
+    if(status)status.textContent=V14.masterSelections.length+' Master Set'+(V14.masterSelections.length===1?'':'s')+' adicionado'+(V14.masterSelections.length===1?'':'s')+'. Escolha outra coleção.';
+    renderMasterQueue();
+    toast('Master Set adicionado ao fichário. Escolha o próximo.');
   }
 
   function masterImage(entry){
