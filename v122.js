@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.8';
+  const APP_VERSION='V13.9';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.9',title:'Preço MYP respeita o idioma da carta',items:[
+      'Ofertas da MYP agora são filtradas também pelo idioma antes de calcular mínimo, médio e máximo.',
+      'Carta PT-BR ignora anúncios em Chinês, Inglês, Japonês e outros idiomas.',
+      'Validado na Mew V 251/264: o anúncio chinês de R$ 449,90 deixou de entrar na cotação PT-BR.'
+    ]},
     {version:'V13.8',title:'Busca ao vivo e tolerante a erros',items:[
       'As cartas aparecem automaticamente enquanto você digita, sem precisar clicar em Buscar.',
       'A busca espera uma pequena pausa na digitação para evitar requisições desnecessárias.',
