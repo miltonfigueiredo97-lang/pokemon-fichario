@@ -167,7 +167,7 @@ async function fetchTCGdexCard(lang,id,fallback=null){
     return mapTCG(await r.json(),lang);
   }catch{return fallback?mapTCG(fallback,lang):null}
 }
-function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"";let image=c.image||"";if(!image&&lang==="ja"&&setId&&local)image="/api/jp-card-image?set="+encodeURIComponent(setId)+"&localId="+encodeURIComponent(local);return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:local,printedTotal:String(s.cardCount?.official||""),rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
+function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"";let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:local,printedTotal:String(s.cardCount?.official||""),rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
   const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);
   return [...cards].sort((a,b)=>score(b)-score(a));
