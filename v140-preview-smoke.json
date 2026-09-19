@@ -1,4 +1,10 @@
 {
+  "rootCode": "200",
+  "jsCode": "200",
+  "masterCode": "200",
+  "rootSample": "<!DOCTYPE html><html data-dpl-id=\"dpl_HgVs9qWQ61D7X2njMxU7f539qo22\" class=\"VEU71W_className -zyu7G_className VEU71W_variable -zyu7G_variable dash\" lang=\"en-US\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"/><link rel=\"stylesheet\" hr",
+  "jsSample": "<!DOCTYPE html><html data-dpl-id=\"dpl_HgVs9qWQ61D7X2njMxU7f539qo22\" class=\"VEU71W_className -zyu7G_className VEU71W_vari",
+  "masterSample": "{}",
   "rootHasV140": false,
   "jsHasMultiBinder": false,
   "jsHasBackgroundPrice": false,
