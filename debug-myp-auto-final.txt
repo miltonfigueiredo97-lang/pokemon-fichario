@@ -1,0 +1,11 @@
+UTC: 2026-09-19T00:27:26Z
+
+===== MYP full auto discovery final =====
+URL: https://pokemon-fichario.vercel.app/api/myp-browser-diagnostic-temp
+HTTP: 200
+BYTES: 406
+--- first 1200 chars ---
+{"ok":true,"provider":"Chromium","mode":"browser-page","title":"Lugia V (138/195)","edition":"Espada e Escudo 12: Tempestade Prateada (SIT)","link":"https://mypcards.com/pokemon/produto/174895/lugia-v","httpStatus":200,"min":100,"avg":0,"max":0,"samples":1,"availableQuantity":1,"exactVariant":true,"complete":false,"matched":[{"seller":"laiin","finish":"Foil","condition":"NM","price":100,"qty":"1 un."}]}
+--- matching lines ---
+"min":100,"avg":0,"max":0,"samples":1,"availableQuantity":1,"exactVariant":true,"complete":false,"matched":[{"seller":"laiin","finish":"Foil","condition":"NM","price":100,"qty":"1 un."}]}
+
