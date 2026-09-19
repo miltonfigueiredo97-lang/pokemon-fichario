@@ -127,8 +127,8 @@
     return cards;
   }
   function orderedViewCards(){
-    const source=viewScopedCards(physicalCollection());
-    const arr=isGeneral()?groupedVirtualCards(source):[...source];
+    const physical=physicalCollection();
+    const arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical)];
     const mode=activeSort();
     const direction=mode.endsWith('_desc')?-1:1;
     const baseMode=mode.replace(/_(asc|desc)$/,'');
