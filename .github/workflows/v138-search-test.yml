@@ -15,17 +15,19 @@ jobs:
         run: |
           node - <<'EOF'
           const fs=require('fs');
-          async function q(name){
+          async function q(lang,name){
             const p=new URLSearchParams({name,'pagination:itemsPerPage':'20'});
-            const r=await fetch('https://api.tcgdex.net/v2/en/cards?'+p);
+            const r=await fetch('https://api.tcgdex.net/v2/'+lang+'/cards?'+p);
             return {status:r.status,items:await r.json()};
           }
           (async()=>{
-            const exact=await q('umbreom ex');
-            const fallback=await q('umbreo');
-            const names=[...new Set((fallback.items||[]).map(x=>x.name))];
-            const pass=Array.isArray(exact.items)&&exact.items.length===0&&names.some(x=>/umbreon/i.test(x));
-            fs.writeFileSync('v138-search-test.json',JSON.stringify({pass,exactCount:exact.items?.length||0,fallbackCount:fallback.items?.length||0,names:names.slice(0,20)},null,2));
+            const exact=await q('pt','umbreom ex');
+            const fallbackPt=await q('pt','umbreo');
+            const fallbackEn=await q('en','umbreo');
+            const namesPt=[...new Set((fallbackPt.items||[]).map(x=>x.name))];
+            const namesEn=[...new Set((fallbackEn.items||[]).map(x=>x.name))];
+            const pass=Array.isArray(exact.items)&&exact.items.length===0&&namesPt.some(x=>/umbreon/i.test(x))&&namesEn.some(x=>/umbreon/i.test(x));
+            fs.writeFileSync('v138-search-test.json',JSON.stringify({pass,exactPtCount:exact.items?.length||0,fallbackPtCount:fallbackPt.items?.length||0,namesPt:namesPt.slice(0,20),fallbackEnCount:fallbackEn.items?.length||0,namesEn:namesEn.slice(0,20)},null,2));
             if(!pass)process.exitCode=1;
           })();
           EOF
