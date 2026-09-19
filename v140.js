@@ -92,6 +92,7 @@
             '<option value="number">Número da coleção</option>'+
           '</select>'+
           '<button id="v14RenameBinder" class="icon-text-btn" type="button">Renomear</button>'+
+          '<button id="v14DeleteBinder" class="icon-text-btn" type="button">Excluir</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
         host.insertBefore(wrap,host.firstChild);
       }
@@ -142,6 +143,7 @@
     byId('v14CreateEmpty')?.addEventListener('click',createEmptyBinder);
     byId('v14AddBinder')?.addEventListener('click',()=>{switchCreateTab('empty');byId('v14BinderDialog')?.showModal()});
     byId('v14RenameBinder')?.addEventListener('click',renameBinder);
+    byId('v14DeleteBinder')?.addEventListener('click',deleteBinder);
     byId('v14BinderSelect')?.addEventListener('change',e=>selectBinder(e.target.value));
     byId('v14SortSelect')?.addEventListener('change',e=>setSortMode(e.target.value));
     byId('v14SetSearch')?.addEventListener('input',queueSetSearch);
@@ -192,6 +194,7 @@
     }
     const sort=byId('v14SortSelect');if(sort)sort.value=activeSort();
     const rename=byId('v14RenameBinder');if(rename)rename.disabled=isGeneral();
+    const del=byId('v14DeleteBinder');if(del)del.disabled=isGeneral()||V14.binders.length<=1;
     const add=byId('btnOpenAdd');if(add)add.disabled=isGeneral();
     const hint=document.querySelector('.binder-hint');
     if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':'Visualização ordenada · movimentação desativada';
@@ -230,6 +233,19 @@
     if(error)return toast('Não consegui renomear.');
     b.name=name.trim();
     syncLegacySettings();renderBinderControls();renderAll();toast('Fichário renomeado.');
+  }
+
+  async function deleteBinder(){
+    const b=activeBinder();if(!b)return;
+    if(V14.binders.length<=1)return toast('Mantenha pelo menos um fichário.');
+    if(!confirm('Excluir o fichário "'+b.name+'" e todas as cartas que estão somente nele?'))return;
+    const {error}=await db.from('pokemon_binders').delete().eq('id',b.id).eq('user_id',currentUser.id);
+    if(error)return toast('Não consegui excluir o fichário.');
+    V14.binders=V14.binders.filter(x=>x.id!==b.id);
+    V14.allCards=V14.allCards.filter(x=>x.binder_id!==b.id);
+    V14.activeBinderId=V14.binders[0]?.id||'all';
+    await db.from('pokemon_settings').update({current_binder_id:isGeneral()?null:V14.activeBinderId}).eq('user_id',currentUser.id);
+    collection=physicalCollection();syncLegacySettings();renderBinderControls();renderAll();toast('Fichário excluído.');
   }
 
   async function createEmptyBinder(){
@@ -723,6 +739,7 @@
     grid.querySelectorAll('[data-scan-index]').forEach(b=>b.onclick=()=>{
       const c=best[+b.dataset.scanIndex],key=cardKey(c);
       catalogSelection.clear();catalogSelection.set(key,c);updateSelectionTray();
+      byId('resultsList')?.dispatchEvent(new Event('click',{bubbles:true}));
       if(dlg.open)dlg.close();
       if(byId('addDialog')&&!byId('addDialog').open)byId('addDialog').showModal();
       setTimeout(()=>{try{const target=[...document.querySelectorAll('#resultsList .catalog-card')].find(x=>x.textContent.includes(c.name));target?.scrollIntoView({block:'center'})}catch{}},80);
@@ -754,6 +771,7 @@
     const v=byId('scanVideo');if(v)v.srcObject=null;
   }
   async function startScanner(){
+    if(isGeneral())return toast('Escolha um fichário antes de escanear e adicionar uma carta.');
     stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();
     if(byId('addDialog')?.open)byId('addDialog').close();
     if(!byId('scanDialog')?.open)byId('scanDialog').showModal();
