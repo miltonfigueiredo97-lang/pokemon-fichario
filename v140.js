@@ -533,7 +533,14 @@
     resetMasterBuilderState({resetCatalog:true});
     switchCreateTab('empty');
     const d=byId('v14BinderDialog');
-    if(d&&!d.open)d.showModal();
+    if(d&&!d.open){
+      // Native showModal() makes the entire document inert. Some Android
+      // WebViews kept that inert state after creating/rendering a large set.
+      // On mobile this creator is already fullscreen, so non-modal show()
+      // gives the same UX without ever disabling Resumo/Amigos/etc.
+      if(window.matchMedia?.('(max-width:820px)').matches)d.show();
+      else d.showModal();
+    }
     // Reconcile binder names/existence from the database instead of trusting
     // an old in-memory list after delete/create cycles.
     loadBinders().catch(console.warn);
