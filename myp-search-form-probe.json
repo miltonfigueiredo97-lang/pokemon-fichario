@@ -1,0 +1,725 @@
+{
+  "status": 200,
+  "title": "Pokémon | MYP Cards",
+  "error": "",
+  "forms": [
+    {
+      "action": "https://mypcards.com/pokemon",
+      "method": "get",
+      "html": "<form id=\"produtoSearchForm\" action=\"/pokemon\" method=\"get\" class=\"searchbar\">\n                <select id=\"search-marca-selector\" name=\"ProdutoSearch[marca]\" data-usuario-layout=\"\">\n                                            <option value=\"todos\">Todos</option>\n                                            <option value=\"yugioh\">Yu-Gi-Oh!</option>\n                                            <option value=\"pokemon\" selected=\"\">Pokémon</option>\n                                            <option value=\"lorcana\">Lorcana</option>\n                                            <option value=\"onepiece\">One Piece</option>\n                                            <option value=\"riftbound\">Riftbound</option>\n                                            <option value=\"magic\">Magic</option>\n                                            <option value=\"copadomundo2026\">Copa do Mundo 2026</option>\n                                            <option value=\"digimon\">Digimon</option>\n                                            <option value=\"outros\">Produtos</option>\n                                            <option value=\"battlescenes\">Battle Scenes</option>\n                                            <option value=\"dbsfusion\">DBS: Fusion World</option>\n                                            <option value=\"dbsmasters\">DBS: Masters</option>\n                                            <option value=\"fab\">Flesh &amp; Blood</option>\n                                            <option value=\"gundam\">Gundam</option>\n                                            <option value=\"hp\">Harry Potter</option>\n                                            <option value=\"lotr\">Lord of the Rings</option>\n                                            <option value=\"sorcery\">Sorcery: Contested Realm</option>\n                                            <option value=\"swdestiny\">Star Wars: Destiny</option>\n                                            <option value=\"swunlimited\">Star Wars: Unlimited</option>\n                                            <option value=\"vanguard\">Vanguard</option>\n                                            <option value=\"grandarchive\">Grand Archive</option>\n                                            <option value=\"unionarena\">Union Arena</option>\n                                            <option value=\"weissschwarz\">Weiss Schwarz</option>\n                                            <option value=\"warlord\">Warlord</option>\n                                    </select>\n                <div class=\"searchbar-input-wrapper\">\n                    <input type=\"text\" id=\"produtoSearchQuery\" class=\"clearable clearable-dark ui-autocomplete-input\" name=\"ProdutoSearch[query]\" value=\"\" autocomplete=\"off\" placeholder=\"Buscar em Pokémon\">                                    </div>\n                <button id=\"btn-buscar\" type=\"submit\" class=\"btn-buscar\" title=\"Buscar\" aria-label=\"Buscar\">\n                    <span class=\"fa fa-search\" aria-hidden=\"true\"></span>\n                </button>\n            </form>"
+    },
+    {
+      "action": "https://mypcards.com/pokemon",
+      "method": "get",
+      "html": "<form id=\"filtroForm\" action=\"/pokemon\" method=\"get\">\n        <div class=\"active-filters\">\n\n            <ul class=\"filtrados\">\n                                                                                                                                                                                                                                                                                                                                                                                            </ul>\n\n            \n        </div>\n\n                    <div class=\"checkbox field-produtosearch-exibirsomentevenda\">\n<input type=\"checkbox\" id=\"produtosearch-exibirsomentevenda\" name=\"ProdutoSearch[exibirSomenteVenda]\" value=\"1\" 0=\"\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; this.form.submit()\"><label class=\"text-sm\" for=\"produtosearch-exibirsomentevenda\">Exibir somente itens à venda</label>\n</div>        \n        <hr>\n        \n<div class=\"filtro-group\">\n    <button type=\"button\" class=\"filtro-accordion open\" aria-expanded=\"true\">Categorias</button>\n    <input type=\"text\" placeholder=\"Filtrar\" class=\"form-control autocomplete-search filtro-pesquisar hide\">\n\n    <div class=\"form-group field-produtosearch-categoriasselecionadas\">\n<label class=\"control-label\"></label>\n<input type=\"hidden\" name=\"ProdutoSearch[categoriasSelecionadas]\" value=\"\"><ul id=\"produtosearch-categoriasselecionadas\">\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSearch[categoriasSelecionadas][]0\" value=\"26\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; $('#filtroForm').submit()\">\n                    <label for=\"ProdutoSearch[categoriasSelecionadas][]0\" class=\"nome\">Acessórios</label>\n                    </li>\n\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSearch[categoriasSelecionadas][]1\" value=\"30\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; $('#filtroForm').submit()\">\n                    <label for=\"ProdutoSearch[categoriasSelecionadas][]1\" class=\"nome\">Action Figure</label>\n                    </li>\n\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSearch[categoriasSelecionadas][]2\" value=\"32\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; $('#filtroForm').submit()\">\n                    <label for=\"ProdutoSearch[categoriasSelecionadas][]2\" class=\"nome\">Artigos Geek</label>\n                    </li>\n\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSearch[categoriasSelecionadas][]3\" value=\"54\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; $('#filtroForm').submit()\">\n                    <label for=\"ProdutoSearch[categoriasSelecionadas][]3\" class=\"nome\">Cartas Graduadas</label>\n                    </li>\n\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSearch[categoriasSelecionadas][]4\" value=\"29\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; $('#filtroForm').submit()\">\n                    <label for=\"ProdutoSearch[categoriasSelecionadas][]4\" class=\"nome\">Deck / Lote / Set</label>\n                    </li>\n\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSearch[categoriasSelecionadas][]5\" value=\"28\" onchange=\"if (!window.__cfRLUnblockHandlers) return false; $('#filtroForm').submit()\">\n                    <label for=\"ProdutoSearch[categoriasSelecionadas][]5\" class=\"nome\">HQ / Livros</label>\n                    </li>\n\n                    <li class=\"radio\">\n                    <input type=\"radio\" name=\"ProdutoSearch[categoriasSelecionadas][]\" id=\"ProdutoSea"
+    },
+    {
+      "action": "https://mypcards.com/site/login",
+      "method": "post",
+      "html": "<form id=\"login-form\" class=\"modal login-form\" action=\"/site/login\" method=\"post\">\n<input type=\"hidden\" name=\"_csrf\" value=\"ub0Cl2aW8heggDqOxNXILwS14sXDsV7nB-52i0keZbns9nbeVtKeJvLKTaOMgKBAfsSz85HbNtRDgizDA18f4w==\">\n<div class=\"modal-header\">\n    <figure class=\"logo\">\n        <img src=\"https://img.mypcards.com/cdn-cgi/image/f=auto,q=85/logo/logo-mypcards.png\" width=\"92px\" height=\"55px\" alt=\"Logo MYP Cards\" title=\"MYP Cards\">    </figure>\n    <a href=\"#close\" class=\"close\"><span class=\"svg-icon\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 28 28\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<path d=\"M23.065 0L14 9.065L4.935 0L0 4.935L9.065 14L0 23.065L4.935 28L14 18.935L23.065 28L28 23.065L18.935 14L28 4.935L23.065 0Z\" fill=\"currentColor\"></path>\n</svg>\n</span></a>\n</div>\n\n<div class=\"add-card modal-content\">\n    \n<div class=\"alert alert-warning aviso-senhas-invalidadas\">\n    Adotamos um novo padrão de senhas em 04/09/2026.\n    Se a sua parou de funcionar, use\n    <a href=\"/site/esqueci-senha\" data-pjax=\"0\">Esqueci minha senha</a>    para criar uma nova.\n<span class=\"close\"></span></div>\n    <div id=\"w4\"><ul class=\"auth-clients\"><li><a class=\"google auth-link\" href=\"/site/auth?authclient=google\" title=\"Google\"><span class=\"auth-icon google\"></span></a></li><li><a class=\"facebook auth-link\" href=\"/site/auth?authclient=facebook\" title=\"Facebook\" data-popup-width=\"860\" data-popup-height=\"480\"><span class=\"auth-icon facebook\"></span></a></li></ul></div>    <p class=\"center\">-- ou --</p>\n    <div class=\"form-group field-loginform-modal-username required\">\n<label class=\"control-label\" for=\"loginform-modal-username\">Email / Nick</label>\n<input type=\"text\" id=\"loginform-modal-username\" class=\"form-control\" name=\"LoginForm[username]\" oninput=\"if (!window.__cfRLUnblockHandlers) return false; this.value = this.value.replace(/\\s/g, &quot;&quot;);\" aria-required=\"true\">\n\n<div class=\"help-block\"></div>\n</div>\n    <div class=\"form-group field-password-modal-input required\">\n<label class=\"control-label\" for=\"password-modal-input\">Senha</label><div class=\"campo-senha\"><input type=\"password\" id=\"password-modal-input\" class=\"form-control\" name=\"LoginForm[password]\" autocomplete=\"on\" aria-required=\"true\"><button type=\"button\" class=\"olhinho\" data-toggle-senha=\"password-modal-input\" title=\"Mostrar senha\"><span class=\"svg-icon olho\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" xmlns=\"http://www.w3.org/2000/svg\">\n  <path d=\"M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z\"></path>\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M.664 10.59a1.651 1.651 0 010-1.186C2.108 5.655 5.744 3 10 3s7.892 2.655 9.336 6.41c.116.355.116.742 0 1.186C17.892 14.345 14.256 17 10 17s-7.892-2.655-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z\"></path>\n</svg>\n</span><span class=\"svg-icon olho-cortado escondido\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" xmlns=\"http://www.w3.org/2000/svg\">\n  <path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-4.38 1.651 1.651 0 000-1.185A10.004 10.004 0 0010 3a9.956 9.956 0 00-4.744 1.194L3.28 2.22zM7.752 6.69l1.092 1.092a2.5 2.5 0 013.374 3.373l1.091 1.092a4 4 0 00-5.557-5.557z\"></path>\n  <path d=\"M10.748 13.93l2.523 2.523a9.987 9.987 0 01-3.27.547c-4.258 0-7.894-2.66-9.337-6.41a1.651 1.651 0 010-1.186A10.007 10.007 0 012.839 6.02L6.07 9.252a4 4 0 004.678 4.678z\"></path>\n</svg>\n</span></button></div><div class=\"help-block\"></div>\n</div>\n    <div class=\"row\">\n        <div class=\"checkbox\">\n            <input type=\"hidden\" name=\"LoginForm[rememberMe]\" value=\"0\">\n            <input type=\"checkbox\" name=\"LoginForm[rememberMe]\" id=\"rememberMe-modal\" value=\"1\" checked=\"\">\n            <label for=\"rememberMe-modal\">Lembrar-me</label>\n        </div>\n    </div>\n\n    <div class=\"btlogin\">\n        <button type=\"submit\" class=\"btn btn-block\" name=\"login-button\">Login</button>    </div>\n\n    <div class=\"criar-conta\">  \n        -- Ainda não tem uma conta? -- "
+    }
+  ],
+  "inputs": [
+    {
+      "name": "ProdutoSearch[query]",
+      "id": "produtoSearchQuery",
+      "type": "text",
+      "placeholder": "Buscar em Pokémon",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[exibirSomenteVenda]",
+      "id": "produtosearch-exibirsomentevenda",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "1"
+    },
+    {
+      "name": "",
+      "id": "",
+      "type": "text",
+      "placeholder": "Filtrar",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas]",
+      "id": "",
+      "type": "hidden",
+      "placeholder": "",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]0",
+      "type": "radio",
+      "placeholder": "",
+      "value": "26"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]1",
+      "type": "radio",
+      "placeholder": "",
+      "value": "30"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]2",
+      "type": "radio",
+      "placeholder": "",
+      "value": "32"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]3",
+      "type": "radio",
+      "placeholder": "",
+      "value": "54"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]4",
+      "type": "radio",
+      "placeholder": "",
+      "value": "29"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]5",
+      "type": "radio",
+      "placeholder": "",
+      "value": "28"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]6",
+      "type": "radio",
+      "placeholder": "",
+      "value": "16"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]7",
+      "type": "radio",
+      "placeholder": "",
+      "value": "10"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]8",
+      "type": "radio",
+      "placeholder": "",
+      "value": "21"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]9",
+      "type": "radio",
+      "placeholder": "",
+      "value": "2"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]10",
+      "type": "radio",
+      "placeholder": "",
+      "value": "27"
+    },
+    {
+      "name": "ProdutoSearch[categoriasSelecionadas][]",
+      "id": "ProdutoSearch[categoriasSelecionadas][]11",
+      "type": "radio",
+      "placeholder": "",
+      "value": "31"
+    },
+    {
+      "name": "",
+      "id": "filtro-busca-edicoesSelecionadas",
+      "type": "text",
+      "placeholder": "Buscar edição",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas]",
+      "id": "",
+      "type": "hidden",
+      "placeholder": "",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]0",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2560"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]1",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2980"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]2",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2981"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]3",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2868"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]4",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2966"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]5",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2631"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]6",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2510"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]7",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2448"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]8",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2422"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]9",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2514"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]10",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2954"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]11",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2413"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]12",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2390"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]13",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2357"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]14",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2412"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]15",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2435"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]16",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2346"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]17",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2347"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]18",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2321"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]19",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2322"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]20",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2648"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]21",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2264"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]22",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2356"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]23",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2257"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]24",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2238"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]25",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2263"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]26",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2254"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]27",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2363"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]28",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2960"
+    },
+    {
+      "name": "ProdutoSearch[edicoesSelecionadas][]",
+      "id": "ProdutoSearch[edicoesSelecionadas][]29",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "2209"
+    },
+    {
+      "name": "",
+      "id": "",
+      "type": "text",
+      "placeholder": "Filtrar",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas]",
+      "id": "",
+      "type": "hidden",
+      "placeholder": "",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]0",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "73"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]1",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "5"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]2",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "127"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]3",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "128"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]4",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "6"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]5",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "11"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]6",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "12"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]7",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "7"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]8",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "126"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]9",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "129"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]10",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "8"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]11",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "9"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]12",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "13"
+    },
+    {
+      "name": "ProdutoSearch[raridadesSelecionadas][]",
+      "id": "ProdutoSearch[raridadesSelecionadas][]13",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "10"
+    },
+    {
+      "name": "",
+      "id": "",
+      "type": "text",
+      "placeholder": "Filtrar",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas]",
+      "id": "",
+      "type": "hidden",
+      "placeholder": "",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]0",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "9"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]1",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "16"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]2",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "13"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]3",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "15"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]4",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "8"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]5",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "7"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]6",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "17"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]7",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "12"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]8",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "14"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]9",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "18"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]10",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "11"
+    },
+    {
+      "name": "ProdutoSearch[coresSelecionadas][]",
+      "id": "ProdutoSearch[coresSelecionadas][]11",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "10"
+    },
+    {
+      "name": "",
+      "id": "",
+      "type": "text",
+      "placeholder": "Filtrar",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados]",
+      "id": "",
+      "type": "hidden",
+      "placeholder": "",
+      "value": ""
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]0",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "27"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]1",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "9"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]2",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "19"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]3",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "13"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]4",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "14"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]5",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "18"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]6",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "40"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]7",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "41"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]8",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "15"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]9",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "25"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]10",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "26"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]11",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "12"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]12",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "16"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]13",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "20"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]14",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "10"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]15",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "11"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]16",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "17"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]17",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "42"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]18",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "28"
+    },
+    {
+      "name": "ProdutoSearch[tiposSelecionados][]",
+      "id": "ProdutoSearch[tiposSelecionados][]19",
+      "type": "checkbox",
+      "placeholder": "",
+      "value": "24"
+    }
+  ],
+  "links": []
+}
