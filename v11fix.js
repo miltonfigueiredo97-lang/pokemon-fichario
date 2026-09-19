@@ -654,11 +654,17 @@
     style.textContent=`
       .card-details-panel{position:relative!important}
       .v115-details-head-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
-      .v115-edit-btn,.v115-cancel-btn{
+      .v115-edit-btn,.v115-cancel-btn,.v1422-remove-btn{
         height:34px;border-radius:999px;padding:0 13px;border:1px solid rgba(255,255,255,.14);
         background:#171c20;color:#ece9df;font-size:10px;font-weight:900;cursor:pointer
       }
       .v115-edit-btn:hover,.v115-cancel-btn:hover{background:#22292f}
+      .v1422-remove-btn{
+        border-color:rgba(255,79,79,.42);background:rgba(255,65,65,.08);color:#ff9696
+      }
+      .v1422-remove-btn:hover{
+        border-color:rgba(255,102,102,.72);background:rgba(255,65,65,.16);color:#ffc0c0
+      }
       .v115-info-grid{
         display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 10px
       }
@@ -791,6 +797,8 @@
     panel.classList.toggle('v115-editing',!!editing);
     if(btnEdit)btnEdit.hidden=editing||!isExisting;
     if(btnCancel)btnCancel.hidden=!editing;
+    const btnRemove=$('#v1422RemoveCardDetails');
+    if(btnRemove)btnRemove.hidden=!isExisting;
     if(btnSave){
       btnSave.hidden=!editing;
       btnSave.textContent=isExisting?'Salvar alterações':'Salvar no fichário';
@@ -829,7 +837,7 @@
       const actions=document.createElement('div');
       actions.id='v115DetailsHeadActions';
       actions.className='v115-details-head-actions';
-      actions.innerHTML='<button id="v115EditCard" class="v115-edit-btn" type="button">Editar</button><button id="v115CancelEdit" class="v115-cancel-btn" type="button" hidden>Cancelar</button>';
+      actions.innerHTML='<button id="v115EditCard" class="v115-edit-btn" type="button">Editar</button><button id="v1422RemoveCardDetails" class="v1422-remove-btn" type="button" hidden>🗑 Remover</button><button id="v115CancelEdit" class="v115-cancel-btn" type="button" hidden>Cancelar</button>';
       head.appendChild(actions);
       $('#v115EditCard')?.addEventListener('click',()=>setCardEditMode(true));
       $('#v115CancelEdit')?.addEventListener('click',()=>{
