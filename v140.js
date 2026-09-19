@@ -654,8 +654,19 @@
 
   async function japaneseImageFallback(card){
     if(!card||card.imageUrl||card.languageCode!=='ja')return card?.imageUrl||'';
-    const key=[card.apiId,card.name,card.number].join('|');
+    const key=[card.apiId,card.setId||card.set_id,card.number,card.name].join('|');
     if(V14.jpImageCache.has(key))return V14.jpImageCache.get(key);
+
+    // Fonte prioritária: site oficial japonês, usando coleção + número exatos.
+    const setId=card.setId||card.set_id||'';
+    const local=String(card.number||'').match(/\d+/)?.[0]||'';
+    if(setId&&local){
+      const exact='/api/jp-card-image?set='+encodeURIComponent(setId)+'&localId='+encodeURIComponent(local);
+      V14.jpImageCache.set(key,exact);
+      return exact;
+    }
+
+    // Último fallback: só aceita imagem equivalente com score seguro.
     try{
       const p=new URLSearchParams({name:card.name||'',number:card.number||'',rarity:card.rarity||'',hp:card.hp||''});
       const r=await fetch('/api/card-image-fallback?'+p.toString());
