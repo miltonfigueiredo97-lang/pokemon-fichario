@@ -55,7 +55,8 @@ module.exports=async function handler(req,res){
     }
     candidates.sort((a,b)=>b.score-a.score);
     const best=candidates[0];
-    const minScore=hp?105:80;\n    const out=best&&best.score>=minScore?{ok:true,...best}:{ok:false,error:'no_safe_fallback'};
+    const minScore=hp?105:80;
+    const out=best&&best.score>=minScore?{ok:true,...best}:{ok:false,error:'no_safe_fallback'};
     CACHE.set(key,out);
     return res.status(200).json(out);
   }catch(error){
