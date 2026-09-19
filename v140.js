@@ -28,11 +28,23 @@
   }
   function isFavorites(){return V14.activeBinderId==='favorites'}
   function isGeneral(){return V14.activeBinderId==='all'||isFavorites()}
-  function activeSort(){
-    if(isGeneral())return settings.general_sort_mode||'manual';
-    return activeBinder()?.sort_mode||'manual';
+  function normalizeSortMode(mode){
+    return ({
+      manual:'manual_asc',
+      name:'name_asc',
+      type:'type_asc',
+      rarity:'rarity_asc',
+      number:'number_asc'
+    })[mode]||mode||'manual_asc';
   }
-  function canMove(){return !isGeneral()&&activeSort()==='manual'&&!V14.favoritesOnly}
+  function activeSort(){
+    if(isGeneral())return normalizeSortMode(settings.general_sort_mode||'manual_asc');
+    return normalizeSortMode(activeBinder()?.sort_mode||'manual_asc');
+  }
+  function binderViewScope(){
+    return ['all','owned','missing'].includes(settings.binder_view_scope)?settings.binder_view_scope:'all';
+  }
+  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly}
   function binderForCard(card){return V14.binders.find(b=>b.id===card?.binder_id)||null}
   function currentBinderPages(){
     const b=activeBinder();
@@ -108,28 +120,40 @@
   function summaryValueScope(){
     return ['all','owned','missing'].includes(settings.summary_value_scope)?settings.summary_value_scope:'all';
   }
+  function viewScopedCards(cards){
+    const scope=binderViewScope();
+    if(scope==='owned')return cards.filter(c=>(c.collection_status||'owned')==='owned');
+    if(scope==='missing')return cards.filter(c=>(c.collection_status||'owned')!=='owned');
+    return cards;
+  }
   function orderedViewCards(){
-    const source=physicalCollection();
+    const source=viewScopedCards(physicalCollection());
     const arr=isGeneral()?groupedVirtualCards(source):[...source];
     const mode=activeSort();
-    if(mode==='manual'){
-      if(isGeneral()){
-        const order=new Map(V14.binders.map((b,i)=>[b.id,i]));
-        arr.sort((a,b)=>(order.get(a.binder_id)??999)-(order.get(b.binder_id)??999)||(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1));
-      }else arr.sort((a,b)=>(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1));
-      return arr;
-    }
+    const direction=mode.endsWith('_desc')?-1:1;
+    const baseMode=mode.replace(/_(asc|desc)$/,'');
     const cmpText=(a,b)=>String(a||'').localeCompare(String(b||''),'pt-BR',{sensitivity:'base'});
-    arr.sort((a,b)=>{
-      if(mode==='name')return cmpText(a.name,b.name)||numberValue(a.number)-numberValue(b.number);
-      if(mode==='type')return cmpText(a.card_type,b.card_type)||cmpText(a.name,b.name);
-      if(mode==='rarity')return cmpText(a.rarity,b.rarity)||cmpText(a.name,b.name);
-      if(mode==='number')return cmpText(a.set_name,b.set_name)||numberValue(a.number)-numberValue(b.number)||cmpText(a.finish,b.finish);
-      if(mode==='price_desc'||mode==='price_asc'){
-        const av=priceModeValue(a,currentPriceMode()),bv=priceModeValue(b,currentPriceMode());
-        return (mode==='price_desc'?bv-av:av-bv)||cmpText(a.name,b.name);
+    const manualCmp=(a,b)=>{
+      if(isGeneral()){
+        const order=new Map(V14.binders.map((binder,i)=>[binder.id,i]));
+        return (order.get(a.binder_id)??999)-(order.get(b.binder_id)??999)||
+          (+a.binder_page||1)-(+b.binder_page||1)||
+          (+a.binder_slot||1)-(+b.binder_slot||1);
       }
-      return 0;
+      return (+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
+    };
+    arr.sort((a,b)=>{
+      let result=0;
+      if(baseMode==='manual')result=manualCmp(a,b);
+      else if(baseMode==='name')result=cmpText(a.name,b.name)||numberValue(a.number)-numberValue(b.number);
+      else if(baseMode==='type')result=cmpText(a.card_type,b.card_type)||cmpText(a.name,b.name);
+      else if(baseMode==='rarity')result=cmpText(a.rarity,b.rarity)||cmpText(a.name,b.name);
+      else if(baseMode==='number')result=cmpText(a.set_name,b.set_name)||numberValue(a.number)-numberValue(b.number)||cmpText(a.finish,b.finish);
+      else if(baseMode==='price'){
+        const av=priceModeValue(a,currentPriceMode()),bv=priceModeValue(b,currentPriceMode());
+        result=av-bv||cmpText(a.name,b.name);
+      }
+      return result*direction;
     });
     return arr;
   }
@@ -175,13 +199,18 @@
         wrap.innerHTML=
           '<select id="v14BinderSelect" aria-label="Fichário"></select>'+
           '<select id="v14SortSelect" aria-label="Ordenação">'+
-            '<option value="manual">Ordem do fichário</option>'+
-            '<option value="name">Alfabética</option>'+
-            '<option value="type">Tipo</option>'+
-            '<option value="rarity">Raridade</option>'+
-            '<option value="number">Número da coleção</option>'+
-            '<option value="price_desc">Preço · maior → menor</option>'+
+            '<option value="manual_asc">Ordem do fichário · 0 → X</option>'+
+            '<option value="manual_desc">Ordem do fichário · X → 0</option>'+
+            '<option value="name_asc">Alfabética · A → Z</option>'+
+            '<option value="name_desc">Alfabética · Z → A</option>'+
+            '<option value="type_asc">Tipo · A → Z</option>'+
+            '<option value="type_desc">Tipo · Z → A</option>'+
+            '<option value="rarity_asc">Raridade · A → Z</option>'+
+            '<option value="rarity_desc">Raridade · Z → A</option>'+
+            '<option value="number_asc">Número da coleção · 0 → X</option>'+
+            '<option value="number_desc">Número da coleção · X → 0</option>'+
             '<option value="price_asc">Preço · menor → maior</option>'+
+            '<option value="price_desc">Preço · maior → menor</option>'+
           '</select>'+
           '<button id="v14FavoritesOnly" class="icon-text-btn v14-fav-filter" type="button" aria-pressed="false">☆ Favoritos</button>'+
           '<button id="v14RenameBinder" class="icon-text-btn" type="button">Renomear</button>'+
@@ -247,6 +276,15 @@
         controls.appendChild(label);
       }
     }
+    if(!byId('v14BinderViewScope')){
+      const list=document.querySelector('.status-filter-list');
+      if(list){
+        const label=document.createElement('label');
+        label.className='v14-binder-view-scope';
+        label.innerHTML='<span>Mostrar no fichário</span><select id="v14BinderViewScope" aria-label="Cartas mostradas no fichário"><option value="all">Todas as cartas</option><option value="owned">Só as que tenho</option><option value="missing">Só as que não tenho</option></select>';
+        list.parentElement.insertBefore(label,list);
+      }
+    }
 
     document.querySelectorAll('[data-v14-close]').forEach(b=>b.onclick=()=>{const d=byId(b.dataset.v14Close);if(d?.open)d.close()});
     byId('v14TabEmpty')?.addEventListener('click',()=>switchCreateTab('empty'));
@@ -263,6 +301,15 @@
       settings.summary_value_scope=value;
       await updateSettings({summary_value_scope:value},true);
       renderSummary();
+    });
+    byId('v14BinderViewScope')?.addEventListener('change',async e=>{
+      const value=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
+      settings.binder_view_scope=value;
+      currentPage=1;
+      await updateSettings({binder_view_scope:value},true);
+      renderBinder();
+      renderPagesGrid();
+      renderBinderControls();
     });
     byId('v14MasterLang')?.addEventListener('change',()=>loadGenerationOptions(true));
     byId('v14SeriesSelect')?.addEventListener('change',()=>loadCollectionsForGeneration());
@@ -330,7 +377,8 @@
       fav.textContent=isFavorites()?'★ Favoritas':'☆ Favoritas';
     }
     const hint=document.querySelector('.binder-hint');
-    if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização ordenada · movimentação desativada');
+    if(hint)hint.textContent=canMove()?'Arraste cartas entre bolsos · clique para detalhes':(V14.favoritesOnly?'Filtro de favoritos ativo · movimentação desativada':'Visualização filtrada/ordenada · movimentação desativada');
+    if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value=binderViewScope();
     requestAnimationFrame(positionUnifiedTopbar);
   }
 
@@ -346,7 +394,8 @@
   }
 
   async function setSortMode(mode){
-    mode=['manual','name','type','rarity','number','price_desc','price_asc'].includes(mode)?mode:'manual';
+    const allowed=['manual_asc','manual_desc','name_asc','name_desc','type_asc','type_desc','rarity_asc','rarity_desc','number_asc','number_desc','price_asc','price_desc'];
+    mode=allowed.includes(mode)?mode:'manual_asc';
     currentPage=1;
     if(isGeneral()){
       settings.general_sort_mode=mode;
@@ -689,7 +738,7 @@
     return Math.max(1,Math.ceil(orderedViewCards().length/9));
   }
   function renderBinderV14(){
-    if(!isGeneral()&&activeSort()==='manual'&&!V14.favoritesOnly)return V14.original.renderBinder();
+    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly)return V14.original.renderBinder();
     const g=byId('binderSheet');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();
     currentPage=Math.min(Math.max(1,currentPage),pages);
@@ -708,7 +757,7 @@
   }
 
   function renderPagesGridV14(){
-    if(!isGeneral()&&activeSort()==='manual'&&!V14.favoritesOnly)return V14.original.renderPagesGrid();
+    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly)return V14.original.renderPagesGrid();
     const g=byId('pagesGrid');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();g.innerHTML='';
     for(let p=1;p<=pages;p++){
@@ -749,6 +798,7 @@
     },0);
     const scopeLabel={all:'Todas',owned:'Tenho',missing:'Não tenho'}[scope];
     if(byId('v14ValueScope'))byId('v14ValueScope').value=scope;
+    if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value=binderViewScope();
     if(byId('totalValueLabel'))byId('totalValueLabel').textContent='Valor '+priceModeLabel(currentPriceMode())+' · '+scopeLabel;
     if(byId('totalValue'))byId('totalValue').textContent=money(value);
   }
