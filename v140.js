@@ -167,14 +167,17 @@
     if(!area||!bar||!spread)return;
     if(window.matchMedia('(max-width:820px)').matches){
       bar.style.removeProperty('left');
+      bar.style.removeProperty('width');
       bar.style.removeProperty('max-width');
+      bar.style.removeProperty('transform');
       return;
     }
     const ar=area.getBoundingClientRect(),sr=spread.getBoundingClientRect();
     if(sr.width<20)return;
-    const desired=sr.left-ar.left+(sr.width/2);
-    bar.style.left=desired+'px';
-    bar.style.maxWidth=Math.max(520,sr.width-8)+'px';
+    bar.style.left=(sr.left-ar.left)+'px';
+    bar.style.width=sr.width+'px';
+    bar.style.maxWidth=sr.width+'px';
+    bar.style.transform='none';
   }
 
   function ensureUnifiedTopbar(){
