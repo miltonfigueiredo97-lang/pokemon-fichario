@@ -359,23 +359,13 @@
         if(editingCardId){
           const saved=collection.find(c=>c.id===editingCardId);
           if(!saved)return;
-          // Mostra o último valor instantaneamente, mas NÃO para aí:
-          // toda abertura de uma carta existente tenta atualizar somente a MYP.
+          // Abrir uma carta deve ser instantâneo. A atualização real só acontece
+          // quando o usuário toca em "Atualizar preço desta carta".
           const cached=savedDual(saved);
           selectedMarket=cached;
           setPrices(cached.min,cached.avg,cached.max);
           renderDualMarket(cached,saved);
           fixLinks(saved);
-          const finish=normalizeFinish(saved.finish||$v('#cardFinish')?.value||'Normal');
-          const condition=saved.condition||$v('#cardCondition')?.value||'Nova';
-          const fresh=await queryBothMarkets(saved,finish,condition);
-          await persistDual(saved,fresh);
-          const updated=savedDual(saved);
-          selectedMarket=updated;
-          setPrices(updated.min,updated.avg,updated.max);
-          renderDualMarket(updated,saved);
-          await fixLinks(saved);
-          try{renderSummary()}catch{}
           return;
         }
         const finish=normalizeFinish($v('#cardFinish')?.value||'Normal'),condition=$v('#cardCondition')?.value||'Nova';
