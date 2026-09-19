@@ -235,3 +235,119 @@
   border-color:rgba(74,167,255,.38)!important;
   background:rgba(74,167,255,.045)!important;
 }
+
+
+/* V14.11 — maximize binder, remove desktop rail, compact summary actions */
+.v11-rail{display:none!important}
+
+@media(min-width:821px){
+  .binder-stage{
+    padding:52px 18px 8px!important;
+    place-items:start center!important;
+  }
+  .binder-spread{
+    width:min(calc(100% - 12px),calc((100dvh - 64px) * 1.455))!important;
+    height:auto!important;
+    max-width:calc(100% - 12px)!important;
+    max-height:calc(100dvh - 64px)!important;
+    aspect-ratio:1.455 / 1!important;
+    align-self:start!important;
+    justify-self:center!important;
+  }
+  .v14-unified-topbar{
+    top:6px!important;
+  }
+}
+
+/* Summary actions become a compact accordion instead of a long flat list. */
+#summaryPanel .action-grid{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:7px!important;
+}
+#summaryPanel .v1411-action-group{
+  margin:0!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  border-radius:10px!important;
+  background:rgba(10,14,17,.62)!important;
+  overflow:hidden!important;
+}
+#summaryPanel .v1411-action-group>summary{
+  min-height:48px!important;
+  display:grid!important;
+  grid-template-columns:30px minmax(0,1fr) 18px!important;
+  align-items:center!important;
+  gap:8px!important;
+  padding:7px 9px!important;
+  cursor:pointer!important;
+  list-style:none!important;
+  user-select:none!important;
+}
+#summaryPanel .v1411-action-group>summary::-webkit-details-marker{display:none!important}
+#summaryPanel .v1411-action-group>summary:hover{
+  background:rgba(255,255,255,.035)!important;
+}
+#summaryPanel .v1411-action-icon{
+  width:28px!important;
+  height:28px!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  border-radius:8px!important;
+  background:#151a1f!important;
+  color:#dfe5e2!important;
+  font-size:13px!important;
+  font-weight:900!important;
+}
+#summaryPanel .v1411-action-copy{
+  min-width:0!important;
+  display:grid!important;
+  gap:2px!important;
+}
+#summaryPanel .v1411-action-copy strong{
+  color:#eeeae1!important;
+  font-size:10px!important;
+  font-weight:900!important;
+}
+#summaryPanel .v1411-action-copy small{
+  color:#7f898f!important;
+  font-size:8px!important;
+  font-weight:700!important;
+}
+#summaryPanel .v1411-action-chevron{
+  color:#778188!important;
+  font-size:14px!important;
+  transform:rotate(0deg)!important;
+  transition:transform .16s ease!important;
+}
+#summaryPanel .v1411-action-group[open] .v1411-action-chevron{
+  transform:rotate(180deg)!important;
+}
+#summaryPanel .v1411-action-body{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:6px!important;
+  padding:0 8px 8px!important;
+}
+#summaryPanel .v1411-action-body .action-btn{
+  width:100%!important;
+  min-height:38px!important;
+  padding:7px 8px!important;
+  border-radius:8px!important;
+  font-size:9px!important;
+  line-height:1.2!important;
+  text-align:left!important;
+  grid-column:auto!important;
+}
+#summaryPanel #v1411Group_prices .v1411-action-body,
+#summaryPanel #v1411Group_settings .v1411-action-body{
+  grid-template-columns:1fr!important;
+}
+#summaryPanel #v12UpdatePrices,
+#summaryPanel #v112Logout{
+  grid-column:auto!important;
+}
+#summaryPanel #v1411Group_prices .v1411-action-icon{color:#58e4ba!important}
+#summaryPanel #v1411Group_excel .v1411-action-icon{color:#8fc7ff!important}
+#summaryPanel #v1411Group_export .v1411-action-icon{color:#f4c85a!important}
+#summaryPanel #v1411Group_settings .v1411-action-icon{color:#d7c7ff!important}
