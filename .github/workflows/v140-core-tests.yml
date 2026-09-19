@@ -95,7 +95,8 @@ jobs:
               masterImmediateReload:/await loadCardsV14\(false\)/.test(js)&&/aparecia vazio/.test(js),
               masterPromos:/isPromoSet/.test(js)&&/Promos não são misturadas automaticamente/.test(js),
               mobileDelete:/v14DeleteBinder/.test(js)&&/display:grid!important/.test(css),
-              summaryOverlay:/z-index:75/.test(css)
+              summaryOverlay:/z-index:75/.test(css),
+              desktopUnifiedTopbar:/v14UnifiedTopbar/.test(js)&&/ensureUnifiedTopbar/.test(js)&&/positionUnifiedTopbar/.test(js)&&/v14-unified-topbar/.test(css)&&/border-right:1px solid/.test(css)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
