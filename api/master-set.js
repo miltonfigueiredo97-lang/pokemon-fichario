@@ -93,6 +93,39 @@ function rawVariantsOf(card,lang){
   const seen=new Set();
   return out.filter(v=>{if(seen.has(v.key))return false;seen.add(v.key);return true});
 }
+function synthesizeMissingSetBriefs(list,setId,expectedCount){
+  const out=[...list];
+  if(!expectedCount||out.length>=expectedCount)return out;
+  const localIds=out.map(x=>String(x?.localId||'')).filter(Boolean);
+  if(!localIds.length)return out;
+
+  const prefixed=localIds.map(id=>id.match(/^([^0-9]+)(\d+)$/)).filter(Boolean);
+  const numeric=localIds.map(id=>id.match(/^(\d+)$/)).filter(Boolean);
+  let makeLocal=null;
+
+  if(prefixed.length>=Math.max(1,Math.ceil(localIds.length*0.6))){
+    const prefix=prefixed[0][1];
+    const same=prefixed.filter(m=>m[1]===prefix);
+    if(same.length>=Math.max(1,Math.ceil(localIds.length*0.6))){
+      const width=Math.max(...same.map(m=>m[2].length));
+      makeLocal=n=>prefix+String(n).padStart(width,'0');
+    }
+  }else if(numeric.length>=Math.max(1,Math.ceil(localIds.length*0.6))){
+    const width=Math.max(...numeric.map(m=>m[1].length));
+    makeLocal=n=>String(n).padStart(width,'0');
+  }
+
+  if(!makeLocal)return out;
+  const seen=new Set(out.map(x=>String(x?.localId||'')));
+  for(let n=1;n<=expectedCount;n++){
+    const localId=makeLocal(n);
+    if(seen.has(localId))continue;
+    out.push({id:setId+'-'+localId,localId,name:localId});
+    seen.add(localId);
+  }
+  return out;
+}
+
 function buildSetVariantProfile(rawByCard){
   const counts=new Map();
   for(const variants of rawByCard){
@@ -175,6 +208,7 @@ module.exports=async function handler(req,res){
         }
       }
     }
+    list=synthesizeMissingSetBriefs(list,set.id||setId,expectedCount);
 
     const details=await pool(list,18,async item=>{
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
