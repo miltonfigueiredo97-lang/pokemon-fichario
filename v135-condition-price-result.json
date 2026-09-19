@@ -1,0 +1,139 @@
+{
+  "utc": "2026-09-19T01:41:21.576Z",
+  "DM": {
+    "ok": true,
+    "provider": "Chromium",
+    "mode": "browser-page",
+    "title": "Lugia-EX (134/135)",
+    "edition": "Black & White 8: Tempestade de Plasma (PLS)",
+    "link": "https://mypcards.com/pokemon/produto/38909/lugia-ex",
+    "httpStatus": 200,
+    "min": 600,
+    "avg": 2153.62,
+    "max": 3999.99,
+    "samples": 11,
+    "availableQuantity": 1,
+    "exactVariant": true,
+    "complete": true,
+    "pageStats": {
+      "min": 600,
+      "avg": 2153.62,
+      "max": 3999.99,
+      "last": 2300
+    },
+    "variant": {
+      "found": true,
+      "min": 999.99,
+      "avg": 0,
+      "max": 0,
+      "samples": 1,
+      "finish": "foil",
+      "condition": "DM"
+    },
+    "matched": [
+      {
+        "seller": "Deckzy",
+        "finish": "Foil",
+        "condition": "DM",
+        "price": 999.99,
+        "qty": "1 un."
+      }
+    ]
+  },
+  "HP": {
+    "ok": true,
+    "provider": "Chromium",
+    "mode": "browser-page",
+    "title": "Lugia-EX (134/135)",
+    "edition": "Black & White 8: Tempestade de Plasma (PLS)",
+    "link": "https://mypcards.com/pokemon/produto/38909/lugia-ex",
+    "httpStatus": 200,
+    "min": 600,
+    "avg": 2153.62,
+    "max": 3999.99,
+    "samples": 11,
+    "availableQuantity": null,
+    "exactVariant": false,
+    "complete": true,
+    "pageStats": {
+      "min": 600,
+      "avg": 2153.62,
+      "max": 3999.99,
+      "last": 2300
+    },
+    "variant": {
+      "found": false,
+      "min": 0,
+      "avg": 0,
+      "max": 0,
+      "samples": 0,
+      "finish": "foil",
+      "condition": "HP"
+    },
+    "matched": []
+  },
+  "SP": {
+    "ok": true,
+    "provider": "Chromium",
+    "mode": "browser-page",
+    "title": "Lugia-EX (134/135)",
+    "edition": "Black & White 8: Tempestade de Plasma (PLS)",
+    "link": "https://mypcards.com/pokemon/produto/38909/lugia-ex",
+    "httpStatus": 200,
+    "min": 600,
+    "avg": 2153.62,
+    "max": 3999.99,
+    "samples": 11,
+    "availableQuantity": null,
+    "exactVariant": false,
+    "complete": true,
+    "pageStats": {
+      "min": 600,
+      "avg": 2153.62,
+      "max": 3999.99,
+      "last": 2300
+    },
+    "variant": {
+      "found": false,
+      "min": 0,
+      "avg": 0,
+      "max": 0,
+      "samples": 0,
+      "finish": "foil",
+      "condition": "SP"
+    },
+    "matched": []
+  },
+  "Nova": {
+    "ok": true,
+    "provider": "Chromium",
+    "mode": "browser-page",
+    "title": "Lugia-EX (134/135)",
+    "edition": "Black & White 8: Tempestade de Plasma (PLS)",
+    "link": "https://mypcards.com/pokemon/produto/38909/lugia-ex",
+    "httpStatus": 200,
+    "min": 600,
+    "avg": 2153.62,
+    "max": 3999.99,
+    "samples": 11,
+    "availableQuantity": null,
+    "exactVariant": false,
+    "complete": true,
+    "pageStats": {
+      "min": 600,
+      "avg": 2153.62,
+      "max": 3999.99,
+      "last": 2300
+    },
+    "variant": {
+      "found": false,
+      "min": 0,
+      "avg": 0,
+      "max": 0,
+      "samples": 0,
+      "finish": "foil",
+      "condition": "NM"
+    },
+    "matched": []
+  }
+}
