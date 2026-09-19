@@ -102,7 +102,10 @@ jobs:
               directionalSort:/manual_asc/.test(js)&&/manual_desc/.test(js)&&/name_asc/.test(js)&&/name_desc/.test(js)&&/number_asc/.test(js)&&/number_desc/.test(js),
               binderViewScope:/binder_view_scope/.test(js)&&/v14BinderViewScope/.test(js)&&/Mostrar no fichário/.test(js),
               viewScopeCss:/v14-binder-view-scope/.test(css),
-              rapidPageSkip:/cancelPageFlip/.test(pageJs)&&/pageFlipSuppressUntil/.test(pageJs)&&/rapidWindow/.test(pageJs)&&/pageFlipBusy/.test(pageJs)
+              rapidPageSkip:/cancelPageFlip/.test(pageJs)&&/pageFlipSuppressUntil/.test(pageJs)&&/rapidWindow/.test(pageJs)&&/pageFlipBusy/.test(pageJs),
+              topbarBinderCentered:/binder-spread/.test(js)&&/desired=sr\.left-ar\.left\+\(sr\.width\/2\)/.test(js),
+              goStart:/v14GoStart/.test(js)&&/goToBinderStart/.test(js)&&/cancelBinderPageFlipV14/.test(pageJs),
+              binderSearch:/v14BinderSearch/.test(js)&&/binderSearchScore/.test(js)&&/goToBinderSearchCard/.test(js)&&/v14-binder-search/.test(css)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
