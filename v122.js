@@ -2,10 +2,11 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.3';
+  const APP_VERSION='V13.4-test';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
+  const conditionSelections=new Map();
   let bulkBusy=false;
 
   const FINISHES=[
@@ -19,7 +20,21 @@
     ['Especial','Especial / outra']
   ];
 
+  const CONDITIONS=[
+    ['Nova','Nova / Near Mint (NM)'],
+    ['SP','Pouco jogada (SP)'],
+    ['MP','Moderadamente jogada (MP)'],
+    ['HP','Muito jogada (HP)'],
+    ['DM','Danificada (DM)']
+  ];
+
   const RELEASE_NOTES=[
+    {version:'V13.4',title:'Preços completos e condição no scan',items:[
+      'MYP agora usa o menor preço e o preço médio publicados pela própria página e calcula o maior anúncio regular da carta.',
+      'Cartas novas consultam e salvam o preço da MYP antes de entrar no fichário; a Liga não bloqueia mais esse cadastro.',
+      'Ao adicionar por foto/scan, acabamento e condição precisam ser confirmados antes de salvar.',
+      'Condição escolhida é usada na consulta de preço e salva junto da carta.'
+    ]},
     {version:'V13.3',title:'Preço automático em cartas novas',items:[
       'Cartas novas sem link MYP agora pesquisam automaticamente a própria MYP pelo nome.',
       'O sistema coleta as impressões candidatas, confere número e coleção e escolhe a página correta antes de ler as ofertas.',
@@ -323,45 +338,146 @@
     const selected=[];try{catalogSelection.forEach((c,k)=>selected.push([k,c]))}catch{}
     if(!selected.length){box?.remove();return}
     if(!box){box=document.createElement('div');box.id='v122FinishBox';box.className='v122-finish-box';tray.prepend(box)}
-    const scanMode=/detectado ao vivo/i.test($v('#ocrStatus')?.textContent||'');
-    box.innerHTML='<div class="v122-finish-title"><strong>Acabamento / variante</strong><small>Isso altera o preço. Confirme antes de adicionar.</small></div>';
+
+    const photoMode=!!$v('#cardPhoto')?.files?.length||/foto|pistas|ocr|lendo|detectado/i.test($v('#ocrStatus')?.textContent||'');
+    box.innerHTML='<div class="v122-finish-title"><strong>Acabamento e condição</strong><small>Esses dois campos definem a cotação correta. Em foto/scan, confirme ambos.</small></div>';
+
     selected.forEach(([key,c])=>{
-      if(!finishSelections.has(key))finishSelections.set(key,scanMode?'':suggestFinish(c));
-      const row=document.createElement('label');row.className='v122-finish-row';
-      const val=finishSelections.get(key)||'';
-      row.innerHTML=`<span>${c.name||'Carta'} <small>${c.number||''}</small></span><select data-finish-key="${encodeURIComponent(key)}"><option value="">Selecione o acabamento…</option>${FINISHES.map(([v,l])=>`<option value="${v}"${v===val?' selected':''}>${l}</option>`).join('')}</select>`;
+      if(!finishSelections.has(key))finishSelections.set(key,photoMode?'':suggestFinish(c));
+      if(!conditionSelections.has(key))conditionSelections.set(key,photoMode?'':'Nova');
+
+      const row=document.createElement('div');row.className='v122-finish-row';
+      const finish=finishSelections.get(key)||'',condition=conditionSelections.get(key)||'';
+      row.innerHTML=`
+        <span>${c.name||'Carta'} <small>${c.number||''}</small></span>
+        <select data-finish-key="${encodeURIComponent(key)}" aria-label="Acabamento">
+          <option value="">Selecione o acabamento…</option>
+          ${FINISHES.map(([v,l])=>`<option value="${v}"${v===finish?' selected':''}>${l}</option>`).join('')}
+        </select>
+        <select data-condition-key="${encodeURIComponent(key)}" aria-label="Condição">
+          <option value="">Selecione a condição…</option>
+          ${CONDITIONS.map(([v,l])=>`<option value="${v}"${v===condition?' selected':''}>${l}</option>`).join('')}
+        </select>`;
       box.appendChild(row);
     });
+
     box.querySelectorAll('select[data-finish-key]').forEach(s=>s.addEventListener('change',()=>finishSelections.set(decodeURIComponent(s.dataset.finishKey),s.value)));
+    box.querySelectorAll('select[data-condition-key]').forEach(s=>s.addEventListener('change',()=>conditionSelections.set(decodeURIComponent(s.dataset.conditionKey),s.value)));
+  }
+
+  async function priceForNewCard(card,finish,condition){
+    // Cadastro novo prioriza a MYP, que é a fonte que já funciona no backend.
+    // A Liga continua disponível nas atualizações, mas não pode impedir a carta
+    // nova de receber preço/link enquanto estiver bloqueando datacenter.
+    const myp=await querySource('/api/mypcards-public','myp',card,finish,condition)
+      .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''}));
+    const primary=hasPrice(myp)?myp:null;
+    return {
+      source:primary?'MYP Cards':'Sem preço BR',
+      min:Number(primary?.min||0),
+      avg:Number(primary?.avg||0),
+      max:Number(primary?.max||0),
+      link:primary?.link||'',
+      checkedAt:primary?.checkedAt||new Date().toISOString(),
+      liga:null,
+      myp,
+      finish,
+      condition
+    };
   }
 
   async function addSelectedV122(){
     let cards=[];try{cards=[...catalogSelection.entries()]}catch{}
     if(!cards.length)return;
     renderFinishControls();
-    for(const [key] of cards){if(!finishSelections.get(key)){try{toast('Escolha o acabamento da carta antes de adicionar.')}catch{};$v('#v122FinishBox')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}}
-    const b=$v('#btnAddSelected');if(b){b.disabled=true;b.dataset.old=b.textContent;b.textContent='Adicionando…'}
-    try{
-      const positions=freePositions(pendingPosition?.page||currentPage,cards.length),maxPage=Math.max(...positions.map(p=>p.page));if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);
-      for(let i=0;i<cards.length;i++){
-        if(i>0)await sleep(1250);
-        const [key,raw]=cards[i],pos=positions[i],finish=finishSelections.get(key),condition='Nova';
-        const c={...raw};const full=await resolveFullNumber(c);if(full)c.number=full;
-        const dual=await queryBothMarkets(c,finish,condition);dual.finishConfirmed=true;
-        const payload=cardPayload(c,{page:pos.page,slot:pos.slot,status:'owned',quantity:1,condition,finish,finishConfirmed:true,notes:''},dual);
-        const {data:existing,error:findErr}=await db.from('pokemon_cards').select('id,quantity').eq('user_id',currentUser.id).eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).maybeSingle();if(findErr)throw findErr;
-        if(existing){const patch={quantity:(+existing.quantity||0)+1,finish_confirmed:true,...marketPatch(c,dual)};const{error}=await db.from('pokemon_cards').update(patch).eq('id',existing.id).eq('user_id',currentUser.id);if(error)throw error}
-        else{const{error}=await db.from('pokemon_cards').insert(payload);if(error)throw error}
+
+    for(const [key] of cards){
+      if(!finishSelections.get(key)||!conditionSelections.get(key)){
+        try{toast('Escolha o acabamento e a condição antes de adicionar.')}catch{}
+        $v('#v122FinishBox')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+        return;
       }
-      catalogSelection.clear();finishSelections.clear();closeDialog('addDialog');currentPage=positions[0]?.page||currentPage;await loadCards(false);toast(`${cards.length} carta${cards.length===1?'':'s'} adicionada${cards.length===1?'':'s'}.`);
-    }catch(e){console.error(e);toast('Não consegui adicionar todas as cartas.')}finally{if(b){b.disabled=false;b.textContent=b.dataset.old||'＋ Adicionar'}}
+    }
+
+    const b=$v('#btnAddSelected');
+    if(b){b.disabled=true;b.dataset.old=b.textContent;b.textContent='Buscando preço…'}
+
+    try{
+      const positions=freePositions(pendingPosition?.page||currentPage,cards.length),
+        maxPage=Math.max(...positions.map(p=>p.page));
+      if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);
+
+      for(let i=0;i<cards.length;i++){
+        if(i>0)await sleep(900);
+        const [key,raw]=cards[i],pos=positions[i],
+          finish=finishSelections.get(key),
+          condition=conditionSelections.get(key);
+
+        if(b)b.textContent=`Preço ${i+1}/${cards.length}…`;
+
+        const card={...raw};
+        const full=await resolveFullNumber(card);if(full)card.number=full;
+
+        const dual=await priceForNewCard(card,finish,condition);
+        dual.finishConfirmed=true;
+
+        // O link encontrado precisa acompanhar o objeto da carta já no primeiro save.
+        if(dual?.myp?.link){
+          card.myp_price_link=dual.myp.link;
+          card.price_br_link=dual.myp.link;
+          card.market_edition_pt=dual.myp.editionPt||card.market_edition_pt||'';
+          card.market_name_pt=dual.myp.namePt||card.market_name_pt||card.name;
+        }
+
+        const payload=cardPayload(card,{
+          page:pos.page,slot:pos.slot,status:'owned',quantity:1,
+          condition,finish,finishConfirmed:true,notes:''
+        },dual);
+
+        const {data:existing,error:findErr}=await db.from('pokemon_cards')
+          .select('id,quantity')
+          .eq('user_id',currentUser.id)
+          .eq('card_key',payload.card_key)
+          .eq('condition',payload.condition)
+          .eq('finish',payload.finish)
+          .maybeSingle();
+        if(findErr)throw findErr;
+
+        if(existing){
+          const patch={
+            quantity:(+existing.quantity||0)+1,
+            finish_confirmed:true,
+            ...marketPatch(card,dual)
+          };
+          const{error}=await db.from('pokemon_cards').update(patch).eq('id',existing.id).eq('user_id',currentUser.id);
+          if(error)throw error;
+        }else{
+          const{error}=await db.from('pokemon_cards').insert(payload);
+          if(error)throw error;
+        }
+      }
+
+      catalogSelection.clear();
+      finishSelections.clear();
+      conditionSelections.clear();
+      closeDialog('addDialog');
+      currentPage=positions[0]?.page||currentPage;
+      await loadCards(false);
+      toast(`${cards.length} carta${cards.length===1?'':'s'} adicionada${cards.length===1?'':'s'} com condição e cotação salvas.`);
+    }catch(e){
+      console.error(e);
+      toast('Não consegui adicionar todas as cartas.');
+    }finally{
+      if(b){b.disabled=false;b.textContent=b.dataset.old||'＋ Adicionar'}
+    }
   }
 
   function installFinishConfirmation(){
     injectFinishOptions();
     const results=$v('#resultsList');if(results){results.addEventListener('click',()=>setTimeout(renderFinishControls,0));new MutationObserver(()=>setTimeout(renderFinishControls,0)).observe(results,{childList:true})}
-    const clear=$v('#btnClearSelection');clear?.addEventListener('click',()=>{finishSelections.clear();setTimeout(renderFinishControls,0)});
+    const clear=$v('#btnClearSelection');clear?.addEventListener('click',()=>{finishSelections.clear();conditionSelections.clear();setTimeout(renderFinishControls,0)});
     const add=$v('#btnAddSelected');if(add)add.onclick=addSelectedV122;
+    const photo=$v('#cardPhoto');photo?.addEventListener('change',()=>{finishSelections.clear();conditionSelections.clear();setTimeout(renderFinishControls,0)});
   }
 
   function ensureMarketBoard(){
@@ -384,7 +500,7 @@
     if(!status)return;
     if(hasAverage(dual?.liga))status.textContent=`Liga Pokémon · média válida · ${finishLabel(card?.finish||dual?.finish)}`;
     else if(hasAverage(dual?.myp))status.textContent=`Liga sem média válida · usando média MYP · ${finishLabel(card?.finish||dual?.finish)}`;
-    else if(hasPrice(dual?.liga)||hasPrice(dual?.myp))status.textContent=`Cotação parcial encontrada · campos ausentes ficam em branco · ${finishLabel(card?.finish||dual?.finish)}`;
+    else if(hasPrice(dual?.liga)||hasPrice(dual?.myp))status.textContent=`Cotação encontrada · ${finishLabel(card?.finish||dual?.finish)} · condição ${dual?.condition||card?.condition||'Nova'}`;
     else{
       const reasons=[];
       if(dual?.myp?.needsMypToken||dual?.myp?.officialError==='myp_token_required')reasons.push('MYP: falta X-Api-Token');
