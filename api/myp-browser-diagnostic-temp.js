@@ -42,7 +42,7 @@ module.exports=async function handler(req,res){
       })).slice(0,60));
       filtered={url,httpStatus:r2?.status()||0,body:(await page.evaluate(()=>document.body?.innerText||'')).slice(0,10000)};
     }
-    res.status(200).json({ok:true,httpStatus:r1?.status()||0,match,editionCount:editions.length,links,filtered});
+    res.status(200).json({ok:true,httpStatus:r1?.status()||0,match,editionCount:editions.length,editions,links,filtered});
   }catch(error){
     res.status(200).json({ok:false,error:error?.message||String(error),stack:error?.stack||''});
   }finally{
