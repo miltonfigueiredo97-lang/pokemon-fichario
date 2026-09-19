@@ -104,7 +104,9 @@ module.exports=async function handler(req,res){
       const bn=Number(String(b.number).replace(/\D/g,''))||99999;
       return an-bn||a.variantOrder-b.variantOrder||a.name.localeCompare(b.name);
     });
-    const value={ok:true,set:{id:set.id||setId,name:set.name||setId,series:set?.serie?.name||'',releaseDate:set.releaseDate||'',cardCount:set.cardCount||{},languageCode:lang==='pt'?'pt-br':lang},entries};
+    const setName=set.name||setId;
+    const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
+    const value={ok:true,set:{id:set.id||setId,name:setName,series:set?.serie?.name||'',releaseDate:set.releaseDate||'',cardCount:set.cardCount||{},languageCode:lang==='pt'?'pt-br':lang,isPromoSet},entries};
     CACHE.set(cacheKey,{at:Date.now(),value});
     return res.status(200).json(value);
   }catch(error){
