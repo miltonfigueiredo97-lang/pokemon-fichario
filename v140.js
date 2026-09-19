@@ -1002,7 +1002,12 @@
           .eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).maybeSingle();
         if(findErr)throw findErr;
         if(existing){
-          const {data,error}=await db.from('pokemon_cards').update({quantity:(+existing.quantity||0)+1,collection_status:'owned',price_pending:true})
+          const now=new Date().toISOString();
+          const {data,error}=await db.from('pokemon_cards').update({
+            quantity:(+existing.quantity||0)+1,collection_status:'owned',price_pending:true,
+            price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
+            price_attempts:0,price_priority:0,price_last_error:null
+          })
             .eq('id',existing.id).eq('user_id',currentUser.id).select('*').single();
           if(error)throw error;saved.push(data);
         }else{
