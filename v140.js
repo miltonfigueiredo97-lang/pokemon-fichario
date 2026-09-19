@@ -9,6 +9,8 @@
     original:{},
     jpImageCache:new Map(),
     priceJobs:new Map(),
+    priceQueue:[],
+    priceWorkers:0,
     scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map()},
     setsCache:new Map(),
     masterPreview:null
@@ -556,8 +558,17 @@
 
   function queueBackgroundPrices(cards){
     for(const card of cards||[]){
-      if(!card?.id||V14.priceJobs.has(card.id))continue;
-      const job=(async()=>{
+      if(!card?.id||V14.priceJobs.has(card.id)||V14.priceQueue.some(x=>x.id===card.id))continue;
+      V14.priceQueue.push(card);
+      V14.priceJobs.set(card.id,true);
+    }
+    while(V14.priceWorkers<2&&V14.priceQueue.length)runPriceWorker();
+  }
+  async function runPriceWorker(){
+    V14.priceWorkers++;
+    try{
+      while(V14.priceQueue.length){
+        const card=V14.priceQueue.shift();
         try{
           const cardForPrice={
             ...card,
@@ -583,10 +594,15 @@
           try{renderBinder();renderSummary()}catch{}
         }catch(e){
           console.warn('[V14 preço em segundo plano]',card.name,e);
-          await db.from('pokemon_cards').update({price_pending:false}).eq('id',card.id).eq('user_id',currentUser.id).catch(()=>{});
-        }finally{V14.priceJobs.delete(card.id)}
-      })();
-      V14.priceJobs.set(card.id,job);
+          try{await db.from('pokemon_cards').update({price_pending:false}).eq('id',card.id).eq('user_id',currentUser.id)}catch{}
+        }finally{
+          V14.priceJobs.delete(card.id);
+          await sleep(450);
+        }
+      }
+    }finally{
+      V14.priceWorkers=Math.max(0,V14.priceWorkers-1);
+      if(V14.priceQueue.length&&V14.priceWorkers<2)runPriceWorker();
     }
   }
 
