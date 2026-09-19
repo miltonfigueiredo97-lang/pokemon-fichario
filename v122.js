@@ -749,7 +749,7 @@
       if(b){b.disabled=false;b.textContent='↻ Atualizar preços · MYP'}
     }
   }
-  function rewirePriceButton(){const old=$v('#v12UpdatePrices');if(!old||old.dataset.v122==='1')return;const b=old.cloneNode(true);b.dataset.v122='1';b.textContent='↻ Atualizar preços · MYP';old.replaceWith(b);b.addEventListener('click',updateAllPrices)}
+  function rewirePriceButton(){const old=$v('#v12UpdatePrices');if(!old||old.dataset.v122==='1')return;const b=old.cloneNode(true);b.dataset.v122='1';b.textContent='↻ Atualizar preços visíveis';old.replaceWith(b);b.addEventListener('click',()=>window.PB14?.updateVisiblePrices?window.PB14.updateVisiblePrices():updateAllPrices())}
 
   function releaseHtml(){return RELEASE_NOTES.map((n,i)=>`<section class="v12-release-item${i===0?' current':''}"><div class="v12-release-head"><strong>${n.version}</strong><span>${n.title}</span></div><ul>${n.items.map(x=>`<li>${x}</li>`).join('')}</ul></section>`).join('')}
   function openNotes(){let d=$v('#v122ReleaseDialog');if(!d){d=document.createElement('dialog');d.id='v122ReleaseDialog';d.className='sheet-dialog v12-release-dialog';d.innerHTML=`<div class="dialog-shell v12-release-shell"><div class="dialog-head"><div><p class="kicker">Pokémon Binder BR</p><h2>Notas da versão</h2><p class="muted">Versão carregada: <strong>${APP_VERSION}</strong></p></div><button class="icon-only" type="button">×</button></div><div class="v12-release-list">${releaseHtml()}</div></div>`;document.body.appendChild(d);d.querySelector('.icon-only').onclick=()=>d.close();d.addEventListener('click',e=>{if(e.target===d)d.close()})}if(!d.open)d.showModal()}
