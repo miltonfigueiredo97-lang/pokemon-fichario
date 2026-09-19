@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-tcgdex-card-detail.txt
+          OUT=debug-myp-direct-lugia-v.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -36,12 +36,12 @@ jobs:
             echo >> "$OUT"
           }
 
-          probe "TCGdex swsh12-138 detail" "https://api.tcgdex.net/v2/en/cards/swsh12-138"
+          probe "Direct MYP Lugia V 174895" "https://pokemon-fichario.vercel.app/api/myp-browser-diagnostic-temp"
 
       - name: Commit diagnostics
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-tcgdex-card-detail.txt
+          git add debug-myp-direct-lugia-v.txt
           git commit -m "Debug price source responses" || exit 0
           git push
