@@ -692,8 +692,18 @@
     byId('v14PromoNotice')?.classList.add('hidden');
     V14.masterPreview=null;
     try{
-      const list=[...(await fetchSeries(lang))].reverse();
-      series.innerHTML='<option value="">Selecione a geração</option>'+list.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
+      const list=[...(await fetchSeries(lang))];
+      let englishById=new Map();
+      if(lang==='ja'){
+        try{
+          const en=await fetchSeries('en');
+          englishById=new Map(en.map(s=>[String(s.id||'').toLowerCase(),s.name||s.id]));
+        }catch{}
+      }
+      series.innerHTML='<option value="">Selecione a geração</option>'+list.map(s=>{
+        const label=lang==='ja'?(englishById.get(String(s.id||'').toLowerCase())||s.name||s.id):(s.name||s.id);
+        return '<option value="'+esc(s.id)+'">'+esc(label)+'</option>';
+      }).join('');
       series.disabled=false;
       byId('v14SetStatus').textContent='Escolha a geração e depois a coleção.';
     }catch(e){
@@ -711,15 +721,16 @@
     sets.disabled=true;sets.innerHTML='<option value="">Carregando coleções…</option>';
     byId('v14SetStatus').textContent='Carregando coleções da geração…';
     try{
-      const serie=await fetchSeriesDetail(lang,seriesId),list=Array.isArray(serie.sets)?serie.sets:[];
-      const promo=s=>/promo|black star/i.test(String(s.name||'')+' '+String(s.id||''));
-      list.sort((a,b)=>Number(promo(a))-Number(promo(b))||String(a.name||'').localeCompare(String(b.name||''),'pt-BR',{numeric:true}));
+      const r=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const catalog=await r.json();
+      if(!catalog?.ok)throw new Error(catalog?.message||'Falha ao carregar as coleções');
+      const list=Array.isArray(catalog.sets)?catalog.sets:[];
       sets.innerHTML='<option value="">Selecione a coleção</option>'+list.map(s=>
-        '<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+(promo(s)?' · PROMOS':'')+'</option>'
+        '<option value="'+esc(s.id)+'">'+esc(s.displayName||s.name||s.id)+(s.isPromo?' · PROMOS':'')+'</option>'
       ).join('');
       sets.disabled=false;
-      const promoCount=list.filter(promo).length;
-      byId('v14SetStatus').textContent=list.length+' coleções nesta geração'+(promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
+      const promoCount=list.filter(s=>s.isPromo).length;
+      byId('v14SetStatus').textContent=list.length+' coleções em ordem de lançamento'+(promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
     }catch(e){
       console.error(e);sets.innerHTML='<option value="">Erro ao carregar coleções</option>';
       byId('v14SetStatus').textContent='Não consegui carregar as coleções desta geração.';
@@ -733,8 +744,10 @@
       const r=await fetch('/api/master-set?lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
       const j=await r.json();
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
-      V14.masterPreview={...j,owned:new Set(),lang};
-      byId('v14MasterTitle').textContent=j.set.name;
+      const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
+        .replace(/\s*·\s*PROMOS\s*$/i,'').trim();
+      V14.masterPreview={...j,owned:new Set(),lang,displaySetName:selectedLabel||j.set.name};
+      byId('v14MasterTitle').textContent=V14.masterPreview.displaySetName;
       byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
       const notice=byId('v14PromoNotice');
       if(notice){
@@ -805,10 +818,11 @@
     try{
       const pages=Math.max(1,Math.ceil(p.entries.length/9));
       const sortOrder=Math.max(0,...V14.binders.map(b=>+b.sort_order||0))+1;
-      const binderName=nextMasterBinderName(p.set.name,p.set.id);
+      const displaySetName=p.displaySetName||p.set.name;
+      const binderName=nextMasterBinderName(displaySetName,p.set.id);
       const {data:binder,error:be}=await db.from('pokemon_binders').insert({
         user_id:currentUser.id,name:binderName,pages,background:'graphite',sort_order:sortOrder,binder_kind:'set',
-        set_id:p.set.id,set_name:p.set.name,set_language:p.set.languageCode,master_language:p.set.languageCode,master_total:p.entries.length
+        set_id:p.set.id,set_name:displaySetName,set_language:p.set.languageCode,master_language:p.set.languageCode,master_total:p.entries.length
       }).select('*').single();
       if(be)throw be;
       createdBinder=binder;

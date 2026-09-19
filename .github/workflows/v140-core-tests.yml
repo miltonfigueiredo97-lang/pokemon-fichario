@@ -11,6 +11,8 @@ on:
       - 'index.html'
       - 'script.js'
       - 'api/master-set.js'
+      - 'api/set-catalog.js'
+      - 'data/jp-set-labels.json'
       - 'api/card-image-fallback.js'
       - 'api/jp-card-image.js'
       - 'api/image-proxy.js'
@@ -26,6 +28,8 @@ on:
       - 'index.html'
       - 'script.js'
       - 'api/master-set.js'
+      - 'api/set-catalog.js'
+      - 'data/jp-set-labels.json'
       - 'api/card-image-fallback.js'
       - 'api/jp-card-image.js'
       - 'api/image-proxy.js'
@@ -49,6 +53,7 @@ jobs:
           node --check v122.js
           node --check v140.js
           node --check api/master-set.js
+          node --check api/set-catalog.js
           node --check api/card-image-fallback.js
           node --check api/jp-card-image.js
           node --check api/image-proxy.js
@@ -74,6 +79,10 @@ jobs:
             const entries=master.body?.entries||[];
             const exeggcute=entries.filter(x=>x.apiId==='sv08-001');
             const masterPass=master.status===200&&master.body?.ok&&entries.length>252&&exeggcute.some(x=>x.finish==='Normal')&&exeggcute.some(x=>x.finish==='Reverse Foil');
+
+            const classic=await invoke('api/master-set.js',{lang:'pt',set:'cel25cc'});
+            const classicEntries=classic.body?.entries||[];
+            const classicPass=classic.status===200&&classic.body?.ok&&classicEntries.length>=25;
 
             const img=await invoke('api/card-image-fallback.js',{name:'Umbreon ex',number:'091',hp:'',rarity:''});
             const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
@@ -125,10 +134,14 @@ jobs:
               groupedSummaryActions:/organizeSummaryActionsV14/.test(js)&&/v1411Group_/.test(js)&&/id:'prices'/.test(js)&&/id:'excel'/.test(js)&&/id:'export'/.test(js)&&/id:'settings'/.test(js)&&/v1411-action-group/.test(css),
               cleanTopbarActions:!/id="v14FavoritesOnly"/.test(js)&&!/id="v14RenameBinder"/.test(js)&&/id="v14DeleteBinder"/.test(js),
               deleteConfirmation:/v14DeleteDialog/.test(js)&&/v14CancelDelete/.test(js)&&/v14ConfirmDelete/.test(js)&&/não pode ser desfeita/i.test(js)&&/v14-danger-button/.test(css),
-              deleteCascadeFlow:/pokemon_binders/.test(js)&&/\.delete\(\)/.test(js)&&/Fichário e suas cartas foram excluídos permanentemente/.test(js)
+              deleteCascadeFlow:/pokemon_binders/.test(js)&&/\.delete\(\)/.test(js)&&/Fichário e suas cartas foram excluídos permanentemente/.test(js),
+              japaneseReadableLabels:/api\/set-catalog/.test(js)&&/englishById/.test(js)&&/displaySetName/.test(js),
+              releaseOrderedSets:/set-catalog/.test(js)&&/ordem de lançamento/.test(js),
+              jpLabelMap:JSON.parse(fs.readFileSync('data/jp-set-labels.json','utf8')).SVLN==='Stellar Tera Type Starter Set Sylveon ex',
+              classicFallback:/jsonOrNull/.test(fs.readFileSync('api/master-set.js','utf8'))&&/fallbackLanguageUsed/.test(fs.readFileSync('api/master-set.js','utf8'))
             };
-            const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
-            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
+            const pass=masterPass&&classicPass&&imagePass&&Object.values(assertions).every(Boolean);
+            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},image:img.body,assertions};
             fs.writeFileSync('v140-core-test-result.json',JSON.stringify(out,null,2));
             if(!pass)process.exitCode=1;
           })().catch(e=>{fs.writeFileSync('v140-core-test-result.json',JSON.stringify({pass:false,error:String(e),stack:e.stack},null,2));process.exitCode=1});
