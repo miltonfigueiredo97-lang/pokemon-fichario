@@ -237,7 +237,7 @@
         wrap.className='v14-binder-controls';
         wrap.innerHTML=
           '<select id="v14BinderSelect" aria-label="Fichário"></select>'+
-          '<label class="v14-binder-search" title="Pesquisar dentro deste fichário"><span>⌕</span><input id="v14BinderSearch" type="search" list="v14BinderSearchList" autocomplete="off" placeholder="Buscar carta…"><datalist id="v14BinderSearchList"></datalist></label>'+
+          '<label class="v14-binder-search" title="Pesquisar dentro deste fichário"><span>⌕</span><input id="v14BinderSearch" type="search" autocomplete="off" placeholder="Buscar carta…"></label>'+
           '<select id="v14SortSelect" aria-label="Ordenação">'+
             '<option value="manual_asc">Ordem do fichário · 0 → X</option>'+
             '<option value="manual_desc">Ordem do fichário · X → 0</option>'+
@@ -336,18 +336,16 @@
     byId('v14BinderSelect')?.addEventListener('change',e=>selectBinder(e.target.value));
     byId('v14SortSelect')?.addEventListener('change',e=>setSortMode(e.target.value));
     byId('v14GoStart')?.addEventListener('click',goToBinderStart);
-    byId('v14BinderSearch')?.addEventListener('input',updateBinderSearchSuggestions);
-    byId('v14BinderSearch')?.addEventListener('change',e=>openBinderSearchSelection(e.target.value));
+    byId('v14BinderSearch')?.addEventListener('input',e=>applyBinderSearch(e.currentTarget.value));
     byId('v14BinderSearch')?.addEventListener('keydown',e=>{
       if(e.key==='Enter'){
         e.preventDefault();
-        const exact=V14.binderSearchLookup.get(e.currentTarget.value);
-        const card=exact||V14.binderSearchMatches[0];
+        const card=V14.binderSearchMatches[0];
         if(card)goToBinderSearchCard(card);
         else if(e.currentTarget.value.trim())toast('Carta não encontrada neste fichário.');
       }else if(e.key==='Escape'){
         e.currentTarget.value='';
-        updateBinderSearchSuggestions({currentTarget:e.currentTarget});
+        applyBinderSearch('');
       }
     });
     byId('v14FavoritesOnly')?.addEventListener('click',toggleFavoritesFilter);
@@ -357,11 +355,9 @@
       await updateSettings({summary_value_scope:value},true);
       renderSummary();
     });
-    byId('v14BinderViewScope')?.addEventListener('change',async e=>{
-      const value=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
-      settings.binder_view_scope=value;
+    byId('v14BinderViewScope')?.addEventListener('change',e=>{
+      V14.viewScope=['all','owned','missing'].includes(e.target.value)?e.target.value:'all';
       currentPage=1;
-      await updateSettings({binder_view_scope:value},true);
       renderBinder();
       renderPagesGrid();
       renderBinderControls();
@@ -421,41 +417,18 @@
     return score;
   }
 
-  function updateBinderSearchSuggestions(e){
-    const input=e?.currentTarget||byId('v14BinderSearch');
-    const list=byId('v14BinderSearchList');
-    if(!input||!list)return;
-    const q=input.value.trim();
-    V14.binderSearchLookup.clear();
-    V14.binderSearchMatches=[];
-    list.innerHTML='';
-    if(!q)return;
-    const cards=orderedViewCards();
-    const found=cards.map((card,index)=>({card,index,score:binderSearchScore(card,q)}))
-      .filter(x=>x.score>0)
-      .sort((a,b)=>b.score-a.score||a.index-b.index)
-      .slice(0,20)
-      .map(x=>x.card);
-    V14.binderSearchMatches=found;
-    for(const card of found){
-      let label=binderSearchLabel(card),unique=label,n=2;
-      while(V14.binderSearchLookup.has(unique))unique=label+' · '+n++;
-      V14.binderSearchLookup.set(unique,card);
-      const option=document.createElement('option');
-      option.value=unique;
-      list.appendChild(option);
-    }
-  }
-
-  function openBinderSearchSelection(value){
-    const card=V14.binderSearchLookup.get(value);
-    if(card)goToBinderSearchCard(card);
+  function applyBinderSearch(value){
+    V14.binderSearchQuery=String(value||'').trim();
+    currentPage=1;
+    renderBinder();
+    renderPagesGrid();
+    renderBinderControls();
   }
 
   function goToBinderSearchCard(card){
     const cards=orderedViewCards();
     let page=1;
-    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
+    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
       page=Math.max(1,+card.binder_page||1);
     }else{
       const index=cards.findIndex(c=>String(c.id)===String(card.id)||c._group_ids?.includes?.(card.id));
@@ -468,7 +441,7 @@
     renderPagesGrid();
     syncTopbarNavigation();
     const input=byId('v14BinderSearch');
-    if(input)input.value=binderSearchLabel(card);
+    if(input)input.value=V14.binderSearchQuery||card.name||'';
     setTimeout(()=>{
       const target=[...document.querySelectorAll('#binderSheet .pocket-card')].find(el=>String(el.dataset.id)===String(card.id));
       if(!target)return;
@@ -539,10 +512,13 @@
   async function selectBinder(id){
     V14.activeBinderId=id||'all';
     V14.favoritesOnly=isFavorites();
+    V14.viewScope='all';
+    V14.binderSearchQuery='';
     currentPage=1;
+    try{activeStatusFilter='all'}catch{}
     if(byId('v14BinderSearch'))byId('v14BinderSearch').value='';
+    if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value='all';
     V14.binderSearchMatches=[];
-    V14.binderSearchLookup.clear();
     await db.from('pokemon_settings').update({current_binder_id:isGeneral()?null:V14.activeBinderId}).eq('user_id',currentUser.id);
     collection=physicalCollection();
     syncLegacySettings();
@@ -895,7 +871,7 @@
     return Math.max(1,Math.ceil(orderedViewCards().length/9));
   }
   function renderBinderV14(){
-    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
+    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
       const out=V14.original.renderBinder();
       syncTopbarNavigation();
       return out;
@@ -919,7 +895,7 @@
   }
 
   function renderPagesGridV14(){
-    if(!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly)return V14.original.renderPagesGrid();
+    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly)return V14.original.renderPagesGrid();
     const g=byId('pagesGrid');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();g.innerHTML='';
     for(let p=1;p<=pages;p++){
