@@ -21,12 +21,19 @@ jobs:
           ROOT=$(curl -L --max-time 40 -sS -o /tmp/root -w '%{http_code}' "$BASE/" || true)
           JS=$(curl -L --max-time 40 -sS -o /tmp/js -w '%{http_code}' "$BASE/v140.js" || true)
           MASTER=$(curl -L --max-time 70 -sS -o /tmp/master -w '%{http_code}' "$BASE/api/master-set?lang=pt&set=sv08" || true)
+          export ROOT_CODE="$ROOT" JS_CODE="$JS" MASTER_CODE="$MASTER"
           node - <<'EOF'
           const fs=require('fs');
           const root=fs.existsSync('/tmp/root')?fs.readFileSync('/tmp/root','utf8'):'';
           const js=fs.existsSync('/tmp/js')?fs.readFileSync('/tmp/js','utf8'):'';
           let master={};try{master=JSON.parse(fs.readFileSync('/tmp/master','utf8'))}catch{}
           const out={
+            rootCode:process.env.ROOT_CODE||'',
+            jsCode:process.env.JS_CODE||'',
+            masterCode:process.env.MASTER_CODE||'',
+            rootSample:root.slice(0,300),
+            jsSample:js.slice(0,120),
+            masterSample:JSON.stringify(master).slice(0,300),
             rootHasV140:/v140\.js/.test(root),
             jsHasMultiBinder:/pokemon_binders/.test(js),
             jsHasBackgroundPrice:/queueBackgroundPrices/.test(js),
@@ -34,7 +41,7 @@ jobs:
             masterOk:master?.ok===true,
             masterEntries:master?.entries?.length||0
           };
-          out.pass=Object.values(out).slice(0,5).every(Boolean)&&out.masterEntries>252;
+          out.pass=out.rootCode==='200'&&out.jsCode==='200'&&out.masterCode==='200'&&out.rootHasV140&&out.jsHasMultiBinder&&out.jsHasBackgroundPrice&&out.jsHasScanner&&out.masterOk&&out.masterEntries>252;
           fs.writeFileSync('v140-preview-smoke.json',JSON.stringify(out,null,2));
           if(!out.pass)process.exitCode=1;
           EOF
