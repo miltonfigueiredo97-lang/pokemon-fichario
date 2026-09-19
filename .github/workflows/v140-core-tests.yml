@@ -87,7 +87,8 @@ jobs:
               groupedGeneral:/groupedVirtualCards/.test(js)&&/_group_count/.test(js),
               valueScope:/summary_value_scope/.test(js)&&/Só as que tenho/.test(js)&&/Só as que não tenho/.test(js),
               mobileArtifact:!html.includes('\\\\n'),
-              valueScopeCss:/v14-value-scope-control/.test(css)
+              valueScopeCss:/v14-value-scope-control/.test(css),
+              mobileBinderControls:/querySelector\('\.binder-area'\)/.test(js)&&/top:48px/.test(css)&&/binder-stage\{padding:96px 10px 10px!important\}/.test(css)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};

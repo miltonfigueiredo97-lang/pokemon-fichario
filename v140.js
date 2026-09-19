@@ -135,7 +135,7 @@
 
   function injectUI(){
     if(!byId('v14BinderControls')){
-      const host=document.querySelector('.header-actions');
+      const host=document.querySelector('.binder-area');
       if(host){
         const wrap=document.createElement('div');
         wrap.id='v14BinderControls';
