@@ -14,7 +14,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          OUT=debug-myp-browser-raw.txt
+          OUT=debug-myp-browser-raw2.txt
           : > "$OUT"
           echo "UTC: $(date -u +%FT%TZ)" >> "$OUT"
           echo >> "$OUT"
@@ -42,6 +42,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add debug-myp-browser-raw.txt
+          git add debug-myp-browser-raw2.txt
           git commit -m "Debug price source responses" || exit 0
           git push
