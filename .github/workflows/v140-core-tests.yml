@@ -87,16 +87,20 @@ jobs:
             const set151=await invoke('api/master-set.js',{lang:'pt',set:'sv03.5'});
             const entries151=set151.body?.entries||[];
             const charm004=entries151.filter(x=>x.apiId==='sv03.5-004');
-            const semanticSeen=new Set();
-            const semanticDupes=entries151.filter(x=>{
-              const k=x.apiId+'|'+(x.finish==='Especial'?x.finish+'|'+x.variantLabel:x.finish);
-              if(semanticSeen.has(k))return true;
-              semanticSeen.add(k);return false;
-            });
             const set151Pass=set151.status===200&&set151.body?.ok&&
               charm004.length===3&&
-              ['Normal','Foil','Reverse Foil'].every(f=>charm004.some(x=>x.finish===f))&&
-              semanticDupes.length===0;
+              charm004.some(x=>x.variantType==='normal'&&x.finish==='Normal')&&
+              charm004.some(x=>x.variantType==='holo'&&x.finish==='Foil')&&
+              charm004.some(x=>x.variantType==='reverse'&&x.finish==='Reverse Foil');
+
+            const jp151=await invoke('api/master-set.js',{lang:'ja',set:'SV2a'});
+            const jpEntries=jp151.body?.entries||[];
+            const jpCharm=jpEntries.filter(x=>x.apiId==='SV2a-004');
+            const jp151Pass=jp151.status===200&&jp151.body?.ok&&
+              jpCharm.length===3&&
+              jpCharm.some(x=>x.variantType==='normal'&&x.finish==='Normal')&&
+              jpCharm.some(x=>x.variantFoil==='pokeball'&&x.finish==='Pokeball Foil')&&
+              jpCharm.some(x=>x.variantFoil==='masterball'&&x.finish==='Masterball Foil');
 
             const img=await invoke('api/card-image-fallback.js',{name:'Umbreon ex',number:'091',hp:'',rarity:''});
             const imagePass=img.status===200&&img.body?.ok&&/^https?:/.test(img.body?.url||'');
@@ -168,13 +172,14 @@ jobs:
               removeSingleCard:/btnDeleteSelected/.test(html)&&/Remover esta carta do fichário/.test(html)&&/openRemoveCardDialog/.test(js)&&/confirmRemoveCardFromBinder/.test(js),
               removeSingleCardConfirm:/v1417RemoveCardDialog/.test(html)&&/v1417CancelRemoveCard/.test(html)&&/v1417ConfirmRemoveCard/.test(html)&&/outra cópia não será alterada/.test(html),
               removeSingleCardCss:/v1417-remove-card/.test(css)&&/v1417-remove-card-warning/.test(css),
-              masterSemanticVariants:/semanticKey/.test(fs.readFileSync('api/master-set.js','utf8'))&&/physical finish/.test(fs.readFileSync('api/master-set.js','utf8')),
+              masterSemanticVariants:/physicalVariantKey/.test(fs.readFileSync('api/master-set.js','utf8'))&&/variantFoil/.test(fs.readFileSync('api/master-set.js','utf8'))&&/variantSubtype/.test(fs.readFileSync('api/master-set.js','utf8')),
+              perSetVariantProfile:/buildSetVariantProfile/.test(fs.readFileSync('api/master-set.js','utf8'))&&/isCoreSetVariant/.test(fs.readFileSync('api/master-set.js','utf8'))&&/languageMatches/.test(fs.readFileSync('api/master-set.js','utf8')),
               masterMarkAll:/v1418MarkAll/.test(js)&&/markAllMasterOwned/.test(js)&&/Marcar todas como Tenho/.test(js),
               multiMasterBinder:/v1418AddAnotherMaster/.test(js)&&/masterSelections/.test(js)&&/masterPreviewsForCreate/.test(js)&&/Criar fichário com/.test(js),
               generalStatusFilter:/activeStatusFilter/.test(js)&&/arr=arr\.filter\(c=>\(c\.collection_status\|\|'owned'\)===activeStatusFilter\)/.test(js)
             };
-            const pass=masterPass&&classicPass&&set151Pass&&imagePass&&Object.values(assertions).every(Boolean);
-            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},set151:{status:set151.status,entries:entries151.length,charm004,semanticDupes:semanticDupes.length},image:img.body,assertions};
+            const pass=masterPass&&classicPass&&set151Pass&&jp151Pass&&imagePass&&Object.values(assertions).every(Boolean);
+            const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},classic:{status:classic.status,set:classic.body?.set,entries:classicEntries.length,fallback:classic.body?.fallbackLanguageUsed},set151:{status:set151.status,entries:entries151.length,charm004},jp151:{status:jp151.status,entries:jpEntries.length,charm004:jpCharm},image:img.body,assertions};
             fs.writeFileSync('v140-core-test-result.json',JSON.stringify(out,null,2));
             if(!pass)process.exitCode=1;
           })().catch(e=>{fs.writeFileSync('v140-core-test-result.json',JSON.stringify({pass:false,error:String(e),stack:e.stack},null,2));process.exitCode=1});
