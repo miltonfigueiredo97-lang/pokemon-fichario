@@ -1,0 +1,40 @@
+name: V14 Japanese image probe
+on:
+  push:
+    branches:
+      - v140-background-jp-scan
+    paths:
+      - '.github/workflows/v140-jp-image-probe.yml'
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe TCGdex Japanese images
+        run: |
+          node - <<'EOF'
+          const fs=require('fs');
+          async function j(url){const r=await fetch(url);return {status:r.status,data:await r.json()}}
+          (async()=>{
+            const list=await j('https://api.tcgdex.net/v2/ja/cards?name=Umbreon&pagination%3AitemsPerPage=8');
+            const out={listStatus:list.status,items:[]};
+            for(const x of (list.data||[]).slice(0,8)){
+              const d=await j('https://api.tcgdex.net/v2/ja/cards/'+encodeURIComponent(x.id));
+              const en=await j('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(x.id)).catch(()=>({status:0,data:null}));
+              out.items.push({id:x.id,listImage:x.image||null,jaStatus:d.status,jaImage:d.data?.image||null,jaName:d.data?.name||x.name,enStatus:en.status,enImage:en.data?.image||null,enName:en.data?.name||null,localId:d.data?.localId||x.localId,set:d.data?.set||x.set});
+            }
+            fs.writeFileSync('v140-jp-image-probe.json',JSON.stringify(out,null,2));
+          })();
+          EOF
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v140-jp-image-probe.json
+          git commit -m "Record Japanese image probe" || exit 0
+          git push origin HEAD:v140-background-jp-scan
