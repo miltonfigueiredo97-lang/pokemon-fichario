@@ -872,6 +872,7 @@
         notice.classList.remove('hidden');
       }
       renderMasterGrid();
+      renderMasterQueue();
       byId('v14SetStatus').textContent='Master Set pronto para conferência.';
       byId('v14MasterStep').classList.remove('hidden');
     }catch(e){console.error(e);byId('v14SetStatus').textContent='Erro ao montar a coleção: '+(e.message||e)}
@@ -990,23 +991,54 @@
   }
 
   async function createMasterBinder(){
-    const p=V14.masterPreview;if(!p)return;
-    const btn=byId('v14CreateMaster');busy(btn,true,'Criando fichário…');
+    const previews=masterPreviewsForCreate();
+    if(!previews.length)return toast('Escolha pelo menos um Master Set.');
+    const btn=byId('v14CreateMaster');busy(btn,true,previews.length>1?'Criando fichário…':'Criando Master Set…');
     let createdBinder=null;
     try{
-      const pages=Math.max(1,Math.ceil(p.entries.length/9));
       await loadBinders();
+
+      const flat=[];
+      for(const preview of previews){
+        preview.entries.forEach((entry,index)=>flat.push({preview,entry,index}));
+      }
+      const pages=Math.max(1,Math.ceil(flat.length/9));
       const sortOrder=Math.max(0,...V14.binders.map(b=>+b.sort_order||0))+1;
-      const displaySetName=p.displaySetName||p.set.name;
-      const binderName=await liveMasterBinderName(displaySetName,p.set.id);
+      const names=previews.map(p=>p.displaySetName||p.set.name);
+      let baseName=names.join(' + ');
+      if(baseName.length>50)baseName=(names.slice(0,2).join(' + ')+' + '+(names.length-2)+' set'+(names.length-2===1?'':'s')).slice(0,50);
+
+      let binderName=baseName;
+      if(previews.length===1){
+        binderName=await liveMasterBinderName(baseName,previews[0].set.id);
+      }else{
+        let n=2;
+        const existing=new Set(V14.binders.map(b=>String(b.name||'').toLowerCase()));
+        while(existing.has(binderName.toLowerCase())){
+          const suffix=' ('+n+++')';
+          binderName=baseName.slice(0,Math.max(1,50-suffix.length))+suffix;
+        }
+      }
+
+      const single=previews.length===1?previews[0]:null;
       const {data:binder,error:be}=await db.from('pokemon_binders').insert({
-        user_id:currentUser.id,name:binderName,pages,background:'graphite',sort_order:sortOrder,binder_kind:'set',
-        set_id:p.set.id,set_name:displaySetName,set_language:p.set.languageCode,master_language:p.set.languageCode,master_total:p.entries.length
+        user_id:currentUser.id,
+        name:binderName,
+        pages,
+        background:'graphite',
+        sort_order:sortOrder,
+        binder_kind:'set',
+        set_id:single?single.set.id:null,
+        set_name:single?(single.displaySetName||single.set.name):names.join(' + '),
+        set_language:single?single.set.languageCode:null,
+        master_language:single?single.set.languageCode:null,
+        master_total:flat.length
       }).select('*').single();
       if(be)throw be;
       createdBinder=binder;
-      const rows=p.entries.map((e,i)=>{
-        const owned=p.owned.has(i),page=Math.floor(i/9)+1,slot=i%9+1;
+
+      const rows=flat.map(({preview:p,entry:e,index:localIndex},globalIndex)=>{
+        const owned=p.owned.has(localIndex),page=Math.floor(globalIndex/9)+1,slot=globalIndex%9+1;
         const base={
           source:e.source,apiId:e.apiId,name:e.name,languageCode:e.languageCode,language:e.language,
           setName:e.setName,setId:e.setId,number:e.printedTotal?e.number+'/'+e.printedTotal:e.number,
@@ -1020,21 +1052,21 @@
         payload.price_checked_at=null;
         return payload;
       });
+
       for(let i=0;i<rows.length;i+=100){
         const {error}=await db.from('pokemon_cards').insert(rows.slice(i,i+100));
         if(error)throw error;
       }
 
-      // Close/release the modal BEFORE loading/rendering hundreds of cards.
-      // This is critical on Android/WebView: rendering a large Master Set while
-      // showModal() is still active can leave the document inert after close().
       hardCloseDialog('v14BinderDialog');
       resetMasterBuilderState({resetCatalog:true});
       releaseMobileInteraction();
 
       V14.activeBinderId=binder.id;
       V14.favoritesOnly=false;
+      V14.viewScope='all';
       currentPage=1;
+      try{activeStatusFilter='all'}catch{}
       await db.from('pokemon_settings').update({current_binder_id:binder.id}).eq('user_id',currentUser.id);
       await loadCardsV14(false);
 
@@ -1044,10 +1076,8 @@
       queueBackgroundPrices([...collection]);
 
       const ownedCount=rows.filter(x=>x.collection_status==='owned').length;
-      const promoText=p.set.isPromoSet
-        ?' Promos incluídas porque este é um set de promos.'
-        :' Promos desta geração não são adicionadas automaticamente; use a coleção PROMOS, busca manual ou scanner.';
-      toast('Master Set criado: '+rows.length+' entradas · '+ownedCount+' Tenho.'+promoText);
+      const setText=previews.length>1?' · '+previews.length+' Master Sets':'';
+      toast('Fichário criado: '+rows.length+' entradas · '+ownedCount+' Tenho'+setText+'.');
     }catch(e){
       console.error(e);
       if(createdBinder?.id){
