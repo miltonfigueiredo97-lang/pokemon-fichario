@@ -343,6 +343,18 @@
       if(id==='v14BinderDialog')resetMasterBuilderState({resetCatalog:true});
       releaseMobileInteraction();
     });
+    const creatorDialog=byId('v14BinderDialog');
+    if(creatorDialog&&!creatorDialog.dataset.v1415CloseGuard){
+      creatorDialog.dataset.v1415CloseGuard='1';
+      creatorDialog.addEventListener('close',()=>{
+        resetMasterBuilderState({resetCatalog:true});
+        releaseMobileInteraction();
+      });
+      creatorDialog.addEventListener('cancel',()=>{
+        resetMasterBuilderState({resetCatalog:true});
+        setTimeout(releaseMobileInteraction,0);
+      });
+    }
     byId('v14TabEmpty')?.addEventListener('click',()=>switchCreateTab('empty'));
     byId('v14TabSet')?.addEventListener('click',()=>switchCreateTab('set'));
     byId('v14CreateEmpty')?.addEventListener('click',createEmptyBinder);
