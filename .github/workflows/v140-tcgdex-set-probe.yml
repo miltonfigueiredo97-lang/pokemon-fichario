@@ -1,0 +1,37 @@
+name: V14 TCGdex set probe
+on:
+  push:
+    branches:
+      - v140-full-overhaul
+    paths:
+      - '.github/workflows/v140-tcgdex-set-probe.yml'
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: |
+          node - <<'EOF'
+          const fs=require('fs');
+          async function get(url){const r=await fetch(url);let d=null;try{d=await r.json()}catch{};return {status:r.status,data:d}}
+          (async()=>{
+            const sets=await get('https://api.tcgdex.net/v2/pt/sets');
+            const candidates=(sets.data||[]).filter(s=>/fagulhas|surging|impetuosas/i.test(JSON.stringify(s))).slice(0,10);
+            const id=candidates[0]?.id||'sv08';
+            const detail=await get('https://api.tcgdex.net/v2/pt/sets/'+id);
+            const first=(detail.data?.cards||[]).slice(0,5);
+            const cards=[];
+            for(const x of first){cards.push(await get('https://api.tcgdex.net/v2/pt/cards/'+x.id))}
+            fs.writeFileSync('v140-tcgdex-set-probe.json',JSON.stringify({candidates,id,set:detail,cards},null,2));
+          })();
+          EOF
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v140-tcgdex-set-probe.json
+          git commit -m "Record TCGdex set shape" || exit 0
+          git push origin HEAD:v140-full-overhaul
