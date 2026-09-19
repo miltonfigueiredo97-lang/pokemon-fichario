@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.5';
+  const APP_VERSION='V13.6';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.6',title:'Escolha do valor exibido e somado',items:[
+      'Resumo ganhou seletores independentes para valor nas cartas e valor usado na soma: mínimo, médio ou máximo.',
+      'As duas escolhas ficam salvas na conta.',
+      'Ausência de oferta MYP para a condição escolhida é informada como sem oferta, sem apagar o preço anterior.'
+    ]},
     {version:'V13.5',title:'Cotação por condição real',items:[
       'MYP calcula mínimo, médio e máximo somente entre ofertas da condição escolhida.',
       'Acabamento vazio na MYP conta como acabamento padrão da impressão; acabamentos explicitamente diferentes são excluídos.',
@@ -603,7 +608,7 @@
     const b=$v('#v12UpdatePrices'),status=$v('#v12PriceProgress');
     if(b)b.disabled=true;
 
-    let updated=0,failed=0,ligaUpdated=0;
+    let updated=0,failed=0,unavailable=0,ligaUpdated=0;
     const failures=[];
 
     try{
@@ -635,8 +640,13 @@
             await persistDual(card,partial);
             updated++;
           }else{
-            failed++;
-            failures.push(`${card.name}: MYP ${myp?.error||'sem preço'}`);
+            if(myp?.error==='variant_not_found'){
+              unavailable++;
+              failures.push(`${card.name}: sem oferta MYP para ${conditionLabel(condition)} / ${finishLabel(finish)}`);
+            }else{
+              failed++;
+              failures.push(`${card.name}: MYP ${myp?.error||'sem preço'}`);
+            }
           }
 
           // 2) Liga é complementar. Se funcionar, acrescenta os dados; se não,
@@ -673,7 +683,7 @@
 
       if(status){
         const detail=failures.length?(' · '+failures.slice(0,2).join(' | ')):'';
-        status.textContent=`Concluído: MYP ${updated}/${cards.length} · Liga ${ligaUpdated}/${cards.length} · ${failed} falha(s)${detail}`;
+        status.textContent=`Concluído: MYP ${updated}/${cards.length} · Liga ${ligaUpdated}/${cards.length} · ${unavailable} sem oferta na condição · ${failed} falha(s)${detail}`;
         status.title=failures.join('\n');
       }
       toast(updated
