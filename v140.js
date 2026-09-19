@@ -16,8 +16,9 @@
     seriesCache:new Map(),
     masterPreview:null,
     favoritesOnly:false,
+    binderSearchQuery:'',
     binderSearchMatches:[],
-    binderSearchLookup:new Map()
+    viewScope:'all'
   };
   window.PB14=V14;
 
@@ -44,9 +45,9 @@
     return normalizeSortMode(activeBinder()?.sort_mode||'manual_asc');
   }
   function binderViewScope(){
-    return ['all','owned','missing'].includes(settings.binder_view_scope)?settings.binder_view_scope:'all';
+    return ['all','owned','missing'].includes(V14.viewScope)?V14.viewScope:'all';
   }
-  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly}
+  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!V14.binderSearchQuery}
   function binderForCard(card){return V14.binders.find(b=>b.id===card?.binder_id)||null}
   function currentBinderPages(){
     const b=activeBinder();
@@ -157,7 +158,27 @@
       }
       return result*direction;
     });
-    return arr;
+
+    const q=String(V14.binderSearchQuery||'').trim();
+    if(!q){V14.binderSearchMatches=[];return arr}
+    const tokens=nrm(q).split(' ').filter(Boolean);
+    const scored=arr.map((card,index)=>{
+      const hay=nrm([card.name,card.number,card.set_name,card.finish,card.rarity,card.card_type].filter(Boolean).join(' '));
+      const tokenHits=tokens.reduce((sum,t)=>sum+(hay.includes(t)?1:0),0);
+      return{card,index,score:binderSearchScore(card,q),tokenHits,allTokens:tokens.length>0&&tokenHits===tokens.length};
+    });
+    let found=scored.filter(x=>x.allTokens);
+    if(!found.length){
+      const ranked=scored.filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.index-b.index);
+      if(ranked.length){
+        const best=ranked[0].score;
+        found=ranked.filter(x=>x.score>=Math.max(45,best-170)).slice(0,18);
+      }
+    }else{
+      found.sort((a,b)=>b.score-a.score||a.index-b.index);
+    }
+    V14.binderSearchMatches=found.map(x=>x.card);
+    return V14.binderSearchMatches;
   }
 
   function positionUnifiedTopbar(){
