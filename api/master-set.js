@@ -155,9 +155,21 @@ function buildSetVariantProfile(rawByCard){
   }
   return counts;
 }
-function isCoreSetVariant(v,cardVariants,profile,totalCards,isPromoSet){
+function uniformOnlySetType(cardCount,expectedCount){
+  if(!expectedCount)return'';
+  const values={
+    normal:Number(cardCount?.normal||0),
+    holo:Number(cardCount?.holo||0),
+    reverse:Number(cardCount?.reverse||0)
+  };
+  const full=Object.entries(values).filter(([,n])=>n>=expectedCount).map(([k])=>k);
+  const nonZero=Object.entries(values).filter(([,n])=>n>0).map(([k])=>k);
+  return full.length===1&&nonZero.length===1?full[0]:'';
+}
+function isCoreSetVariant(v,cardVariants,profile,totalCards,isPromoSet,uniformOnlyType=''){
   if(v.size==='jumbo')return false;
   if(isPromoSet)return true;
+  if(uniformOnlyType&&v.type===uniformOnlyType)return true;
 
   const stamps=v.stamp||[];
   if(stamps.length){
@@ -258,12 +270,13 @@ module.exports=async function handler(req,res){
     const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
     const rawByCard=details.map(card=>(!card||card.__error)?[]:rawVariantsOf(card,card.__variantLang||lang));
     const profile=buildSetVariantProfile(rawByCard);
+    const uniformOnlyType=uniformOnlySetType(set.cardCount,expectedCount);
     const entries=[];
     for(let i=0;i<details.length;i++){
       const card=details[i];
       if(!card||card.__error)continue;
       const rawVariants=rawByCard[i];
-      const variants=rawVariants.filter(v=>isCoreSetVariant(v,rawVariants,profile,details.length,isPromoSet));
+      const variants=rawVariants.filter(v=>isCoreSetVariant(v,rawVariants,profile,details.length,isPromoSet,uniformOnlyType));
       for(const variant of variants){
         entries.push({
           apiId:card.id,
