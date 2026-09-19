@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V13.7';
+  const APP_VERSION='V13.8';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V13.8',title:'Busca ao vivo e tolerante a erros',items:[
+      'As cartas aparecem automaticamente enquanto você digita, sem precisar clicar em Buscar.',
+      'A busca espera uma pequena pausa na digitação para evitar requisições desnecessárias.',
+      'Erros de digitação são tratados por aproximação: por exemplo, “umbreom ex” encontra e prioriza “Umbreon ex”.',
+      'Buscas antigas são ignoradas quando você continua digitando, evitando resultados atrasados sobrescrevendo a busca atual.'
+    ]},
     {version:'V13.7',title:'MYP como única fonte automática',items:[
       'O fichário usa um único seletor para mínimo, médio ou máximo, aplicado às cartas e à soma total.',
       'Liga Pokémon foi removida do quadro automático e não é mais consultada ao abrir ou atualizar cartas.',
