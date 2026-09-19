@@ -11,7 +11,7 @@
     priceJobs:new Map(),
     priceQueue:[],
     priceWorkers:0,
-    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map()},
+    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null},
     setsCache:new Map(),
     masterPreview:null,
     favoritesOnly:false
@@ -257,7 +257,7 @@
     if(V14.activeBinderId==null){
       const stored=settings.current_binder_id;
       V14.activeBinderId=stored&&V14.binders.some(b=>b.id===stored)?stored:'all';
-    }else if(V14.activeBinderId!=='all'&&!V14.binders.some(b=>b.id===V14.activeBinderId)){
+    }else if(!isGeneral()&&!V14.binders.some(b=>b.id===V14.activeBinderId)){
       V14.activeBinderId=V14.binders[0]?.id||'all';
     }
     renderBinderControls();
@@ -879,9 +879,58 @@
     }
     return c;
   }
+  function imageFingerprint(source){
+    const c=document.createElement('canvas');c.width=12;c.height=17;
+    const ctx=c.getContext('2d',{willReadFrequently:true});
+    ctx.drawImage(source,0,0,c.width,c.height);
+    const d=ctx.getImageData(0,0,c.width,c.height).data,values=[];
+    for(let i=0;i<d.length;i+=4)values.push(.299*d[i]+.587*d[i+1]+.114*d[i+2]);
+    const mean=values.reduce((s,v)=>s+v,0)/Math.max(1,values.length);
+    const variance=values.reduce((s,v)=>s+(v-mean)*(v-mean),0)/Math.max(1,values.length);
+    const sd=Math.max(12,Math.sqrt(variance));
+    return values.map(v=>(v-mean)/sd);
+  }
+  function fingerprintDistance(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let sum=0;
+    for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
+    return sum/a.length;
+  }
+  async function fingerprintForCard(card){
+    const url=cardImage(card);
+    if(!url||url.startsWith('/'))return null;
+    try{
+      const r=await fetch('/api/image-proxy?url='+encodeURIComponent(url),{cache:'force-cache'});
+      if(!r.ok)return null;
+      const blob=await r.blob();
+      const bitmap=await createImageBitmap(blob);
+      const c=document.createElement('canvas');c.width=252;c.height=352;
+      c.getContext('2d').drawImage(bitmap,0,0,c.width,c.height);
+      bitmap.close?.();
+      return imageFingerprint(c);
+    }catch{return null}
+  }
+  async function visuallyRankCandidates(cards){
+    const target=V14.scan.lastFingerprint;
+    if(!target||!cards?.length)return cards||[];
+    const sample=cards.slice(0,8);
+    const scored=await Promise.all(sample.map(async(card,index)=>{
+      const fp=await fingerprintForCard(card);
+      const d=fingerprintDistance(target,fp);
+      return{card,index,d};
+    }));
+    scored.sort((a,b)=>{
+      const ad=Number.isFinite(a.d)?a.d+a.index*.045:999+a.index;
+      const bd=Number.isFinite(b.d)?b.d+b.index*.045:999+b.index;
+      return ad-bd;
+    });
+    const ranked=scored.map(x=>x.card);
+    return ranked.concat(cards.slice(sample.length));
+  }
   async function ocrCard(source,status){
     if(typeof ensureOCR!=='function'||!await ensureOCR())throw new Error('OCR indisponível');
     const full=scannerCardCanvas(source);
+    V14.scan.lastFingerprint=imageFingerprint(full);
     const regions=[
       cropCanvas(full,0,.30,true),
       cropCanvas(full,.68,1,true),
@@ -915,8 +964,9 @@
     byId('searchNumber').value=hint.number||'';
     byId('ocrStatus').textContent='Scanner: '+[hint.name,hint.number].filter(Boolean).join(' · ')+' · confirme a carta abaixo.';
     await searchCards({live:false});
-    const best=[...catalogResults].slice(0,6);
+    let best=[...catalogResults].slice(0,12);
     if(!best.length){byId('ocrStatus').textContent='Scanner leu '+[hint.name,hint.number].filter(Boolean).join(' · ')+' mas não encontrou candidato seguro. Ajuste a foto ou use busca manual.';return}
+    best=(await visuallyRankCandidates(best)).slice(0,6);
     const dlg=byId('v14ScanCandidates'),grid=byId('v14ScanCandidateGrid');
     byId('v14ScanReadout').textContent='Leitura: '+[hint.name,hint.number].filter(Boolean).join(' · ')+' · escolha a impressão correta.';
     grid.innerHTML=best.map((c,i)=>{
@@ -959,7 +1009,7 @@
   }
   async function startScanner(){
     if(isGeneral())return toast('Escolha um fichário antes de escanear e adicionar uma carta.');
-    stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();
+    stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();V14.scan.lastFingerprint=null;
     if(byId('addDialog')?.open)byId('addDialog').close();
     if(!byId('scanDialog')?.open)byId('scanDialog').showModal();
     const status=byId('scanLiveStatus');if(status)status.textContent='Abrindo câmera traseira…';
