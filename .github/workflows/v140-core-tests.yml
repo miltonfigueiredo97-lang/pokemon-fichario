@@ -119,7 +119,7 @@ jobs:
               toolbarClearance:/bar\.style\.top=Math\.max\(6,sr\.top-ar\.top-barHeight-5\)\+'px'/.test(js)&&/padding:54px 46px 18px!important/.test(css),
               summaryStatsRemoved:/#summaryPanel \.summary-grid\{[\s\S]*display:none!important/.test(css),
               compactSummaryActions:/#summaryPanel \.action-grid\{[\s\S]*repeat\(2,minmax\(0,1fr\)\)/.test(css)&&/#summaryPanel #v12UpdatePrices/.test(css)&&/#summaryPanel #v112Logout/.test(css),
-              usefulDesktopRail:/v149-useful-rail/.test(railJs)&&/data-kind/.test(railJs)&&/Escanear carta/.test(railJs)&&/Abrir páginas/.test(railJs)&&!/Recolher menu/.test(railJs)
+              usefulDesktopRail:/v149-useful-rail/.test(railJs)&&/dataset\.kind/.test(railJs)&&/Escanear carta/.test(railJs)&&/Abrir páginas/.test(railJs)&&!/Recolher menu/.test(railJs)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
