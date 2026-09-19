@@ -284,7 +284,29 @@ async function removeFriendship(id){await db.from("pokemon_friendships").delete(
 async function viewFriendBinder(p){if(!p)return;const{data,error}=await db.from("pokemon_cards").select("*").eq("user_id",p.user_id).order("binder_page").order("binder_slot");if(error)return toast("Esse fichário não está disponível.");$("friendBinderTitle").textContent=`@${p.username}`;const g=$("friendBinderGrid");g.innerHTML="";(data||[]).forEach(c=>{const e=document.createElement("div");e.className="friend-card";const img=cardImage(c);e.innerHTML=`${img?`<img src="${esc(img)}">`:""}<strong>${esc(c.name)}</strong><small>${esc(c.set_name||"")} · ${esc(c.number||"")}</small>`;g.appendChild(e)});closeDialog("friendsDialog");openDialog("friendBinderDialog")}
 function setup3d(){const el=$("card3d");el.addEventListener("pointermove",e=>{if(el.classList.contains("flipped"))return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.querySelector(".card-3d-inner").style.transform=`rotateY(${x*18}deg) rotateX(${-y*18}deg)`});el.addEventListener("pointerleave",()=>{if(!el.classList.contains("flipped"))el.querySelector(".card-3d-inner").style.transform="rotateY(0) rotateX(0)"});el.addEventListener("dblclick",()=>el.classList.toggle("flipped"))}
 function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber","searchSet"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=async()=>{await loadFriendships();openDialog("friendsDialog")};$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
-async function registerPWA(){if("serviceWorker"in navigator)try{await navigator.serviceWorker.register("/sw.js")}catch(e){console.warn(e)}}
+async function registerPWA(){
+  if(!("serviceWorker"in navigator))return;
+  try{
+    let reloading=false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(reloading)return;
+      reloading=true;
+      location.reload();
+    });
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.23",{updateViaCache:"none"});
+    await reg.update();
+    if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
+    reg.addEventListener("updatefound",()=>{
+      const worker=reg.installing;
+      if(!worker)return;
+      worker.addEventListener("statechange",()=>{
+        if(worker.state==="installed"&&navigator.serviceWorker.controller){
+          worker.postMessage({type:"SKIP_WAITING"});
+        }
+      });
+    });
+  }catch(e){console.warn(e)}
+}
 async function boot(){bindEvents();registerPWA();const{data}=await db.auth.getSession();await renderAuthState(data.session);db.auth.onAuthStateChange((_e,s)=>setTimeout(()=>renderAuthState(s),0))}
 document.addEventListener("DOMContentLoaded",boot);
 
