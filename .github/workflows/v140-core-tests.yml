@@ -102,7 +102,7 @@ jobs:
               masterDuplicate:/nextMasterBinderName/.test(js)&&/set_id===setId/.test(js),
               masterImmediateReload:/await loadCardsV14\(false\)/.test(js)&&/aparecia vazio/.test(js),
               masterPromos:/isPromoSet/.test(js)&&/Promos não são misturadas automaticamente/.test(js),
-              mobileDelete:/v14DeleteBinder/.test(js)&&/display:grid!important/.test(css),
+              mobileDelete:/v14DeleteBinder/.test(js)&&/v14-delete-binder/.test(css)&&/Excluir fichário/.test(js),
               summaryOverlay:/z-index:75/.test(css),
               desktopUnifiedTopbar:/v14UnifiedTopbar/.test(js)&&/ensureUnifiedTopbar/.test(js)&&/positionUnifiedTopbar/.test(js)&&/v14-unified-topbar/.test(css)&&/border-right:1px solid/.test(css),
               directionalSort:/manual_asc/.test(js)&&/manual_desc/.test(js)&&/name_asc/.test(js)&&/name_desc/.test(js)&&/number_asc/.test(js)&&/number_desc/.test(js),
@@ -122,7 +122,10 @@ jobs:
               desktopRailRemoved:/document\.querySelectorAll\('\.v11-rail'\)\.forEach\(el=>el\.remove\(\)\)/.test(railJs)&&/\.v11-rail\{display:none!important\}/.test(css),
               filterSafety:/setStatusFilterV14/.test(js)&&/V14\.viewScope='all'/.test(js)&&/activeStatusFilter='all'/.test(js),
               duplicateMarketRemoved:/\.v122-market-sources\{display:none!important\}/.test(css),
-              groupedSummaryActions:/organizeSummaryActionsV14/.test(js)&&/v1411Group_/.test(js)&&/id:'prices'/.test(js)&&/id:'excel'/.test(js)&&/id:'export'/.test(js)&&/id:'settings'/.test(js)&&/v1411-action-group/.test(css)
+              groupedSummaryActions:/organizeSummaryActionsV14/.test(js)&&/v1411Group_/.test(js)&&/id:'prices'/.test(js)&&/id:'excel'/.test(js)&&/id:'export'/.test(js)&&/id:'settings'/.test(js)&&/v1411-action-group/.test(css),
+              cleanTopbarActions:!/id="v14FavoritesOnly"/.test(js)&&!/id="v14RenameBinder"/.test(js)&&/id="v14DeleteBinder"/.test(js),
+              deleteConfirmation:/v14DeleteDialog/.test(js)&&/v14CancelDelete/.test(js)&&/v14ConfirmDelete/.test(js)&&/não pode ser desfeita/i.test(js)&&/v14-danger-button/.test(css),
+              deleteCascadeFlow:/pokemon_binders/.test(js)&&/\.delete\(\)/.test(js)&&/Fichário e suas cartas foram excluídos permanentemente/.test(js)
             };
             const pass=masterPass&&imagePass&&Object.values(assertions).every(Boolean);
             const out={pass,master:{status:master.status,set:master.body?.set,entries:entries.length,exeggcute},image:img.body,assertions};
