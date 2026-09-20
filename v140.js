@@ -423,9 +423,56 @@
     byId('v14ScanAgain')?.addEventListener('click',()=>{if(byId('v14ScanCandidates')?.open)byId('v14ScanCandidates').close();startScanner()});
   }
 
+  function physicalManualViewV14(){
+    return !V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly;
+  }
+  function binderSessionAnchorV14(page,pages=currentBinderPages()){
+    pages=Math.max(1,+pages||1);
+    page=Math.min(pages,Math.max(1,+page||1));
+    if(page<=1)return 1;
+    return page%2===0?page:page-1;
+  }
+  function binderLastSessionAnchorV14(pages=currentBinderPages()){
+    return binderSessionAnchorV14(Math.max(1,+pages||1),pages);
+  }
+  function binderSessionTargetV14(page,dir,pages=currentBinderPages()){
+    const anchor=binderSessionAnchorV14(page,pages);
+    const last=binderLastSessionAnchorV14(pages);
+    if(dir>0){
+      if(anchor<=1)return Math.min(last,2);
+      return Math.min(last,anchor+2);
+    }
+    if(anchor<=2)return 1;
+    return Math.max(2,anchor-2);
+  }
+  window.binderSessionTargetV14=binderSessionTargetV14;
+
+  function goToBinderSessionV14(dir){
+    if(!physicalManualViewV14())return goToPage(currentPage+(dir>0?1:-1));
+    const target=binderSessionTargetV14(currentPage,dir,currentBinderPages());
+    if(target===currentPage)return;
+    try{window.cancelBinderPageFlipV14?.({suppress:true})}catch{}
+    currentPage=target;
+    renderBinder();
+    renderPagesGrid();
+    syncTopbarNavigation();
+  }
+
+  function wireSpreadNavigationV14(){
+    const prev=byId('prevPage'),next=byId('nextPage');
+    if(prev)prev.onclick=()=>goToBinderSessionV14(-1);
+    if(next)next.onclick=()=>goToBinderSessionV14(1);
+  }
+
   function syncTopbarNavigation(){
     const start=byId('v14GoStart');
     if(start)start.disabled=currentPage<=1;
+    if(physicalManualViewV14()){
+      const pages=currentBinderPages(),last=binderLastSessionAnchorV14(pages);
+      const prev=byId('prevPage'),next=byId('nextPage');
+      if(prev)prev.disabled=currentPage<=1;
+      if(next)next.disabled=currentPage>=last;
+    }
   }
 
   function goToBinderStart(){
@@ -476,7 +523,7 @@
     const cards=orderedViewCards();
     let page=1;
     if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
-      page=Math.max(1,+card.binder_page||1);
+      page=binderSessionAnchorV14(Math.max(1,+card.binder_page||1),currentBinderPages());
     }else{
       const index=cards.findIndex(c=>String(c.id)===String(card.id)||c._group_ids?.includes?.(card.id));
       if(index<0)return toast('Essa carta não está visível com os filtros atuais.');
@@ -490,7 +537,7 @@
     const input=byId('v14BinderSearch');
     if(input)input.value=V14.binderSearchQuery||card.name||'';
     setTimeout(()=>{
-      const target=[...document.querySelectorAll('#binderSheet .pocket-card')].find(el=>String(el.dataset.id)===String(card.id));
+      const target=[...document.querySelectorAll('#binderStage .pocket-card')].find(el=>String(el.dataset.id)===String(card.id));
       if(!target)return;
       target.classList.add('v14-search-hit');
       target.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'smooth'});
@@ -1201,8 +1248,8 @@
 
     const desktop=window.matchMedia?.('(min-width:821px)').matches;
     const afterCover=desktop&&currentPage>=2;
-    const double=afterCover&&currentPage<pages;
-    const lastSingle=afterCover&&currentPage>=pages;
+    const double=afterCover&&(currentPage+1)<=pages;
+    const lastSingle=afterCover&&!double;
 
     spread.classList.toggle('v1433-two-sheets',double);
     spread.classList.toggle('v1433-last-single',lastSingle);
@@ -1256,7 +1303,7 @@
 
     if(physicalManual){
       const pages=Math.max(1,currentBinderPages());
-      currentPage=Math.min(Math.max(1,currentPage),pages);
+      currentPage=binderSessionAnchorV14(currentPage,pages);
       const spread=prepareSpreadV1433(pages);
       renderPhysicalPageV1433(spread.leftSheet,currentPage);
       if(spread.double)renderPhysicalPageV1433(spread.rightSheet,currentPage+1);
@@ -1271,7 +1318,7 @@
           : 'Página '+currentPage+' · '+currentPage+'/'+pages;
       }
       byId('prevPage').disabled=currentPage<=1;
-      byId('nextPage').disabled=currentPage>=pages;
+      byId('nextPage').disabled=currentPage>=binderLastSessionAnchorV14(pages);
       syncTopbarNavigation();
       requestAnimationFrame(positionUnifiedTopbar);
       return;
@@ -1381,7 +1428,7 @@
       }
       const {error}=await db.rpc('pokemon_move_card',{p_card_id:card.id,p_target_page:page,p_target_slot:slot});
       if(error)throw error;
-      currentPage=page;
+      currentPage=binderSessionAnchorV14(page,currentBinderPages());
       await loadCardsV14(false);
       renderAll();
       toast('Carta movida.');
@@ -1409,7 +1456,7 @@
       if(error)throw error;
       binder.pages=next;
       settings.binder_pages=next;
-      currentPage=next;
+      currentPage=binderSessionAnchorV14(next,next);
       renderAll();
       toast('Página '+next+' adicionada.');
     }catch(e){
@@ -2985,6 +3032,7 @@
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
     const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
     wireRemoveCardAction();
+    wireSpreadNavigationV14();
     syncSingleCardPriceButton();
     rewireFilteredPriceButton();
     organizeSummaryActionsV14();
