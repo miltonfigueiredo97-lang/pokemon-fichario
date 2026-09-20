@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const PRICE_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
+const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
+const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
 const BATCH = 3;
 const STALE_MS = 5 * 60 * 1000;
 const TERMINAL = new Set(["variant_not_found","wrong_product","product_not_found","no_price_data"]);
@@ -16,32 +17,53 @@ function json(data: unknown, status=200){
 }
 function num(v: unknown){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
 
-async function fetchPrice(card: any, allowSavedLink=true){
+async function fetchSource(base:string, card:any, allowSavedLink=true){
   const q=new URLSearchParams({
     name:String(card.name||""),
     number:String(card.number||""),
     set:String(card.set_name||""),
     setId:String(card.set_id||""),
+    apiId:String(card.api_id||""),
     lang:String(card.language_code||""),
     finish:String(card.finish||"Normal"),
     condition:String(card.condition||"Nova")
   });
   if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
-  const link=allowSavedLink?String(card.myp_price_link||card.price_br_link||card.price_link||"").trim():"";
-  if(link)q.set("link",link);
+  if(base===MYP_API&&allowSavedLink){
+    const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
+    if(link&&/mypcards\.com/i.test(link))q.set("link",link);
+  }
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),45000);
+  const timer=setTimeout(()=>controller.abort(),58000);
   try{
-    const r=await fetch(PRICE_API+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.8"},
+    const rr=await fetch(base+"?"+q.toString(),{
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.42"},
       signal:controller.signal
     });
-    const text=await r.text();
+    const body=await rr.text();
     let data:any={};
-    try{data=JSON.parse(text)}catch{}
-    if(!r.ok)throw new Error("price_api_http_"+r.status);
+    try{data=JSON.parse(body)}catch{}
+    if(!rr.ok)throw new Error("price_api_http_"+rr.status);
     return data;
   }finally{clearTimeout(timer)}
+}
+function hasMarketPrice(m:any){return !!(m&&(num(m.min)||num(m.avg)||num(m.max)))}
+function choosePrimary(liga:any,myp:any){
+  if(hasMarketPrice(liga)&&num(liga.avg)>0)return{market:liga,source:"Liga Pokémon"};
+  if(hasMarketPrice(myp)&&num(myp.avg)>0)return{market:myp,source:"MYP Cards"};
+  if(hasMarketPrice(liga))return{market:liga,source:"Liga Pokémon"};
+  if(hasMarketPrice(myp))return{market:myp,source:"MYP Cards"};
+  return{market:null,source:"Sem preço BR"};
+}
+async function fetchMarkets(card:any){
+  let [myp,liga]=await Promise.all([
+    fetchSource(MYP_API,card,true).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")})),
+    fetchSource(LIGA_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
+  ]);
+  if(myp?.error==="wrong_product"&&String(card.myp_price_link||card.price_br_link||card.price_link||"").trim()){
+    myp=await fetchSource(MYP_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+  }
+  return{myp,liga};
 }
 
 Deno.serve(async(req:Request)=>{
@@ -58,7 +80,7 @@ Deno.serve(async(req:Request)=>{
   const staleIso=new Date(now.getTime()-STALE_MS).toISOString();
 
   const {data:candidates,error:listError}=await db.from("pokemon_cards")
-    .select("id,user_id,name,number,set_name,set_id,language_code,finish,condition,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at,price_priority")
+    .select("id,user_id,name,number,set_name,set_id,api_id,language_code,finish,condition,liga_price_link,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at,price_priority")
     .eq("price_pending",true)
     .lte("price_next_retry_at",nowIso)
     .or("price_processing_at.is.null,price_processing_at.lt."+staleIso)
@@ -83,45 +105,57 @@ Deno.serve(async(req:Request)=>{
     claimed++;
 
     try{
-      let market=await fetchPrice(card,true);
-      if(market?.error==="wrong_product"&&String(card.myp_price_link||card.price_br_link||card.price_link||"").trim()){
-        market=await fetchPrice(card,false);
-      }
-      const min=num(market?.min),avg=num(market?.avg),max=num(market?.max);
-      const hasPrice=!!(min||avg||max);
-      const checkedAt=String(market?.checkedAt||new Date().toISOString());
-      const resolvedLink=String(market?.link||card.myp_price_link||card.price_br_link||card.price_link||"");
+      const markets=await fetchMarkets(card);
+      const myp=markets.myp,liga=markets.liga;
+      const picked=choosePrimary(liga,myp);
+      const market=picked.market;
 
-      if(market?.ok&&hasPrice){
+      if(market){
+        const checkedAt=String(market?.checkedAt||new Date().toISOString());
+        const resolvedLink=String(market?.link||"");
         const patch:any={
-          myp_price_min:min,myp_price_avg:avg,myp_price_max:max,
-          myp_price_link:resolvedLink||null,myp_price_checked_at:checkedAt,
-          price_min:min,price_avg:avg||min||max,price_max:max,currency:"BRL",
-          price_source:"MYP Cards",price_link:resolvedLink||"",
-          price_br_source:"MYP Cards",price_br_link:resolvedLink||null,
+          price_min:num(market.min),
+          price_avg:num(market.avg)||num(market.min)||num(market.max),
+          price_max:num(market.max),currency:"BRL",
+          price_source:picked.source,price_link:resolvedLink||"",
+          price_br_source:picked.source,price_br_link:resolvedLink||null,
           price_checked_at:checkedAt,price_pending:false,price_processing_at:null,
           price_next_retry_at:null,price_priority:0,price_last_error:null
         };
+
+        if(hasMarketPrice(liga)){
+          patch.liga_price_min=num(liga.min);patch.liga_price_avg=num(liga.avg);patch.liga_price_max=num(liga.max);
+          patch.liga_price_link=String(liga.link||card.liga_price_link||"")||null;
+          patch.liga_price_checked_at=String(liga.checkedAt||checkedAt);
+        }
+        if(hasMarketPrice(myp)){
+          patch.myp_price_min=num(myp.min);patch.myp_price_avg=num(myp.avg);patch.myp_price_max=num(myp.max);
+          patch.myp_price_link=String(myp.link||card.myp_price_link||"")||null;
+          patch.myp_price_checked_at=String(myp.checkedAt||checkedAt);
+        }else if(["wrong_product","product_not_found"].includes(String(myp?.error||""))){
+          patch.myp_price_link=null;
+        }
+
+        const resolvedNumber=String(liga?.number||myp?.number||"").trim();
+        if(/^\d+\/\d+$/.test(resolvedNumber)&&!String(card.number||"").includes("/"))patch.number=resolvedNumber;
+
         const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
         if(error)throw error;
         updated++;
-        return {state:"updated"};
+        return {state:"updated",source:picked.source};
       }
 
-      const errorCode=String(market?.error||"no_price_data");
-      if(TERMINAL.has(errorCode)){
-        const clearIdentity=["wrong_product","product_not_found"].includes(errorCode);
+      const errors=[String(liga?.error||""),String(myp?.error||"")].filter(Boolean);
+      const errorCode=errors.find(e=>!TERMINAL.has(e))||errors[0]||"no_price_data";
+      const allTerminal=errors.length>0&&errors.every(e=>TERMINAL.has(e));
+
+      if(allTerminal){
+        const clearIdentity=["wrong_product","product_not_found"].includes(String(myp?.error||""));
         const patch:any={
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
           price_priority:0,price_last_error:errorCode
         };
-        if(clearIdentity){
-          Object.assign(patch,{
-            myp_price_min:0,myp_price_avg:0,myp_price_max:0,myp_price_link:null,myp_price_checked_at:null,
-            price_min:0,price_avg:0,price_max:0,price_source:"Sem preço BR",price_link:null,
-            price_br_source:null,price_br_link:null,price_checked_at:null
-          });
-        }
+        if(clearIdentity)patch.myp_price_link=null;
         const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
         if(error)throw error;
         terminal++;
