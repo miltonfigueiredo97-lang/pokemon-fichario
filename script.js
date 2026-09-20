@@ -44,6 +44,22 @@ function numParts(v){
   }
   return{n:"",d:"",full:"",rawN:"",rawD:""};
 }
+function collectorTokenShape(v){
+  const t=normalizeCollectorToken(v),m=t.match(/^([a-z]*)(\d+)([a-z]*)$/i);
+  return m?{raw:t,prefix:m[1]||"",digits:String(Number(m[2])),suffix:m[3]||""}:{raw:t,prefix:"",digits:"",suffix:""};
+}
+function collectorTokenMatches(wanted,found){
+  const w=collectorTokenShape(wanted),f=collectorTokenShape(found);
+  if(!w.raw)return true;
+  if(w.raw===f.raw)return true;
+  return !w.prefix&&!w.suffix&&!!w.digits&&w.digits===f.digits;
+}
+function collectorNumberMatches(wantedValue,foundValue){
+  const w=numParts(wantedValue),f=numParts(foundValue);
+  if(w.n&&!collectorTokenMatches(w.n,f.n))return false;
+  if(w.d&&f.d&&!collectorTokenMatches(w.d,f.d))return false;
+  return true;
+}
 function toast(msg){const e=$("toast");if(!e)return;e.textContent=msg;e.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("show"),2400)}
 function openDialog(id){const e=$(id);if(e&&!e.open)e.showModal()}
 function closeDialog(id){const e=$(id);if(e?.open)e.close()}
@@ -79,6 +95,40 @@ function renderPagesGrid(){const g=$("pagesGrid");if(!g)return;g.innerHTML="";fo
 function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{page,slot}:freePositions(page,1)[0];catalogSelection.clear();updateSelectionTray();$("searchName").value="";$("searchNumber").value="";$("searchSet").value="";$("resultsList").innerHTML="";$("searchStatus").textContent=`Primeira carta irá para página ${pendingPosition.page}, bolso ${pendingPosition.slot}.`;openDialog("addDialog");setTimeout(()=>$("searchName").focus(),100)}
 async function searchMypCards(name,number,setHint){if(!name)return{cards:[],needsToken:false};try{const p=new URLSearchParams({name});if(number)p.set("number",number);if(setHint)p.set("set",setHint);const r=await fetch(`/api/mypcards?${p}`,{cache:"no-store"}),j=await r.json();return j.ok?{cards:(j.cards||[]).map(mapMyp),needsToken:false}:{cards:[],needsToken:!!j.needsToken,message:j.message||""}}catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}}
 function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
+async function searchLimitlessVariants(name,number,cards,language){
+  const wanted=numParts(number);
+  if(!String(name||"").trim()||!wanted.n||language==="ja")return[];
+  const qn=norm(name),bases=(cards||[]).filter(c=>{
+    if(!c?.setId&&!c?.setName)return false;
+    const cn=norm(c.name||"");
+    if(qn&&!(cn===qn||cn.includes(qn)||qn.includes(cn)))return false;
+    return collectorTokenMatches(wanted.n,numParts(c.number).n);
+  });
+  const sets=[],seen=new Set();
+  for(const c of bases){
+    const key=[c.setId||"",c.setName||""].join("|");
+    if(seen.has(key))continue;
+    seen.add(key);
+    sets.push({id:c.setId||"",name:c.setName||"",total:c.printedTotal||""});
+    if(sets.length>=6)break;
+  }
+  if(!sets.length)return[];
+  try{
+    const p=new URLSearchParams({
+      name:String(name||""),
+      number:String(number||""),
+      lang:language==="pt-br"?"pt":"en",
+      sets:JSON.stringify(sets)
+    });
+    const r=await fetch("/api/limitless-variants?"+p.toString(),{cache:"no-store"});
+    if(!r.ok)return[];
+    const j=await r.json();
+    return j?.ok&&Array.isArray(j.cards)?j.cards:[];
+  }catch(e){
+    console.warn("Limitless variants",e);
+    return[];
+  }
+}
 async function searchLegacyCards(name,number,setHint,options={}){
   const raw=String(name||"").trim();
   if(!raw)return[];
@@ -259,14 +309,9 @@ function cardMatchesSetFilter(c,setHint,setIds=[]){
   return Math.max(nameSimilarity(h,name),nameSimilarity(h,id),nameSimilarity(h,title))>=.78;
 }
 function hardFilterCatalog(cards,{number="",setHint="",setIds=[],language="all"}={}){
-  const wanted=numParts(number);
   return (cards||[]).filter(c=>{
     if(language!=="all"&&c.languageCode!==language)return false;
-    if(wanted.n){
-      const found=numParts(c.number);
-      if(found.n!==wanted.n)return false;
-      if(wanted.d&&found.d&&found.d!==wanted.d)return false;
-    }
+    if(number&&!collectorNumberMatches(number,c.number))return false;
     if(!cardMatchesSetFilter(c,setHint,setIds))return false;
     return true;
   });
@@ -298,7 +343,7 @@ function quickCatalogScore(c,name,number){
     else if(cn.includes(qn)||qn.includes(cn))s+=580;
     else s+=Math.round(nameSimilarity(qn,cn)*420);
   }
-  if(wanted)s+=actual===wanted?800:-250;
+  if(wanted)s+=collectorTokenMatches(wanted,actual)?800:-250;
   return s;
 }
 async function searchTCGdex(lang,name,number,options={}){
@@ -319,7 +364,7 @@ async function searchTCGdex(lang,name,number,options={}){
         for(const card of Array.isArray(set.cards)?set.cards:[])pool.push(mapTCGSetBrief(card,set,lang));
       }
       // Número + coleção é interseção obrigatória, nunca só um bônus de ranking.
-      if(n)pool=pool.filter(c=>numParts(c.number).n===n);
+      if(n)pool=pool.filter(c=>collectorTokenMatches(n,numParts(c.number).n));
       pool.sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number));
       const cap=!String(name||"").trim()&&!n?400:(live?48:120);
       pool=pool.slice(0,cap);
@@ -360,7 +405,7 @@ async function searchTCGdex(lang,name,number,options={}){
 
   const limit=live?36:60;
   let list=[...seenIds.values()];
-  if(n)list=list.filter(x=>numParts(x.localId).n===n);
+  if(n)list=list.filter(x=>collectorTokenMatches(n,numParts(x.localId).n));
   list=list.slice(0,limit);
   const details=await Promise.all(list.map(x=>fetchTCGdexCard(lang,x.id,x)));
   const out=details.filter(Boolean);
@@ -370,6 +415,22 @@ async function searchTCGdex(lang,name,number,options={}){
 }
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
+
+  try{
+    const p=new URLSearchParams({
+      set:card.setId||card.setName||"",
+      setName:card.setName||"",
+      number:card.number||"",
+      lang:lang||card.languageCode||"en"
+    });
+    const url="/api/limitless-image?"+p.toString();
+    const probe=await fetch(url,{cache:"force-cache"});
+    if(probe.ok){
+      card.imageUrl=url;
+      card.imageFallbackSource="Limitless TCG";
+      return card;
+    }
+  }catch(e){console.warn("Limitless image fallback",card?.name,e)}
 
   // Localized TCGdex records (especially PT promo sets) can have metadata but no image.
   // First try the exact same canonical card ID in EN, preserving PT metadata/language.
@@ -440,8 +501,9 @@ function rank(cards,q){
       }
     }
     if(num.n){
-      if(nn===num.n)s+=650;else s-=420;
-      if(num.d&&(numParts(c.number).d===num.d||String(c.printedTotal||"")===num.d))s+=260;
+      if(collectorTokenMatches(num.n,nn))s+=650;else s-=420;
+      const foundParts=numParts(c.number);
+      if(num.d&&(collectorTokenMatches(num.d,foundParts.d)||collectorTokenMatches(num.d,String(c.printedTotal||""))))s+=260;
     }
     if(set){
       if(cs===set||ci===set)s+=760;
@@ -498,9 +560,13 @@ async function searchCards(options={}){
 
     const mypCards=mypSearch.cards||[];
     const tcgFlat=groups.flat();
-    const sourcePool=language==="ja"&&jpOfficial.length
+    const basePool=language==="ja"&&jpOfficial.length
       ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
       : [...tcgFlat,...legacyCards,...jpOfficial,...mypCards];
+    const limitlessVariants=number&&raw
+      ? await searchLimitlessVariants(raw,number,basePool,language)
+      : [];
+    const sourcePool=[...basePool,...limitlessVariants];
     let results=hardFilterCatalog(dedupe(sourcePool),{number,setHint,setIds,language});
     const maxResults=setHint&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
@@ -524,9 +590,7 @@ function queueLiveCatalogSearch(delay=420){
 function isPromoCard(c){
   if(!c)return false;
   if(c.isPromo===true)return true;
-  if(/promo|black star/i.test(String(c.rarity||"")+" "+String(c.setName||"")+" "+String(c.setId||"")))return true;
-  const n=String(c.number||"").split("/")[0].trim();
-  return /\d+[A-Za-z]$/.test(n);
+  return /promo|black star/i.test(String(c.rarity||"")+" "+String(c.setName||"")+" "+String(c.setId||""));
 }
 function rarityMatches(c,rar){
   if(rar==="all")return true;
@@ -572,7 +636,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.35",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.36",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
