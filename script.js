@@ -22,7 +22,28 @@ function normalizedPriceMode(v){return["min","avg","max"].includes(v)?v:"avg"}
 function priceModeLabel(v){return({min:"mínimo",avg:"médio",max:"máximo"})[normalizedPriceMode(v)]}
 function priceModeValue(c,mode){return Number(c?.["price_"+normalizedPriceMode(mode)]||0)}
 function currentPriceMode(){return normalizedPriceMode(settings.display_price_mode||settings.total_price_mode||"avg")}
-function numParts(v){const s=String(v||"");const m=s.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);if(m)return{n:String(+m[1]),d:String(+m[2]),full:`${+m[1]}/${+m[2]}`};const x=s.match(/\d{1,4}/);return x?{n:String(+x[0]),d:"",full:String(+x[0])}:{n:"",d:"",full:""}}
+function normalizeCollectorToken(v){
+  const raw=String(v||"").trim().replace(/[^A-Za-z0-9]/g,"");
+  if(!raw)return"";
+  const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);
+  if(!m)return raw.toLowerCase();
+  return (m[1]||"").toLowerCase()+String(Number(m[2]))+(m[3]||"").toLowerCase();
+}
+function numParts(v){
+  const s=String(v||"");
+  const token="[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}";
+  const m=s.match(new RegExp("("+token+")\\s*\\/\\s*("+token+")","i"));
+  if(m){
+    const n=normalizeCollectorToken(m[1]),d=normalizeCollectorToken(m[2]);
+    return{n,d,full:n+"/"+d,rawN:m[1],rawD:m[2]};
+  }
+  const x=s.match(new RegExp(token,"i"));
+  if(x){
+    const n=normalizeCollectorToken(x[0]);
+    return{n,d:"",full:n,rawN:x[0],rawD:""};
+  }
+  return{n:"",d:"",full:"",rawN:"",rawD:""};
+}
 function toast(msg){const e=$("toast");if(!e)return;e.textContent=msg;e.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("show"),2400)}
 function openDialog(id){const e=$(id);if(e&&!e.open)e.showModal()}
 function closeDialog(id){const e=$(id);if(e?.open)e.close()}
@@ -58,6 +79,28 @@ function renderPagesGrid(){const g=$("pagesGrid");if(!g)return;g.innerHTML="";fo
 function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{page,slot}:freePositions(page,1)[0];catalogSelection.clear();updateSelectionTray();$("searchName").value="";$("searchNumber").value="";$("searchSet").value="";$("resultsList").innerHTML="";$("searchStatus").textContent=`Primeira carta irá para página ${pendingPosition.page}, bolso ${pendingPosition.slot}.`;openDialog("addDialog");setTimeout(()=>$("searchName").focus(),100)}
 async function searchMypCards(name,number,setHint){if(!name)return{cards:[],needsToken:false};try{const p=new URLSearchParams({name});if(number)p.set("number",number);if(setHint)p.set("set",setHint);const r=await fetch(`/api/mypcards?${p}`,{cache:"no-store"}),j=await r.json();return j.ok?{cards:(j.cards||[]).map(mapMyp),needsToken:false}:{cards:[],needsToken:!!j.needsToken,message:j.message||""}}catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}}
 function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
+async function searchLegacyCards(name,number,setHint,options={}){
+  const raw=String(name||"").trim();
+  if(!raw)return[];
+  const live=!!options.live;
+  if(live&&norm(raw).replace(/\s+/g,"").length<4)return[];
+  const p=new URLSearchParams({name:raw,limit:String(live?30:80)});
+  if(number)p.set("number",number);
+  if(setHint)p.set("set",setHint);
+  const key="legacy|"+p.toString(),cached=catalogSearchCache.get(key);
+  if(cached&&Date.now()-cached.at<10*60*1000)return cached.items;
+  try{
+    const r=await fetch("/api/legacy-card-search?"+p.toString(),{cache:"no-store"});
+    if(!r.ok)return[];
+    const j=await r.json();
+    const items=j?.ok&&Array.isArray(j.cards)?j.cards:[];
+    catalogSearchCache.set(key,{at:Date.now(),items});
+    return items;
+  }catch(e){
+    console.warn("Legacy card search",e);
+    return[];
+  }
+}
 async function searchJapaneseOfficial(name,number,setHint,options={}){
   const raw=String(name||"").trim();
   if(!raw)return[];
@@ -216,10 +259,14 @@ function cardMatchesSetFilter(c,setHint,setIds=[]){
   return Math.max(nameSimilarity(h,name),nameSimilarity(h,id),nameSimilarity(h,title))>=.78;
 }
 function hardFilterCatalog(cards,{number="",setHint="",setIds=[],language="all"}={}){
-  const wanted=numParts(number).n;
+  const wanted=numParts(number);
   return (cards||[]).filter(c=>{
     if(language!=="all"&&c.languageCode!==language)return false;
-    if(wanted&&numParts(c.number).n!==wanted)return false;
+    if(wanted.n){
+      const found=numParts(c.number);
+      if(found.n!==wanted.n)return false;
+      if(wanted.d&&found.d&&found.d!==wanted.d)return false;
+    }
     if(!cardMatchesSetFilter(c,setHint,setIds))return false;
     return true;
   });
@@ -255,7 +302,7 @@ function quickCatalogScore(c,name,number){
   return s;
 }
 async function searchTCGdex(lang,name,number,options={}){
-  const n=numParts(number).n,setHint=String(options.setHint||"").trim(),live=!!options.live;
+  const parsedNumber=numParts(number),n=parsedNumber.n,lookupLocalId=parsedNumber.rawN||parsedNumber.n,setHint=String(options.setHint||"").trim(),live=!!options.live;
   const setIds=Array.isArray(options.setIds)?options.setIds.filter(Boolean):[];
   const names=tcgNameVariants(name),seenIds=new Map();
   let fuzzyUsed=false,fuzzyTerm="";
@@ -296,11 +343,11 @@ async function searchTCGdex(lang,name,number,options={}){
   }
 
   for(const candidate of names){
-    if(n)addList(await fetchTCGdexList(tcgApiLang(lang),{name:candidate,localId:n}));
+    if(n)addList(await fetchTCGdexList(tcgApiLang(lang),{name:candidate,localId:lookupLocalId}));
     addList(await fetchTCGdexList(tcgApiLang(lang),{name:candidate}));
     if(seenIds.size>=40)break;
   }
-  if(!seenIds.size&&n)addList(await fetchTCGdexList(tcgApiLang(lang),{localId:n}));
+  if(!seenIds.size&&n)addList(await fetchTCGdexList(tcgApiLang(lang),{localId:lookupLocalId}));
 
   if(!seenIds.size&&String(name||"").trim()){
     for(const prefix of fuzzyNamePrefixes(name)){
@@ -429,7 +476,7 @@ async function searchCards(options={}){
     return;
   }
 
-  const inline=raw.match(/^(.*?)(?:\s+)(\d{1,4})(?:\/(\d{1,4}))?$/);
+  const inline=raw.match(/^(.*?)(?:\s+)([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})(?:\/([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4}))?$/);
   if(inline&&!number){raw=inline[1].trim();number=inline[2]+(inline[3]?`/${inline[3]}`:"")}
 
   const b=$("btnSearchCards");
@@ -440,10 +487,12 @@ async function searchCards(options={}){
     const langs=language==="all"?["pt-br","en","ja"]:[language];
     const setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
     const wantsJa=language==="all"||language==="ja";
-    const [groups,jpOfficial,mypSearch]=await Promise.all([
+    const wantsLegacy=language==="all"||language==="en";
+    const [groups,jpOfficial,mypSearch,legacyCards]=await Promise.all([
       Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint,setIds}))),
       wantsJa?searchJapaneseOfficial(raw,number,setHint,{live}):Promise.resolve([]),
-      raw?searchMypCards(raw,number,setHint):Promise.resolve({cards:[],needsToken:false})
+      raw?searchMypCards(raw,number,setHint):Promise.resolve({cards:[],needsToken:false}),
+      wantsLegacy&&raw?searchLegacyCards(raw,number,setHint,{live}):Promise.resolve([])
     ]);
     if(requestId!==catalogSearchSeq)return;
 
@@ -451,7 +500,7 @@ async function searchCards(options={}){
     const tcgFlat=groups.flat();
     const sourcePool=language==="ja"&&jpOfficial.length
       ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
-      : [...tcgFlat,...jpOfficial,...mypCards];
+      : [...tcgFlat,...legacyCards,...jpOfficial,...mypCards];
     let results=hardFilterCatalog(dedupe(sourcePool),{number,setHint,setIds,language});
     const maxResults=setHint&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
@@ -472,8 +521,20 @@ function queueLiveCatalogSearch(delay=420){
   clearTimeout(catalogSearchTimer);
   catalogSearchTimer=setTimeout(()=>searchCards({live:true}),delay);
 }
-function populateRarityFilter(){const sel=$("resultRarityFilter"),current=sel.value;const rs=[...new Set(catalogResults.map(c=>c.rarity).filter(Boolean))].sort();sel.innerHTML='<option value="all">Todas as raridades</option>'+rs.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");if(rs.includes(current))sel.value=current}
-function renderCatalog(){const g=$("resultsList"),rar=$("resultRarityFilter").value;g.innerHTML="";catalogResults.filter(c=>rar==="all"||c.rarity===rar).forEach(c=>{const key=cardKey(c),sel=catalogSelection.has(key),el=document.createElement("button");el.type="button";el.className="catalog-card"+(sel?" selected":"");const img=cardImage(c),p=c.market?.avg||c.market?.min||0,native=c.nativeName&&norm(c.nativeName)!==norm(c.name)?`<small class="catalog-native">${esc(c.nativeName)}</small>`:"",setLabel=c.setTitle&&norm(c.setTitle)!==norm(c.setName)?`${c.setName||"-"} · ${c.setTitle}`:(c.setName||"-");el.innerHTML=`<span class="catalog-check">✓</span>${img?`<img src="${esc(img)}" loading="lazy">`:""}<h3>${esc(c.name)}</h3>${native}<p>${esc(setLabel)} · ${esc(c.number||"-")}</p><div class="catalog-tags"><span>${esc(c.language||"-")}</span>${c.languageCode==="pt-br"?'<span class="br">PT-BR</span>':""}${c.source==="Pokémon Japão Oficial"?'<span>JP oficial</span>':""}${c.rarity?`<span>${esc(c.rarity)}</span>`:""}${p?`<span class="br">${money(p)}</span>`:""}</div>`;el.onclick=()=>toggleCatalogCard(c);g.appendChild(el)})}
+function isPromoCard(c){
+  if(!c)return false;
+  if(c.isPromo===true)return true;
+  if(/promo|black star/i.test(String(c.rarity||"")+" "+String(c.setName||"")+" "+String(c.setId||"")))return true;
+  const n=String(c.number||"").split("/")[0].trim();
+  return /\d+[A-Za-z]$/.test(n);
+}
+function rarityMatches(c,rar){
+  if(rar==="all")return true;
+  if(rar==="Promo")return isPromoCard(c);
+  return c.rarity===rar;
+}
+function populateRarityFilter(){const sel=$("resultRarityFilter"),current=sel.value;const rs=[...new Set(catalogResults.map(c=>c.rarity).filter(Boolean))];if(catalogResults.some(isPromoCard)&&!rs.includes("Promo"))rs.push("Promo");rs.sort();sel.innerHTML='<option value="all">Todas as raridades</option>'+rs.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");if(rs.includes(current))sel.value=current}
+function renderCatalog(){const g=$("resultsList"),rar=$("resultRarityFilter").value;g.innerHTML="";catalogResults.filter(c=>rarityMatches(c,rar)).forEach(c=>{const key=cardKey(c),sel=catalogSelection.has(key),el=document.createElement("button");el.type="button";el.className="catalog-card"+(sel?" selected":"");const img=cardImage(c),p=c.market?.avg||c.market?.min||0,native=c.nativeName&&norm(c.nativeName)!==norm(c.name)?`<small class="catalog-native">${esc(c.nativeName)}</small>`:"",setLabel=c.setTitle&&norm(c.setTitle)!==norm(c.setName)?`${c.setName||"-"} · ${c.setTitle}`:(c.setName||"-");el.innerHTML=`<span class="catalog-check">✓</span>${img?`<img src="${esc(img)}" loading="lazy">`:""}<h3>${esc(c.name)}</h3>${native}<p>${esc(setLabel)} · ${esc(c.number||"-")}</p><div class="catalog-tags"><span>${esc(c.language||"-")}</span>${c.languageCode==="pt-br"?'<span class="br">PT-BR</span>':""}${c.source==="Pokémon Japão Oficial"?'<span>JP oficial</span>':""}${c.rarity?`<span>${esc(c.rarity)}</span>`:""}${p?`<span class="br">${money(p)}</span>`:""}</div>`;el.onclick=()=>toggleCatalogCard(c);g.appendChild(el)})}
 function toggleCatalogCard(c){const k=cardKey(c);catalogSelection.has(k)?catalogSelection.delete(k):catalogSelection.set(k,c);renderCatalog();updateSelectionTray()}
 function updateSelectionTray(){const n=catalogSelection.size;$("selectedCount").textContent=`${n} carta${n===1?"":"s"} escolhida${n===1?"":"s"}`;$("btnAddSelected").disabled=!n}
 async function findMarket(c){if(c.market&&(c.market.min||c.market.avg||c.market.max))return c.market;const m=await searchMypCards(c.namePt||c.name,c.number,c.setId||c.setName);if(m.cards.length){const r=rank(m.cards,{name:c.namePt||c.name,number:c.number,setHint:c.setId||c.setName,language:"pt-br"});if(r[0]?.market)return r[0].market}return{source:"MYP Cards",needsToken:m.needsToken,min:0,avg:0,max:0,link:""}}
@@ -511,7 +572,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.34",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.35",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
