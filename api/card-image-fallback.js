@@ -4,6 +4,12 @@ const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
 
 function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
+function collector(v){
+  const raw=String(v||'').trim().replace(/[^A-Za-z0-9]/g,'');
+  const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);
+  if(!m)return raw.toLowerCase();
+  return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase();
+}
 function score(c,w){
   let s=0;
   const cn=norm(c?.name),wn=norm(w.name);
@@ -13,8 +19,8 @@ function score(c,w){
     else s-=100;
   }
 
-  const wantedNumber=String(w.number||'').replace(/\D/g,'').replace(/^0+/,'');
-  const foundNumber=String(c?.localId||c?.number||'').replace(/\D/g,'').replace(/^0+/,'');
+  const wantedNumber=collector(String(w.number||'').split('/')[0]);
+  const foundNumber=collector(String(c?.localId||c?.number||'').split('/')[0]);
   if(wantedNumber){
     if(foundNumber===wantedNumber)s+=110;
     else s-=140;
@@ -70,7 +76,25 @@ module.exports=async function handler(req,res){
     candidates.sort((a,b)=>b.score-a.score);
     const best=candidates[0];
     const minScore=number?150:(hp?120:95);
-    const out=best&&best.score>=minScore?{ok:true,...best}:{ok:false,error:'no_safe_fallback'};
+    let out=best&&best.score>=minScore?{ok:true,...best}:null;
+
+    if(!out&&set&&number){
+      const local=String(number).split('/')[0].trim();
+      const params=new URLSearchParams({set:String(set).trim(),number:local,name});
+      try{
+        const probe=await fetch('https://www.poketrack.com.br/carta/'+encodeURIComponent(String(set).trim().toLowerCase())+'/'+encodeURIComponent(local)+'/'+norm(name).replace(/\s+/g,'-'),{
+          headers:{'user-agent':'Mozilla/5.0 (compatible; PokemonBinderBR/14.35)','accept':'text/html'}
+        });
+        if(probe.ok){
+          const html=await probe.text();
+          if(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["'][^"']+["']/i.test(html)||/<img[^>]+alt=["'][^"']*Carta/i.test(html)){
+            out={ok:true,url:'/api/poketrack-image?'+params.toString(),score:minScore,source:'PokeTrack BR',id:[set,local].join('-')};
+          }
+        }
+      }catch{}
+    }
+
+    if(!out)out={ok:false,error:'no_safe_fallback'};
     CACHE.set(key,out);
     return res.status(200).json(out);
   }catch(error){
