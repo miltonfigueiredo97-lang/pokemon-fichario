@@ -160,6 +160,47 @@ async function findTCGdexSets(lang,hint,limit=4){
     .slice(0,limit)
     .map(x=>x.s);
 }
+async function resolveCatalogSetIds(langs,hint){
+  const h=String(hint||"").trim();
+  if(!h)return[];
+  const all=(await Promise.all((langs||[]).map(async lang=>{
+    const sets=await fetchTCGdexSets(tcgApiLang(lang));
+    return sets.map(s=>({id:String(s?.id||""),name:s?.name||"",score:setSearchScore(s,h)}));
+  }))).flat().filter(x=>x.id&&x.score>=220);
+  if(!all.length)return[];
+  const byId=new Map();
+  for(const x of all){
+    const old=byId.get(x.id);
+    if(!old||x.score>old.score)byId.set(x.id,x);
+  }
+  const ranked=[...byId.values()].sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name));
+  const best=ranked[0]?.score||0;
+  // Coleção é filtro: só aceitamos o(s) set(s) realmente próximos do melhor match.
+  const floor=best>=1000?best-60:best>=800?best-110:Math.max(430,best-90);
+  return ranked.filter(x=>x.score>=floor).slice(0,4).map(x=>x.id);
+}
+function cardMatchesSetFilter(c,setHint,setIds=[]){
+  if(!String(setHint||"").trim())return true;
+  const ids=new Set((setIds||[]).map(String));
+  const cid=String(c?.setId||c?.set_id||"");
+  if(ids.size&&cid&&ids.has(cid))return true;
+  // Para catálogo TCGdex, se a coleção foi resolvida por ID, outro set é proibido.
+  if(ids.size&&(c?.source==="TCGdex"||c?.api_source==="TCGdex"))return false;
+  // Fontes de mercado nem sempre usam o ID TCGdex: exigimos o nome/código da coleção.
+  const h=norm(setHint),name=norm(c?.setName||c?.set_name||""),id=norm(cid);
+  if(!h)return true;
+  if(name===h||id===h||name.includes(h)||h.includes(name)||id.includes(h)||h.includes(id))return true;
+  return Math.max(nameSimilarity(h,name),nameSimilarity(h,id))>=.78;
+}
+function hardFilterCatalog(cards,{number="",setHint="",setIds=[],language="all"}={}){
+  const wanted=numParts(number).n;
+  return (cards||[]).filter(c=>{
+    if(language!=="all"&&c.languageCode!==language)return false;
+    if(wanted&&numParts(c.number).n!==wanted)return false;
+    if(!cardMatchesSetFilter(c,setHint,setIds))return false;
+    return true;
+  });
+}
 async function fetchTCGdexSet(lang,setId){
   const apiLang=tcgApiLang(lang),key=`set|${apiLang}|${setId}`,cached=catalogSearchCache.get(key);
   if(cached&&Date.now()-cached.at<10*60*1000)return cached.item;
@@ -191,37 +232,35 @@ function quickCatalogScore(c,name,number){
   return s;
 }
 async function searchTCGdex(lang,name,number,options={}){
-  const apiLang=tcgApiLang(lang),n=numParts(number).n,setHint=String(options.setHint||"").trim(),live=!!options.live;
+  const n=numParts(number).n,setHint=String(options.setHint||"").trim(),live=!!options.live;
+  const setIds=Array.isArray(options.setIds)?options.setIds.filter(Boolean):[];
   const names=tcgNameVariants(name),seenIds=new Map();
   let fuzzyUsed=false,fuzzyTerm="";
 
-  // Coleção é um critério de busca de verdade, não apenas um bônus de ranking.
-  // Se ela for reconhecida, partimos da lista oficial de cartas daquele set.
-  if(setHint){
-    const matchedSets=await findTCGdexSets(lang,setHint,live?2:4);
-    if(matchedSets.length){
-      const sets=(await Promise.all(matchedSets.map(s=>fetchTCGdexSet(lang,s.id)))).filter(Boolean);
+  // Quando a coleção já foi reconhecida em qualquer idioma, o ID canônico manda.
+  // Ex.: "Tempestade Prateada" resolve para o mesmo set usado por "Silver Tempest".
+  if(setIds.length||setHint){
+    let ids=setIds;
+    if(!ids.length)ids=(await findTCGdexSets(lang,setHint,live?2:4)).map(s=>s.id);
+    if(ids.length){
+      const sets=(await Promise.all(ids.map(id=>fetchTCGdexSet(lang,id)))).filter(Boolean);
       let pool=[];
       for(const set of sets){
         for(const card of Array.isArray(set.cards)?set.cards:[])pool.push(mapTCGSetBrief(card,set,lang));
       }
-      if(pool.length){
-        if(n){
-          const exact=pool.filter(c=>numParts(c.number).n===n);
-          if(exact.length)pool=exact;
-        }
-        pool.sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number));
-        const cap=!String(name||"").trim()&&!n?400:(live?36:96);
-        pool=pool.slice(0,cap);
-        if(String(name||"").trim()||n){
-          const details=await Promise.all(pool.map(c=>fetchTCGdexCard(lang,c.apiId,c)));
-          const out=details.filter(Boolean);
-          out.fuzzyUsed=false;out.fuzzyTerm="";
-          return out;
-        }
-        pool.fuzzyUsed=false;pool.fuzzyTerm="";
-        return pool;
+      // Número + coleção é interseção obrigatória, nunca só um bônus de ranking.
+      if(n)pool=pool.filter(c=>numParts(c.number).n===n);
+      pool.sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number));
+      const cap=!String(name||"").trim()&&!n?400:(live?48:120);
+      pool=pool.slice(0,cap);
+      if(String(name||"").trim()||n){
+        const details=await Promise.all(pool.map(c=>fetchTCGdexCard(lang,c.apiId,c)));
+        const out=details.filter(Boolean);
+        out.fuzzyUsed=false;out.fuzzyTerm="";
+        return out;
       }
+      pool.fuzzyUsed=false;pool.fuzzyTerm="";
+      return pool;
     }
   }
 
@@ -233,29 +272,26 @@ async function searchTCGdex(lang,name,number,options={}){
     const empty=[];empty.fuzzyUsed=false;empty.fuzzyTerm="";return empty;
   }
 
-  // Primeiro tenta exatamente o que o usuário escreveu, do mais específico ao amplo.
   for(const candidate of names){
-    if(n)addList(await fetchTCGdexList(apiLang,{name:candidate,localId:n}));
-    addList(await fetchTCGdexList(apiLang,{name:candidate}));
-    if(seenIds.size>=32)break;
+    if(n)addList(await fetchTCGdexList(tcgApiLang(lang),{name:candidate,localId:n}));
+    addList(await fetchTCGdexList(tcgApiLang(lang),{name:candidate}));
+    if(seenIds.size>=40)break;
   }
-  if(!seenIds.size&&n)addList(await fetchTCGdexList(apiLang,{localId:n}));
+  if(!seenIds.size&&n)addList(await fetchTCGdexList(tcgApiLang(lang),{localId:n}));
 
-  // Se não achou nada, relaxa apenas o nome e deixa o ranking achar o mais próximo.
   if(!seenIds.size&&String(name||"").trim()){
     for(const prefix of fuzzyNamePrefixes(name)){
-      const items=await fetchTCGdexList(apiLang,{name:prefix});
+      const items=await fetchTCGdexList(tcgApiLang(lang),{name:prefix});
       if(items.length){
-        addList(items);
-        fuzzyUsed=true;
-        fuzzyTerm=prefix;
-        break;
+        addList(items);fuzzyUsed=true;fuzzyTerm=prefix;break;
       }
     }
   }
 
-  const limit=live?28:48;
-  const list=[...seenIds.values()].slice(0,limit);
+  const limit=live?36:60;
+  let list=[...seenIds.values()];
+  if(n)list=list.filter(x=>numParts(x.localId).n===n);
+  list=list.slice(0,limit);
   const details=await Promise.all(list.map(x=>fetchTCGdexCard(lang,x.id,x)));
   const out=details.filter(Boolean);
   out.fuzzyUsed=fuzzyUsed;
@@ -320,16 +356,10 @@ async function searchCards(options={}){
   const typedLetters=norm(raw).replace(/\s+/g,"").length;
   const setLetters=norm(setHint).replace(/\s+/g,"").length;
   if(!raw&&!number&&!setHint){
-    catalogResults=[];
-    populateRarityFilter();
-    renderCatalog();
-    $("searchStatus").textContent="";
-    return;
+    catalogResults=[];populateRarityFilter();renderCatalog();$("searchStatus").textContent="";return;
   }
   if(live&&!number&&typedLetters<2&&setLetters<2){
-    catalogResults=[];
-    populateRarityFilter();
-    renderCatalog();
+    catalogResults=[];populateRarityFilter();renderCatalog();
     $("searchStatus").textContent="Digite pelo menos 2 letras no nome ou na coleção para buscar automaticamente.";
     return;
   }
@@ -339,30 +369,25 @@ async function searchCards(options={}){
 
   const b=$("btnSearchCards");
   if(!live)busy(b,true,"Buscando...");
-  $("searchStatus").textContent=live?"Refinando resultados enquanto você digita…":"Combinando nome, número, coleção e idioma…";
+  $("searchStatus").textContent=live?"Refinando resultados enquanto você digita…":"Cruzando todos os critérios informados…";
 
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
-    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint})));
+    const setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
+    const groups=await Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint,setIds})));
     if(requestId!==catalogSearchSeq)return;
 
-    let results=dedupe(groups.flat());
-    if(language!=="all")results=results.filter(c=>c.languageCode===language);
+    let results=hardFilterCatalog(dedupe(groups.flat()),{number,setHint,setIds,language});
     const maxResults=setHint&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
-    populateRarityFilter();
-    renderCatalog();
+    populateRarityFilter();renderCatalog();
 
     const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
-    const criteria=[raw&&`nome “${raw}”`,number&&`nº ${number}`,setHint&&`coleção “${setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" · ");
-    const fuzzy=groups.some(g=>g.fuzzyUsed);
-    const best=fuzzy&&catalogResults[0]?.name?catalogResults[0].name:"";
-    const correction=best&&norm(best)!==norm(raw)?` · mais próximo: “${best}”`:"";
-    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${correction}${criteria?` · filtros combinados: ${criteria}`:""}.`;
+    const criteria=[raw&&`nome “${raw}”`,number&&`nº ${number}`,setHint&&`coleção “${setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" + ");
+    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${criteria?` · correspondendo a: ${criteria}`:""}.`;
   }catch(e){
     if(requestId!==catalogSearchSeq)return;
-    console.error(e);
-    $("searchStatus").textContent="Erro ao buscar.";
+    console.error(e);$("searchStatus").textContent="Erro ao buscar.";
   }finally{
     if(!live&&requestId===catalogSearchSeq)busy(b,false);
   }
@@ -410,7 +435,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.26",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.27",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
