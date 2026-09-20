@@ -39,6 +39,22 @@ function mergeMarket(preferred,fallback){
   };
 }
 
+async function resolveFullNumber(number,apiId){
+  const raw=String(number||'').trim().replace(/\s/g,'');
+  if(!raw)return'';
+  if(/[A-Za-z]{0,8}\d+[A-Za-z]*\/[A-Za-z]{0,8}\d+[A-Za-z]*/i.test(raw))return raw;
+  if(!/^\d+$/.test(raw)||!apiId)return raw;
+  try{
+    const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.42'}
+    });
+    if(!rr.ok)return raw;
+    const d=await rr.json();
+    const local=String(d?.localId||raw).trim();
+    const total=Number(d?.set?.cardCount?.official||0);
+    return /^\d+$/.test(local)&&total>0 ? String(Number(local))+'/'+String(total) : raw;
+  }catch{return raw}
+}
 async function fetchJina(target,timeout=18000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
   try{
@@ -69,7 +85,7 @@ async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cach
 
 function normalizeCollectorToken(value){const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');if(!raw)return'';const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);if(!m)return raw.toLowerCase();return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase()}
 function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const m=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));if(m)return{n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2]),full:normalizeCollectorToken(m[1])+'/'+normalizeCollectorToken(m[2])};const x=text.match(new RegExp(token,'i'));return x?{n:normalizeCollectorToken(x[0]),d:'',full:normalizeCollectorToken(x[0])}:{n:'',d:'',full:''}}
-function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'\\s*\\/\\s*'+token+')\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
+function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'(?:\\s*\\/\\s*'+token+')?)\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
 function matchesWanted(identity,wanted){const wn=normalize(wanted.name),pn=normalize(identity.name);if(wn&&pn&&wn!==pn&&!pn.includes(wn)&&!wn.includes(pn))return false;const w=numberParts(wanted.number),f=numberParts(identity.number);if(w.n&&f.n!==w.n)return false;if(w.d&&f.d&&f.d!==w.d)return false;return true}
 
 function extractMarket(identity,finish,condition){
@@ -131,7 +147,9 @@ module.exports=async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'method_not_allowed'});
 
   const name=String(req.query.name||'').trim();
-  const number=String(req.query.number||'').trim();
+  const inputNumber=String(req.query.number||'').trim();
+  const apiId=String(req.query.apiId||req.query.api_id||'').trim();
+  const number=await resolveFullNumber(inputNumber,apiId);
   const set=String(req.query.set||'').trim();
   const link=String(req.query.link||'').trim();
   const lang=String(req.query.lang||'').trim();
@@ -193,7 +211,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1439:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1442:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -266,7 +284,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1439:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1442:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const found=await resolvePage({name,number,set,link,lang,finish,condition});
