@@ -12,6 +12,7 @@
     priceQueue:[],
     priceWorkers:0,
     singlePriceWatch:null,
+    bulkPriceWatch:null,
     scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null,lastVisualDescriptors:[],imageDescriptorCache:new Map(),pendingPosition:null,setHint:'',visualFrameCount:0,visualIndex:null,visualIndexPromise:null},
     setsCache:new Map(),
     seriesCache:new Map(),
@@ -78,10 +79,16 @@
     return m?Number(m[0]):999999;
   }
   function canonicalCardIdentityKey(card){
-    const raw=String(card?.card_key||cardKey(card)||'').replace(/\|variant:[^|]+$/i,'');
-    const lang=card?.language_code||card?.languageCode||'';
-    const finish=card?.finish||'Normal';
-    return [raw,lang,finish].join('|');
+    // Used ONLY by virtual views (Geral/Favoritas). Physical binders never group.
+    // Language is mandatory: JP/PT/EN are different cards even with same art/name.
+    const lang=nrm(card?.language_code||card?.languageCode||'');
+    const set=nrm(card?.set_id||card?.setId||card?.set_name||card?.setName||'');
+    const parts=typeof numParts==='function'?numParts(card?.number||''):{full:String(card?.number||'')};
+    const number=nrm(parts.full||card?.number||'');
+    const name=nrm(card?.name||'');
+    const finish=nrm(card?.finish||'Normal');
+    const condition=nrm(card?.condition||'Nova');
+    return [lang,set,number,name,finish,condition].join('|');
   }
   function groupedVirtualCards(cards){
     const groups=new Map();
@@ -1159,7 +1166,11 @@
     b.appendChild(star);
 
     if(card.price_pending){
-      const tag=document.createElement('span');tag.className='v14-price-pending';tag.textContent='Preço…';b.appendChild(tag);
+      const tag=document.createElement('span');
+      tag.className='v14-price-pending'+(card.price_processing_at?' processing':' queued');
+      tag.textContent='ATUALIZANDO…';
+      tag.setAttribute('aria-label',card.price_processing_at?'Preço sendo atualizado':'Preço aguardando atualização');
+      b.appendChild(tag);
     }
     return b;
   }
@@ -1171,21 +1182,113 @@
     }
     return visible;
   }
-  function renderBinderV14(){
-    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
-      const out=V14.original.renderBinder();
-      syncTopbarNavigation();
-      return out;
+  function resetSpreadV1433(){
+    const spread=document.querySelector('#binderStage .binder-spread');
+    const cover=spread?.querySelector('.binder-cover');
+    const leftWrap=spread?.querySelector('.binder-sheet-wrap:not(.v1433-secondary-sheet)');
+    spread?.classList.remove('v1433-two-sheets','v1433-last-single');
+    cover?.classList.remove('v1433-cover-hidden');
+    leftWrap?.classList.remove('v1433-sheet-left');
+    spread?.querySelector('.v1433-secondary-sheet')?.remove();
+  }
+
+  function prepareSpreadV1433(pages){
+    const spread=document.querySelector('#binderStage .binder-spread');
+    const cover=spread?.querySelector('.binder-cover');
+    const leftWrap=spread?.querySelector('.binder-sheet-wrap:not(.v1433-secondary-sheet)');
+    const leftSheet=byId('binderSheet');
+    if(!spread||!cover||!leftWrap||!leftSheet)return{leftSheet,rightSheet:null,double:false};
+
+    const desktop=window.matchMedia?.('(min-width:821px)').matches;
+    const afterCover=desktop&&currentPage>=2;
+    const double=afterCover&&currentPage<pages;
+    const lastSingle=afterCover&&currentPage>=pages;
+
+    spread.classList.toggle('v1433-two-sheets',double);
+    spread.classList.toggle('v1433-last-single',lastSingle);
+    cover.classList.toggle('v1433-cover-hidden',afterCover);
+    leftWrap.classList.toggle('v1433-sheet-left',double);
+
+    let rightWrap=spread.querySelector('.v1433-secondary-sheet');
+    if(double){
+      if(!rightWrap){
+        rightWrap=document.createElement('section');
+        rightWrap.className='binder-sheet-wrap v1433-secondary-sheet';
+        rightWrap.innerHTML='<div class="binder-spine"></div><div id="binderSheetRight" class="binder-sheet"></div><span class="v1433-sheet-page-label"></span>';
+        spread.appendChild(rightWrap);
+      }
+      return{leftSheet,rightSheet:rightWrap.querySelector('#binderSheetRight'),double:true};
     }
+
+    rightWrap?.remove();
+    return{leftSheet,rightSheet:null,double:false};
+  }
+
+  function renderPhysicalPageV1433(sheet,page){
+    if(!sheet)return;
+    sheet.dataset.page=String(page);
+    sheet.innerHTML='';
+    for(let slot=1;slot<=9;slot++){
+      const pocket=document.createElement('div');
+      pocket.className='binder-pocket';
+      pocket.dataset.page=page;
+      pocket.dataset.slot=slot;
+
+      const card=getCardAt(page,slot);
+      if(card){
+        pocket.appendChild(renderPocketCard(card));
+      }else{
+        const add=document.createElement('button');
+        add.className='pocket-empty-btn v1425-slot-add';
+        add.type='button';
+        add.textContent='＋';
+        add.title='Adicionar no bolso '+slot+' da página '+page;
+        add.setAttribute('aria-label','Adicionar carta na página '+page+', bolso '+slot);
+        add.onclick=()=>openAddForPosition(page,slot);
+        pocket.appendChild(add);
+      }
+      sheet.appendChild(pocket);
+    }
+  }
+
+  function renderBinderV14(){
+    const physicalManual=!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly;
+
+    if(physicalManual){
+      const pages=Math.max(1,currentBinderPages());
+      currentPage=Math.min(Math.max(1,currentPage),pages);
+      const spread=prepareSpreadV1433(pages);
+      renderPhysicalPageV1433(spread.leftSheet,currentPage);
+      if(spread.double)renderPhysicalPageV1433(spread.rightSheet,currentPage+1);
+
+      const rightLabel=document.querySelector('.v1433-secondary-sheet .v1433-sheet-page-label');
+      if(rightLabel)rightLabel.textContent='Página '+(currentPage+1);
+
+      const label=byId('pageLabel');
+      if(label){
+        label.textContent=spread.double
+          ? 'Páginas '+currentPage+'–'+(currentPage+1)+' · '+currentPage+'/'+pages
+          : 'Página '+currentPage+' · '+currentPage+'/'+pages;
+      }
+      byId('prevPage').disabled=currentPage<=1;
+      byId('nextPage').disabled=currentPage>=pages;
+      syncTopbarNavigation();
+      requestAnimationFrame(positionUnifiedTopbar);
+      return;
+    }
+
+    // Virtual/filtered views remain one sheet so their ordering is unambiguous.
+    resetSpreadV1433();
     const g=byId('binderSheet');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();
     currentPage=Math.min(Math.max(1,currentPage),pages);
     const slice=cards.slice((currentPage-1)*9,currentPage*9);
     g.innerHTML='';
     for(let slot=0;slot<9;slot++){
-      const pocket=document.createElement('div');pocket.className='binder-pocket v14-ordered-pocket';
-      const c=slice[slot];
-      if(c)pocket.appendChild(renderPocketCard(c));
+      const pocket=document.createElement('div');
+      pocket.className='binder-pocket v14-ordered-pocket';
+      const card=slice[slot];
+      if(card)pocket.appendChild(renderPocketCard(card));
       else if(!isGeneral()){
         const add=document.createElement('button');
         add.className='pocket-empty-btn v1425-slot-add';
@@ -1193,16 +1296,11 @@
         add.textContent='＋';
         add.title='Adicionar carta neste fichário';
         add.setAttribute('aria-label','Adicionar carta neste fichário');
-        add.onclick=()=>{
-          // Em uma visualização ordenada/filtrada o bolso da tela é virtual.
-          // Abrimos no primeiro bolso físico livre a partir da página atual.
-          openAddForPosition(currentPage);
-        };
+        add.onclick=()=>openAddForPosition(currentPage);
         pocket.appendChild(add);
       }else{
         const empty=document.createElement('div');
         empty.className='v14-empty-ordered';
-        empty.textContent='';
         pocket.appendChild(empty);
       }
       g.appendChild(pocket);
@@ -1211,6 +1309,7 @@
     byId('prevPage').disabled=currentPage<=1;
     byId('nextPage').disabled=currentPage>=pages;
     syncTopbarNavigation();
+    requestAnimationFrame(positionUnifiedTopbar);
   }
 
   function renderPagesGridV14(){
@@ -1341,48 +1440,55 @@
     if(!cards.length)return;
     if(isGeneral())return toast('Escolha um fichário antes de adicionar.');
     for(const [key] of cards){
-      const v=selectionVariantValues(key);
-      if(!v.finish||!v.condition)return toast('Escolha o acabamento e a condição antes de adicionar.');
+      const variant=selectionVariantValues(key);
+      if(!variant.finish||!variant.condition)return toast('Escolha o acabamento e a condição antes de adicionar.');
     }
-    const b=byId('btnAddSelected');busy(b,true,'Adicionando…');
+
+    const button=byId('btnAddSelected');
+    busy(button,true,'Adicionando…');
     const saved=[];
     try{
       const positions=freePositions(pendingPosition?.page||currentPage,cards.length);
       const maxPage=Math.max(...positions.map(p=>p.page));
       if(maxPage>currentBinderPages())await updateSettings({binder_pages:maxPage},true);
+
       for(let i=0;i<cards.length;i++){
-        const [key,raw]=cards[i],pos=positions[i],v=selectionVariantValues(key),card={...raw};
-        const payload=cardPayload(card,{page:pos.page,slot:pos.slot,status:'owned',quantity:1,condition:v.condition,finish:v.finish,finishConfirmed:true,notes:''},{});
+        const [key,raw]=cards[i],pos=positions[i],variant=selectionVariantValues(key),card={...raw};
+        const payload=cardPayload(card,{
+          page:pos.page,slot:pos.slot,status:'owned',quantity:1,
+          condition:variant.condition,finish:variant.finish,finishConfirmed:true,notes:''
+        },{});
         payload.user_id=currentUser.id;
         payload.binder_id=V14.activeBinderId;
+        payload.quantity=1;
         payload.price_pending=true;
         payload.price_checked_at=null;
-        const {data:existing,error:findErr}=await db.from('pokemon_cards')
-          .select('*').eq('user_id',currentUser.id).eq('binder_id',V14.activeBinderId)
-          .eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).maybeSingle();
-        if(findErr)throw findErr;
-        if(existing){
-          const now=new Date().toISOString();
-          const {data,error}=await db.from('pokemon_cards').update({
-            quantity:(+existing.quantity||0)+1,collection_status:'owned',price_pending:true,
-            price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
-            price_attempts:0,price_priority:0,price_last_error:null
-          })
-            .eq('id',existing.id).eq('user_id',currentUser.id).select('*').single();
-          if(error)throw error;saved.push(data);
-        }else{
-          const {data,error}=await db.from('pokemon_cards').insert(payload).select('*').single();
-          if(error)throw error;saved.push(data);
-        }
+        payload.price_processing_at=null;
+        payload.price_requested_at=new Date().toISOString();
+        payload.price_next_retry_at=payload.price_requested_at;
+        payload.price_attempts=0;
+        payload.price_priority=0;
+        payload.price_last_error=null;
+
+        // One database row = one physical card in one pocket.
+        // Never merge by card_key/condition/finish inside a real binder.
+        const {data,error}=await db.from('pokemon_cards').insert(payload).select('*').single();
+        if(error)throw error;
+        saved.push(data);
       }
+
       catalogSelection.clear();
       if(byId('addDialog')?.open)byId('addDialog').close();
       currentPage=positions[0]?.page||currentPage;
-      busy(b,false);
-      await loadCards(false);
+      busy(button,false);
+      await loadCardsV14(false);
       toast(cards.length+' carta'+(cards.length===1?'':'s')+' adicionada'+(cards.length===1?'':'s')+'. Preço atualizando em segundo plano.');
       queueBackgroundPrices(saved);
-    }catch(e){console.error(e);toast('Não consegui adicionar todas as cartas.');busy(b,false)}
+    }catch(error){
+      console.error('[Adicionar cartas]',error);
+      toast('Não consegui adicionar todas as cartas: '+(error?.message||'erro no banco'));
+      busy(button,false);
+    }
   }
 
   function uniquePriceCards(cards){
@@ -1548,32 +1654,103 @@
     return uniquePriceCards(cards);
   }
 
+  function setVisiblePriceButtonState({active=false,total=0,pending=0,label=''}={}){
+    const b=byId('v12UpdatePrices');
+    const status=byId('v12PriceProgress');
+    if(!b)return;
+    if(active){
+      const done=Math.max(0,total-pending);
+      b.disabled=true;
+      b.classList.add('v1433-price-running');
+      b.textContent=label||('↻ ATUALIZANDO PREÇOS… '+done+'/'+total);
+      if(status)status.textContent=pending
+        ? pending+' de '+total+' carta(s) ainda estão sendo atualizadas.'
+        : total+' carta(s) concluída(s).';
+    }else{
+      b.disabled=false;
+      b.classList.remove('v1433-price-running');
+      b.textContent='↻ Atualizar preços visíveis';
+    }
+  }
+
+  async function watchVisiblePriceBatch(cards,{resume=false}={}){
+    const ids=uniquePriceCards(cards).map(c=>c.id).filter(Boolean);
+    if(!ids.length){setVisiblePriceButtonState({active:false});return}
+
+    if(V14.bulkPriceWatch)V14.bulkPriceWatch.cancelled=true;
+    const watch={ids,total:ids.length,cancelled:false,promise:null};
+    V14.bulkPriceWatch=watch;
+    setVisiblePriceButtonState({active:true,total:watch.total,pending:watch.total});
+
+    watch.promise=(async()=>{
+      const started=Date.now();
+      while(!watch.cancelled&&Date.now()-started<8*60_000){
+        const {data,error}=await db.from('pokemon_cards')
+          .select('id,price_pending,price_processing_at,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_last_error')
+          .eq('user_id',currentUser.id)
+          .in('id',ids);
+
+        if(!error&&Array.isArray(data)){
+          for(const row of data)applyLocalPricePatch(row.id,row);
+          const pending=data.filter(row=>row.price_pending).length;
+          setVisiblePriceButtonState({active:pending>0,total:watch.total,pending});
+          try{renderBinder();renderSummary()}catch{}
+          if(!pending)return;
+        }
+        await sleep(2200);
+      }
+    })();
+
+    try{await watch.promise}
+    finally{
+      if(V14.bulkPriceWatch===watch)V14.bulkPriceWatch=null;
+      setVisiblePriceButtonState({active:false});
+    }
+  }
+
+  function resumeVisiblePriceWatch(){
+    if(V14.bulkPriceWatch)return;
+    const pending=visiblePriceTargetCards().filter(c=>!!c.price_pending);
+    if(pending.length)setTimeout(()=>watchVisiblePriceBatch(pending,{resume:true}),0);
+    else setVisiblePriceButtonState({active:false});
+  }
+
   async function updateVisiblePricesV14(){
     const cards=visiblePriceTargetCards();
     if(!cards.length)return toast('Nenhuma carta visível com os filtros atuais.');
-    const b=byId('v12UpdatePrices'),status=byId('v12PriceProgress');
-    busy(b,true,'Preparando fila…');
+    if(V14.bulkPriceWatch)return toast('Os preços visíveis já estão sendo atualizados.');
+
+    const status=byId('v12PriceProgress');
+    setVisiblePriceButtonState({active:true,total:cards.length,pending:cards.length,label:'↻ PREPARANDO ATUALIZAÇÃO…'});
     try{
       await markCardsForPrice(cards,50);
       queueBackgroundPrices(cards,{front:true});
-      if(status)status.textContent=cards.length+' carta(s) visível(is) na fila. A atualização continua mesmo com o app fechado.';
-      toast('Atualização iniciada para '+cards.length+' carta(s) visível(is).');
+      kickPriceWorkerNow();
+      if(status)status.textContent=cards.length+' carta(s) na fila. Você pode continuar usando o fichário.';
       try{renderBinder();renderSummary()}catch{}
-    }catch(e){
-      console.error(e);
+      watchVisiblePriceBatch(cards);
+    }catch(error){
+      console.error('[Atualizar preços visíveis]',error);
+      setVisiblePriceButtonState({active:false});
       toast('Não consegui iniciar a atualização filtrada.');
-    }finally{busy(b,false)}
+    }
   }
 
   V14.updateVisiblePrices=updateVisiblePricesV14;
 
   function rewireFilteredPriceButton(){
-    const old=byId('v12UpdatePrices');if(!old||old.dataset.v148==='1')return;
+    const old=byId('v12UpdatePrices');
+    if(!old)return;
+    if(old.dataset.v1433==='1'){
+      resumeVisiblePriceWatch();
+      return;
+    }
     const b=old.cloneNode(true);
-    b.dataset.v148='1';
+    b.dataset.v1433='1';
     b.textContent='↻ Atualizar preços visíveis';
     old.replaceWith(b);
     b.addEventListener('click',updateVisiblePricesV14);
+    resumeVisiblePriceWatch();
   }
 
   function syncSingleCardPriceButton(){
@@ -1817,27 +1994,53 @@
     const existingEditing=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
     const binderId=existingEditing?.binder_id||(isGeneral()?null:V14.activeBinderId);
     if(!binderId)return toast('Escolha um fichário antes de salvar.');
-    const b=byId('btnSaveCard'),page=Math.max(1,+byId('cardPage').value||1),slot=Math.min(9,Math.max(1,+byId('cardSlot').value||1));
-    const condition=byId('cardCondition').value,finish=byId('cardFinish').value,quantity=selectedStatus==='owned'?Math.max(1,+byId('cardQuantity').value||1):0;
-    busy(b,true,'Salvando…');
+
+    const button=byId('btnSaveCard');
+    const page=Math.max(1,+byId('cardPage').value||1);
+    const slot=Math.min(9,Math.max(1,+byId('cardSlot').value||1));
+    const condition=byId('cardCondition').value;
+    const finish=byId('cardFinish').value;
+    const quantity=selectedStatus==='owned'?1:0;
+
+    // The pocket is physical. Another row cannot be silently replaced.
+    const occupant=V14.allCards.find(c=>c.binder_id===binderId&&+c.binder_page===page&&+c.binder_slot===slot&&c.id!==editingCardId);
+    if(occupant)return toast('Esse bolso já tem uma carta. Mova a carta ou escolha outro bolso.');
+
+    busy(button,true,'Salvando…');
     try{
-      const payload=cardPayload(selectedCard,{page,slot,status:selectedStatus,quantity,condition,finish,notes:byId('cardNotes').value.trim()},selectedMarket||{});
+      if(page>currentBinderPages())await updateSettings({binder_pages:page},true);
+      const payload=cardPayload(selectedCard,{
+        page,slot,status:selectedStatus,quantity,condition,finish,
+        notes:byId('cardNotes').value.trim()
+      },selectedMarket||{});
       payload.binder_id=binderId;
-      if(existingEditing?.card_key)payload.card_key=existingEditing.card_key;
+      payload.quantity=quantity;
+
       if(editingCardId){
-        const {error}=await db.from('pokemon_cards').update(payload).eq('id',editingCardId).eq('user_id',currentUser.id);if(error)throw error;
+        // Editing means this exact physical copy only.
+        if(existingEditing?.card_key)payload.card_key=existingEditing.card_key;
+        const {error}=await db.from('pokemon_cards')
+          .update(payload)
+          .eq('id',editingCardId)
+          .eq('user_id',currentUser.id);
+        if(error)throw error;
       }else{
-        const {data:existing,error:e}=await db.from('pokemon_cards').select('id,quantity').eq('user_id',currentUser.id).eq('binder_id',binderId).eq('card_key',payload.card_key).eq('condition',condition).eq('finish',finish).maybeSingle();
-        if(e)throw e;
-        if(existing){
-          const {error}=await db.from('pokemon_cards').update({...payload,user_id:undefined,quantity:selectedStatus==='owned'?(+existing.quantity||0)+quantity:0}).eq('id',existing.id).eq('user_id',currentUser.id);if(error)throw error;
-        }else{
-          const {error}=await db.from('pokemon_cards').insert(payload);if(error)throw error;
-        }
+        // New physical copy: always INSERT, even if the exact same card already exists.
+        payload.user_id=currentUser.id;
+        const {error}=await db.from('pokemon_cards').insert(payload);
+        if(error)throw error;
       }
-      closeDialog('cardDialog');editingCardId=null;await loadCards(false);toast('Carta salva.');
-    }catch(e){console.error(e);toast('Erro ao salvar: '+(e.message||'tente novamente'))}
-    finally{busy(b,false)}
+
+      closeDialog('cardDialog');
+      editingCardId=null;
+      await loadCardsV14(false);
+      toast('Carta salva.');
+    }catch(error){
+      console.error('[Salvar carta]',error);
+      toast('Erro ao salvar: '+(error?.message||'tente novamente'));
+    }finally{
+      busy(button,false);
+    }
   }
 
   async function japaneseImageFallback(card){
