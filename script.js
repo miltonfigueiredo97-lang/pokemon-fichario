@@ -456,6 +456,23 @@ function tcgplayerImageFromTCGdex(card){
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
 
+  // First choice for missing scans: resolve the exact TCGdex printing. If its
+  // localized scan is absent, the server uses the TCGplayer product id carried
+  // by that exact TCGdex record. This prevents blank Promo thumbnails.
+  if(card.apiId){
+    try{
+      const p=new URLSearchParams({id:card.apiId,lang:lang||card.languageCode||"en"});
+      const url="/api/tcgdex-card-image?"+p.toString();
+      const probe=await fetch(url,{cache:"force-cache"});
+      if(probe.ok){
+        card.imageUrl=url;
+        card.imageFallbackSource="TCGdex/TCGplayer · impressão exata";
+        return card;
+      }
+    }catch(e){console.warn("Exact card image resolver",card.apiId,e)}
+  }
+
+  // Keep Limitless only as a later fallback; its image CDN can reject server-side requests.
   try{
     const p=new URLSearchParams({
       set:card.setId||card.setName||"",
@@ -700,7 +717,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.40",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.41",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
