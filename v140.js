@@ -1630,8 +1630,14 @@
   async function finishPriceFailure(card,dual,error,attempts){
     const code=priceFailureCode(dual,error);
     const terminal=terminalPriceFailure(code)||attempts>=6;
+    const clearIdentity=['wrong_product','product_not_found'].includes(code);
     const patch=terminal?{
-      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_last_error:code
+      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_last_error:code,
+      ...(clearIdentity?{
+        myp_price_min:0,myp_price_avg:0,myp_price_max:0,myp_price_link:null,myp_price_checked_at:null,
+        price_min:0,price_avg:0,price_max:0,price_source:'Sem preço BR',price_link:null,
+        price_br_source:null,price_br_link:null,price_checked_at:null
+      }:{})
     }:{
       price_pending:true,price_processing_at:null,
       price_next_retry_at:new Date(Date.now()+Math.min(30,Math.pow(2,Math.min(attempts,4)))*60_000).toISOString(),
