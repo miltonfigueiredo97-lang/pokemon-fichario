@@ -488,7 +488,7 @@
     try{
       const langs=q.language==='all'?['pt-br','en','ja']:[q.language];
       const setIds=q.setHint?await resolveCatalogSetIds(langs,q.setHint):[];
-      const mypPromise=q.raw&&q.language!=='ja'?searchMypCards(q.raw,q.number,q.setHint):Promise.resolve({cards:[],needsToken:false});
+      const mypPromise=q.raw?searchMypCards(q.raw,q.number,q.setHint):Promise.resolve({cards:[],needsToken:false});
       const jpPromise=(q.language==='ja'||q.language==='all')&&q.raw?searchJapaneseOfficial(q.raw,q.number,q.setHint,{live:false}):Promise.resolve([]);
       const [myp,jpOfficial,...groups]=await Promise.all([
         mypPromise,
@@ -496,8 +496,12 @@
         ...langs.map(l=>searchTCGdex(l,q.raw,q.number,{setHint:q.setHint,setIds,live:false}))
       ]);
 
-      let tcg=hardFilterCatalog(dedupe([...groups.flat(),...jpOfficial]),{number:q.number,setHint:q.setHint,setIds,language:q.language});
-      let market=hardFilterCatalog(myp.cards||[],{number:q.number,setHint:q.setHint,setIds,language:q.language});
+      const mypCards=myp.cards||[];
+      const tcgPool=q.language==='ja'&&jpOfficial.length
+        ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==='ja')]
+        : [...groups.flat(),...jpOfficial,...mypCards];
+      let tcg=hardFilterCatalog(dedupe(tcgPool),{number:q.number,setHint:q.setHint,setIds,language:q.language});
+      let market=[];
 
       const maxResults=q.setHint&&!q.raw&&!q.number?400:100;
       catalogResults=rank(dedupe([...market,...tcg]),{name:q.raw,number:q.number,setHint:q.setHint,language:q.language}).slice(0,maxResults);
