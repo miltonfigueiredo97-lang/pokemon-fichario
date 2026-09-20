@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V14.0';
+  const APP_VERSION='V14.42';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
