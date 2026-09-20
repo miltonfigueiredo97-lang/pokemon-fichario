@@ -322,15 +322,14 @@
     ghost.removeAttribute('id');
     ghost.className='v11-drag-ghost';
     ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';
-    ghost.style.left=state.x+'px';ghost.style.top=state.y+'px';
+    ghost.style.left=(state.x-state.offsetX)+'px';ghost.style.top=(state.y-state.offsetY)+'px';
     document.body.appendChild(ghost);state.ghost=ghost;
-    try{state.card.setPointerCapture(state.pointerId)}catch(_e){}
     if(state.pointerType!=='mouse')navigator.vibrate?.(22);
   }
 
   function queueEdgePage(state,x){
     if(!state?.active)return;
-    const wrap=document.querySelector('#binderStage .binder-sheet-wrap')||$id('binderStage');
+    const wrap=document.querySelector('#binderStage .binder-spread')||$id('binderStage');
     if(!wrap)return;
     const r=wrap.getBoundingClientRect();
     const threshold=Math.max(42,Math.min(78,r.width*.10));
@@ -349,8 +348,10 @@
       if(dragState!==state||!state.active)return;
       try{window.cancelBinderPageFlipV14?.({suppress:true})}catch(_e){}
       let page=1;try{page=Number(currentPage||1)}catch(_e){}
-      const target=page+dir;
-      if(target<1)return;
+      const target=typeof window.binderSessionTargetV14==='function'
+        ? window.binderSessionTargetV14(page,dir)
+        : page+dir;
+      if(target<1||target===page)return;
       try{
         currentPage=target;
         renderBinder();
@@ -378,9 +379,12 @@
       if(card.dataset.v14Movable==='0'||card.classList.contains('v14-no-drag'))return;
       if(e.pointerType!=='mouse')lastTouch=Date.now();
       clearDrag();
+      const rect=card.getBoundingClientRect();
       const state={
         id:card.dataset.id,card,pointerId:e.pointerId,pointerType:e.pointerType,
         startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,
+        offsetX:Math.max(0,Math.min(rect.width,e.clientX-rect.left)),
+        offsetY:Math.max(0,Math.min(rect.height,e.clientY-rect.top)),
         active:false,ghost:null,timer:null,edgeTimer:null,edgeDir:0
       };
       dragState=state;
@@ -406,7 +410,7 @@
         }
       }
       e.preventDefault();e.stopImmediatePropagation();
-      if(s.ghost){s.ghost.style.left=e.clientX+'px';s.ghost.style.top=e.clientY+'px'}
+      if(s.ghost){s.ghost.style.left=(e.clientX-s.offsetX)+'px';s.ghost.style.top=(e.clientY-s.offsetY)+'px'}
       document.querySelectorAll('.binder-pocket.v11-drop-target').forEach(p=>p.classList.remove('v11-drop-target'));
       const hit=document.elementFromPoint(e.clientX,e.clientY);
       hit?.closest('.binder-pocket')?.classList.add('v11-drop-target');
@@ -448,7 +452,7 @@
     const language=$id('searchLanguage')?.value||'all';
 
     if(!number){
-      const full=raw.match(/(?:^|\s)(\d{1,4})\s*\/\s*(\d{1,4})(?=\s|$)/);
+      const full=raw.match(/(?:^|\s)([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})\s*\/\s*([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})(?=\s|$)/);
       if(full){number=`${full[1]}/${full[2]}`;raw=raw.replace(full[0],' ').replace(/\s+/g,' ').trim()}
     }
     if(!setHint&&number){
@@ -456,7 +460,7 @@
       if(tail){raw=tail[1].trim();setHint=tail[2]}
     }
     if(!number){
-      const single=raw.match(/^(.*\S)\s+(\d{1,4})$/);
+      const single=raw.match(/^(.*\S)\s+([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})$/);
       if(single){raw=single[1].trim();number=single[2]}
     }
     return{raw,number,setHint,language};
@@ -490,16 +494,18 @@
       const setIds=q.setHint?await resolveCatalogSetIds(langs,q.setHint):[];
       const mypPromise=q.raw?searchMypCards(q.raw,q.number,q.setHint):Promise.resolve({cards:[],needsToken:false});
       const jpPromise=(q.language==='ja'||q.language==='all')&&q.raw?searchJapaneseOfficial(q.raw,q.number,q.setHint,{live:false}):Promise.resolve([]);
-      const [myp,jpOfficial,...groups]=await Promise.all([
+      const legacyPromise=(q.language==='en'||q.language==='all')&&q.raw?searchLegacyCards(q.raw,q.number,q.setHint,{live:false}):Promise.resolve([]);
+      const [myp,jpOfficial,legacyCards,...groups]=await Promise.all([
         mypPromise,
         jpPromise,
+        legacyPromise,
         ...langs.map(l=>searchTCGdex(l,q.raw,q.number,{setHint:q.setHint,setIds,live:false}))
       ]);
 
       const mypCards=myp.cards||[];
       const tcgPool=q.language==='ja'&&jpOfficial.length
         ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==='ja')]
-        : [...groups.flat(),...jpOfficial,...mypCards];
+        : [...groups.flat(),...legacyCards,...jpOfficial,...mypCards];
       let tcg=hardFilterCatalog(dedupe(tcgPool),{number:q.number,setHint:q.setHint,setIds,language:q.language});
       let market=[];
 
