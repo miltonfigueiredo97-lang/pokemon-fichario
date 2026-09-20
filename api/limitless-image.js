@@ -3,9 +3,11 @@
 const MAX_BYTES=7*1024*1024;
 const CDN='https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci';
 const SET_MAP={
-  svp:'SVP',sm7:'CES',smp:'SMP',swshp:'SWSH',
+  svp:'SVP',sm7:'CES',smp:'SMP',swshp:'SP',
   celestialstorm:'CES',tempestadecelestial:'CES',
-  scarletvioletpromos:'SVP',svpblackstarpromos:'SVP'
+  scarletvioletpromos:'SVP',svpblackstarpromos:'SVP',
+  swordshieldpromos:'SP',swshblackstarpromos:'SP',esespromos:'SP',
+  sunmoonpromos:'SMP',smpromos:'SMP'
 };
 function clean(v){return String(v||'').trim()}
 function key(v){return clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'')}
@@ -17,11 +19,17 @@ function codeFor(set,setName){
   if(/^[A-Z]{2,8}$/.test(raw)&&!/^SM\d|SWSH\d|SV\d/.test(raw))return raw;
   return'';
 }
-function localNumber(v){return clean(v).split('/')[0].replace(/[^A-Za-z0-9]/g,'')}
+function localNumber(v,code){
+  let n=clean(v).split('/')[0].replace(/[^A-Za-z0-9]/g,'');
+  if(code==='SP')n=n.replace(/^SWSH/i,'');
+  if(code==='SMP')n=n.replace(/^SM/i,'');
+  if(/^(SP|SMP|SVP)$/.test(code)&&/^\d+$/.test(n))n=n.padStart(3,'0');
+  return n;
+}
 async function readImage(url){
   const r=await fetch(url,{redirect:'follow',headers:{
     accept:'image/avif,image/webp,image/png,image/jpeg,image/*',
-    'user-agent':'Mozilla/5.0 (compatible; PokemonBinderBR/14.36)'
+    'user-agent':'Mozilla/5.0 (compatible; PokemonBinderBR/14.39)'
   }});
   if(!r.ok)return null;
   const type=String(r.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
@@ -32,7 +40,7 @@ async function readImage(url){
 }
 module.exports=async function handler(req,res){
   const code=codeFor(req.query?.set,req.query?.setName);
-  const number=localNumber(req.query?.number);
+  const number=localNumber(req.query?.number,code);
   const lang=clean(req.query?.lang).toLowerCase();
   if(!code||!number)return res.status(404).end();
 
