@@ -5,7 +5,8 @@ const ALLOWED_HOSTS=[
   'assets.tcgdex.net',
   'www.pokemon-card.com',
   'pokemon-card.com',
-  'images.pokemontcg.io'
+  'images.pokemontcg.io',
+  'tcgplayer-cdn.tcgplayer.com'
 ];
 
 function hostAllowed(hostname){
