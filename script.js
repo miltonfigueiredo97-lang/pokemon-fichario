@@ -105,13 +105,33 @@ async function searchLimitlessVariants(name,number,cards,language){
     return collectorTokenMatches(wanted.n,numParts(c.number).n);
   });
   const sets=[],seen=new Set();
-  for(const c of bases){
-    const key=[c.setId||"",c.setName||""].join("|");
-    if(seen.has(key))continue;
-    seen.add(key);
-    sets.push({id:c.setId||"",name:c.setName||"",total:c.printedTotal||""});
-    if(sets.length>=6)break;
+  const collectSets=list=>{
+    for(const c of list||[]){
+      if(!c?.setId&&!c?.setName)continue;
+      const cn=norm(c.name||"");
+      if(qn&&!(cn===qn||cn.includes(qn)||qn.includes(cn)))continue;
+      const key=[c.setId||"",c.setName||""].join("|");
+      if(seen.has(key))continue;
+      seen.add(key);
+      sets.push({id:c.setId||"",name:c.setName||"",total:c.printedTotal||""});
+      if(sets.length>=6)break;
+    }
+  };
+  collectSets(bases);
+
+  // If an exact lettered number such as 177a is absent from TCGdex, use
+  // name-only results to discover the physical set, then ask Limitless for
+  // that exact alternate print.
+  if(!sets.length&&wanted.suffix){
+    const discoveryLangs=language==="all"?["pt-br","en"]:[language];
+    try{
+      const discovery=(await Promise.all(
+        discoveryLangs.filter(l=>l!=="ja").map(l=>searchTCGdex(l,name,"",{live:false}))
+      )).flat();
+      collectSets(discovery);
+    }catch(e){console.warn("Limitless set discovery",e)}
   }
+
   if(!sets.length)return[];
   try{
     const p=new URLSearchParams({
@@ -636,7 +656,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.36",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.37",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
