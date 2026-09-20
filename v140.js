@@ -12,7 +12,7 @@
     priceQueue:[],
     priceWorkers:0,
     singlePriceWatch:null,
-    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null,lastVisualDescriptors:[],imageDescriptorCache:new Map(),pendingPosition:null,setHint:'',visualFrameCount:0},
+    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null,lastVisualDescriptors:[],imageDescriptorCache:new Map(),pendingPosition:null,setHint:'',visualFrameCount:0,visualIndex:null,visualIndexPromise:null},
     setsCache:new Map(),
     seriesCache:new Map(),
     masterPreview:null,
@@ -2165,6 +2165,115 @@
     if(!result)V14.scan.imageDescriptorCache.delete(cacheKey);
     return result;
   }
+  function bitsToHex(bits){
+    if(!bits?.length)return'';
+    let out='';
+    for(let i=0;i<bits.length;i+=4){
+      let n=0;
+      for(let j=0;j<4;j++)n=(n<<1)|(bits[i+j]?1:0);
+      out+=n.toString(16);
+    }
+    return out;
+  }
+  function colorFloatsToHex(values){
+    if(!values?.length)return'';
+    return values.map(v=>Math.max(0,Math.min(255,Math.round(v*255))).toString(16).padStart(2,'0')).join('');
+  }
+  const NIBBLE_POPCOUNT=[0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4];
+  function hexHamming(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let diff=0;
+    for(let i=0;i<a.length;i++){
+      const x=parseInt(a[i],16)^parseInt(b[i],16);
+      diff+=NIBBLE_POPCOUNT[x]||0;
+    }
+    return diff/(a.length*4);
+  }
+  function colorHexDistance(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let sum=0,n=0;
+    for(let i=0;i<a.length;i+=2){
+      const x=parseInt(a.slice(i,i+2),16),y=parseInt(b.slice(i,i+2),16);
+      if(Number.isFinite(x)&&Number.isFinite(y)){sum+=Math.abs(x-y)/255;n++}
+    }
+    return n?sum/n:Number.POSITIVE_INFINITY;
+  }
+  function compactSignature(descriptor){
+    if(!descriptor)return null;
+    return{
+      fh:bitsToHex(descriptor.fullHash),
+      ah:bitsToHex(descriptor.artHash),
+      ch:colorFloatsToHex(descriptor.color)
+    };
+  }
+  async function loadVisualIndex(status){
+    if(V14.scan.visualIndex?.cards?.length)return V14.scan.visualIndex;
+    if(V14.scan.visualIndexPromise)return V14.scan.visualIndexPromise;
+    V14.scan.visualIndexPromise=(async()=>{
+      try{
+        if(status)status.textContent='Carregando índice visual das cartas…';
+        const r=await fetch('/data/card-visual-index.json?v=1',{cache:'force-cache'});
+        if(!r.ok)return null;
+        const data=await r.json();
+        if(!Array.isArray(data?.cards)||!data.cards.length)return null;
+        V14.scan.visualIndex=data;
+        return data;
+      }catch(e){
+        console.warn('[Scanner índice visual]',e);
+        return null;
+      }finally{
+        V14.scan.visualIndexPromise=null;
+      }
+    })();
+    return V14.scan.visualIndexPromise;
+  }
+  async function visualIndexCandidates(status,limit=100){
+    const index=await loadVisualIndex(status);
+    if(!index?.cards?.length)return[];
+    const targetSigs=(V14.scan.lastVisualDescriptors||[])
+      .slice(0,10).map(compactSignature).filter(x=>x?.fh&&x?.ah);
+    if(!targetSigs.length)return[];
+
+    const selectedLang=String(byId('searchLanguage')?.value||'all');
+    const scored=[];
+    for(const row of index.cards){
+      if(!Array.isArray(row)||row.length<8)continue;
+      const [lang,id,localId,name,image,fh,ah,ch]=row;
+      if(selectedLang!=='all'&&selectedLang&&lang!==selectedLang)continue;
+      let best=Number.POSITIVE_INFINITY;
+      for(const target of targetSigs){
+        const art=hexHamming(ah,target.ah),full=hexHamming(fh,target.fh),color=colorHexDistance(ch,target.ch);
+        const d=(Number.isFinite(art)?art*.64:0)+(Number.isFinite(full)?full*.27:0)+(Number.isFinite(color)?color*.09:0);
+        if(d<best)best=d;
+      }
+      if(Number.isFinite(best))scored.push({row,d:best});
+    }
+    scored.sort((a,b)=>a.d-b.d);
+    const top=scored.slice(0,Math.max(20,limit));
+    if(status)status.textContent='Imagem comparada com '+index.cards.length.toLocaleString('pt-BR')+' impressões. Refinando as mais parecidas…';
+    return top.map(({row,d})=>({
+      source:'TCGdex Visual',apiId:String(row[1]||''),name:String(row[3]||'Carta'),
+      languageCode:String(row[0]||'en'),language:LANG?.[row[0]]||String(row[0]||''),
+      setName:'',setId:'',number:String(row[2]||''),printedTotal:'',rarity:'',type:'',
+      imageUrl:String(row[4]||''),_scanCoarseDistance:d
+    }));
+  }
+  async function hydrateVisualCandidates(cards){
+    return Promise.all((cards||[]).map(async card=>{
+      if(card?.source!=='TCGdex Visual')return card;
+      const confidence=card._scanVisualConfidence,distance=card._scanVisualDistance,coarse=card._scanCoarseDistance;
+      try{
+        const full=await fetchTCGdexCard(card.languageCode||'en',card.apiId,card);
+        if(full){
+          full._scanVisualConfidence=confidence;
+          full._scanVisualDistance=distance;
+          full._scanCoarseDistance=coarse;
+          return full;
+        }
+      }catch{}
+      return card;
+    }));
+  }
   function scannerNames(hint){
     const items=[hint?.name,...(hint?.nameCandidates||[]).map(x=>x?.value||x)].map(x=>String(x||'').trim()).filter(Boolean);
     return [...new Set(items.map(x=>nrm(x)).filter(Boolean))].map(k=>items.find(x=>nrm(x)===k)).slice(0,5);
@@ -2242,6 +2351,9 @@
       return setCards.slice(0,260);
     }
 
+    // A busca visual global roda independentemente de OCR. Isso é o que
+    // permite reconhecer a carta mesmo quando nome/número não foram lidos.
+    const visualFirstPromise=visualIndexCandidates(status,110).catch(()=>[]);
     const jobs=[];
     for(const lang of langs){
       for(const number of numbers.slice(0,3))jobs.push(searchTCGdex(lang,'',number,{live:false}));
@@ -2255,12 +2367,11 @@
       jobs.push(searchMypCards(names[0],numbers[0]||'',V14.scan.setHint||'').then(x=>x?.cards||[]).catch(()=>[]));
     }
 
-    if(status)status.textContent=numbers.length
-      ?'Número lido. Baixando artes candidatas para comparar…'
-      :names.length?'Nome usado só para montar o banco. A imagem decidirá a carta…':'Montando banco visual disponível…';
-
-    const groups=jobs.length?await Promise.all(jobs):[];
-    let cards=dedupe(groups.flat().filter(Boolean));
+    const [visualFirst,groups]=await Promise.all([
+      visualFirstPromise,
+      jobs.length?Promise.all(jobs):Promise.resolve([])
+    ]);
+    let cards=dedupe([...(visualFirst||[]),...groups.flat().filter(Boolean)]);
 
     if(!cards.length){
       const fallback=[
@@ -2270,15 +2381,31 @@
       cards=dedupe(fallback);
     }
 
-    cards.sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint));
-    return cards.slice(0,260);
+    cards.sort((x,y)=>{
+      const xd=Number.isFinite(x?._scanCoarseDistance)?x._scanCoarseDistance:null;
+      const yd=Number.isFinite(y?._scanCoarseDistance)?y._scanCoarseDistance:null;
+      if(xd!=null||yd!=null){
+        if(xd==null)return 1;if(yd==null)return-1;
+        if(Math.abs(xd-yd)>.006)return xd-yd;
+      }
+      return scanTextScore(y,hint)-scanTextScore(x,hint);
+    });
+    return cards.slice(0,280);
   }
 
   async function visuallyRankCandidates(cards,hint={}){
     const targets=V14.scan.lastVisualDescriptors||[];
     if(!targets.length||!cards?.length)return cards||[];
 
-    const prelim=[...cards].sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint));
+    const prelim=[...cards].sort((a,b)=>{
+      const ad=Number.isFinite(a?._scanCoarseDistance)?a._scanCoarseDistance:null;
+      const bd=Number.isFinite(b?._scanCoarseDistance)?b._scanCoarseDistance:null;
+      if(ad!=null||bd!=null){
+        if(ad==null)return 1;if(bd==null)return-1;
+        if(Math.abs(ad-bd)>.006)return ad-bd;
+      }
+      return scanTextScore(b,hint)-scanTextScore(a,hint);
+    });
     const maxVisual=prelim.length>180?120:prelim.length;
     const sample=prelim.slice(0,Math.max(48,maxVisual));
     const scored=[];
@@ -2429,6 +2556,7 @@
 
     if(status)status.textContent='Comparando sua foto com '+best.length+' imagens do banco…';
     best=(await visuallyRankCandidates(best,hint)).filter(c=>Number.isFinite(c._scanVisualDistance)).slice(0,8);
+    best=await hydrateVisualCandidates(best);
     if(!best.length){
       if(status)status.textContent='As imagens candidatas não puderam ser comparadas agora. Tente novamente.';
       return;
@@ -2463,7 +2591,7 @@
       const num=evidenceBest(V14.scan.evidenceNumbers),name=evidenceBest(V14.scan.evidenceNames);
       const hasSetBank=!!activeBinder()?.set_id;
       if(status)status.textContent=hasSetBank?'Imagem pronta · iniciando comparação visual…':'Pista: '+([hint.number,hint.name].filter(Boolean).join(' · ')||'procurando…');
-      if((hasSetBank&&V14.scan.visualFrameCount>=2)||num||(name&&name.value.length>=4)){
+      if((hasSetBank&&V14.scan.visualFrameCount>=2)||num||(name&&name.value.length>=4)||V14.scan.visualFrameCount>=3){
         await showScanCandidates(hint);return;
       }
     }catch(e){console.warn('[Scanner V14]',e);if(status)status.textContent='Ajuste distância, foco e reflexo — tentando novamente…'}
