@@ -1,5 +1,5 @@
-const BUILD_VERSION = '14.28';
-const CACHE_NAME = 'pokemon-binder-v14-28';
+const BUILD_VERSION = '14.29';
+const CACHE_NAME = 'pokemon-binder-v14-29';
 const APP_SHELL = [
   '/',
   '/index.html',
