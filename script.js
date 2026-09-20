@@ -57,7 +57,7 @@ function goToPage(p){currentPage=Math.min(Math.max(1,+p||1),Math.max(1,+settings
 function renderPagesGrid(){const g=$("pagesGrid");if(!g)return;g.innerHTML="";for(let p=1;p<=Math.max(1,+settings.binder_pages||1);p++){const b=document.createElement("button");b.className="page-thumb"+(p===currentPage?" active":"");const cells=[];for(let s=1;s<=9;s++){const c=getCardAt(p,s),img=c?cardImage(c):"";cells.push(`<span class="page-mini-pocket">${img?`<img src="${esc(img)}">`:""}</span>`)}b.innerHTML=`<strong>Página ${p}</strong><div class="page-mini-grid">${cells.join("")}</div><small>${cardsOnPage(p).length}/9</small>`;b.onclick=()=>{goToPage(p);closeDialog("pagesDialog")};g.appendChild(b)}}
 function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{page,slot}:freePositions(page,1)[0];catalogSelection.clear();updateSelectionTray();$("searchName").value="";$("searchNumber").value="";$("searchSet").value="";$("resultsList").innerHTML="";$("searchStatus").textContent=`Primeira carta irá para página ${pendingPosition.page}, bolso ${pendingPosition.slot}.`;openDialog("addDialog");setTimeout(()=>$("searchName").focus(),100)}
 async function searchMypCards(name,number,setHint){if(!name)return{cards:[],needsToken:false};try{const p=new URLSearchParams({name});if(number)p.set("number",number);if(setHint)p.set("set",setHint);const r=await fetch(`/api/mypcards?${p}`,{cache:"no-store"}),j=await r.json();return j.ok?{cards:(j.cards||[]).map(mapMyp),needsToken:false}:{cards:[],needsToken:!!j.needsToken,message:j.message||""}}catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}}
-function mapMyp(c){return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.namePt||c.nameEn||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:c.imagePt?"pt-br":"en",language:c.imagePt?"Português":"Inglês",setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:c.imagePt||c.imageEn||"",imagePt:c.imagePt||"",imageEn:c.imageEn||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
+function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
 async function searchJapaneseOfficial(name,number,setHint,options={}){
   const raw=String(name||"").trim();
   if(!raw)return[];
@@ -399,13 +399,19 @@ async function searchCards(options={}){
     const langs=language==="all"?["pt-br","en","ja"]:[language];
     const setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
     const wantsJa=language==="all"||language==="ja";
-    const [groups,jpOfficial]=await Promise.all([
+    const [groups,jpOfficial,mypSearch]=await Promise.all([
       Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint,setIds}))),
-      wantsJa?searchJapaneseOfficial(raw,number,setHint,{live}):Promise.resolve([])
+      wantsJa?searchJapaneseOfficial(raw,number,setHint,{live}):Promise.resolve([]),
+      raw?searchMypCards(raw,number,setHint):Promise.resolve({cards:[],needsToken:false})
     ]);
     if(requestId!==catalogSearchSeq)return;
 
-    let results=hardFilterCatalog(dedupe([...groups.flat(),...jpOfficial]),{number,setHint,setIds,language});
+    const mypCards=mypSearch.cards||[];
+    const tcgFlat=groups.flat();
+    const sourcePool=language==="ja"&&jpOfficial.length
+      ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
+      : [...tcgFlat,...jpOfficial,...mypCards];
+    let results=hardFilterCatalog(dedupe(sourcePool),{number,setHint,setIds,language});
     const maxResults=setHint&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
     populateRarityFilter();renderCatalog();
@@ -464,7 +470,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.29",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.30",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
