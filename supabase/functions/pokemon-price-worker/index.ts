@@ -16,7 +16,7 @@ function json(data: unknown, status=200){
 }
 function num(v: unknown){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
 
-async function fetchPrice(card: any){
+async function fetchPrice(card: any, allowSavedLink=true){
   const q=new URLSearchParams({
     name:String(card.name||""),
     number:String(card.number||""),
@@ -27,7 +27,7 @@ async function fetchPrice(card: any){
     condition:String(card.condition||"Nova")
   });
   if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
-  const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
+  const link=allowSavedLink?String(card.myp_price_link||card.price_br_link||card.price_link||"").trim():"";
   if(link)q.set("link",link);
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),45000);
@@ -83,7 +83,10 @@ Deno.serve(async(req:Request)=>{
     claimed++;
 
     try{
-      const market=await fetchPrice(card);
+      let market=await fetchPrice(card,true);
+      if(market?.error==="wrong_product"&&String(card.myp_price_link||card.price_br_link||card.price_link||"").trim()){
+        market=await fetchPrice(card,false);
+      }
       const min=num(market?.min),avg=num(market?.avg),max=num(market?.max);
       const hasPrice=!!(min||avg||max);
       const checkedAt=String(market?.checkedAt||new Date().toISOString());
@@ -107,10 +110,19 @@ Deno.serve(async(req:Request)=>{
 
       const errorCode=String(market?.error||"no_price_data");
       if(TERMINAL.has(errorCode)){
-        const {error}=await db.from("pokemon_cards").update({
+        const clearIdentity=["wrong_product","product_not_found"].includes(errorCode);
+        const patch:any={
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
           price_priority:0,price_last_error:errorCode
-        }).eq("id",card.id);
+        };
+        if(clearIdentity){
+          Object.assign(patch,{
+            myp_price_min:0,myp_price_avg:0,myp_price_max:0,myp_price_link:null,myp_price_checked_at:null,
+            price_min:0,price_avg:0,price_max:0,price_source:"Sem preço BR",price_link:null,
+            price_br_source:null,price_br_link:null,price_checked_at:null
+          });
+        }
+        const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
         if(error)throw error;
         terminal++;
         return {state:"terminal"};
