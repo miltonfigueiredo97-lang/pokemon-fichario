@@ -166,7 +166,16 @@ module.exports = async function handler(req, res) {
 
     const cards = Array.isArray(data?.cards) ? data.cards : Array.isArray(data) ? data : [];
     const wanted = { name, number, set };
-    const ranked = cards
+    const wantedParts = numberParts(number);
+    const exactCards = wantedParts.numerator
+      ? cards.filter(product => {
+          const found=productNumber(product);
+          if(found.numerator!==wantedParts.numerator)return false;
+          if(wantedParts.denominator&&found.denominator!==wantedParts.denominator)return false;
+          return true;
+        })
+      : cards;
+    const ranked = exactCards
       .map(product => ({ product, score: scoreProduct(product, wanted) }))
       .sort((a, b) => b.score - a.score)
       .map(({ product, score }) => ({ ...normalizeProduct(product), matchScore: score }));
