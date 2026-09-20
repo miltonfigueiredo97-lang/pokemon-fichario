@@ -7,12 +7,27 @@ function normalize(value) {
     .trim();
 }
 
+function normalizeCollectorToken(value) {
+  const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');
+  if(!raw)return'';
+  const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);
+  if(!m)return raw.toLowerCase();
+  return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase();
+}
 function numberParts(value) {
-  const text = String(value || '');
-  const match = text.match(/(?:^|[^0-9])(\d{1,4})\s*\/\s*(\d{1,4})(?:[^0-9]|$)/);
-  if (match) return { numerator: String(Number(match[1])), denominator: String(Number(match[2])), full: `${Number(match[1])}/${Number(match[2])}` };
-  const single = text.match(/(?:^|[^0-9])(\d{1,4})(?:[^0-9]|$)/);
-  return single ? { numerator: String(Number(single[1])), denominator: '', full: String(Number(single[1])) } : { numerator: '', denominator: '', full: '' };
+  const text=String(value||'');
+  const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';
+  const match=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));
+  if(match){
+    const numerator=normalizeCollectorToken(match[1]),denominator=normalizeCollectorToken(match[2]);
+    return{numerator,denominator,full:numerator+'/'+denominator,rawNumerator:match[1]};
+  }
+  const single=text.match(new RegExp(token,'i'));
+  if(single){
+    const numerator=normalizeCollectorToken(single[0]);
+    return{numerator,denominator:'',full:numerator,rawNumerator:single[0]};
+  }
+  return{numerator:'',denominator:'',full:'',rawNumerator:''};
 }
 
 function productNumber(product) {
