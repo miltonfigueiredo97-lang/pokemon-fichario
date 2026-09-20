@@ -21,8 +21,8 @@ function xmlLocs(xml){
   return [...new Set(out)];
 }
 
-function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao foil'))return'normal';if(n.includes('master'))return'masterball';if(n.includes('poke')&&n.includes('ball'))return'pokeball';if(n.includes('reverse'))return'reverse';if(n.includes('full art'))return'fullart';if(n.includes('promo'))return'promo';if(n.includes('foil')||n.includes('holo'))return'foil';return'other'}
-function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);const hasAny=/masterball|master ball|pokeball|poke ball|reverse foil|full art|full-art|promo|foil|holo/.test(n);if(kind==='normal')return !hasAny||/\bnormal\b/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='fullart')return /full art|full-art/.test(n);if(kind==='promo')return /\bpromo\b/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
+function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao foil'))return'normal';if(n.includes('altered')&&n.includes('art'))return'alteredart';if(n.includes('master'))return'masterball';if(n.includes('poke')&&n.includes('ball'))return'pokeball';if(n.includes('reverse'))return'reverse';if(n.includes('full art')||n.includes('full-art'))return'normal';if(n.includes('promo'))return'normal';if(n.includes('foil')||n.includes('holo'))return'foil';return'other'}
+function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);if(/altered art|altered-art/.test(n)&&kind!=='alteredart')return false;const hasSurface=/masterball|master ball|pokeball|poke ball|reverse foil|reverse holo|\bfoil\b|holo/.test(n);if(kind==='normal')return !hasSurface||/\bnormal\b/.test(n);if(kind==='alteredart')return /altered art|altered-art/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
 function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
 
 function hasAnyMarket(m){return !!(m&&(Number(m.min)||Number(m.avg)||Number(m.max)))}
@@ -191,7 +191,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1438:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -264,7 +264,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1438:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const found=await resolvePage({name,number,set,link,lang,finish,condition});
