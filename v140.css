@@ -679,3 +679,57 @@ dialog.sheet-dialog:not([open]){
     touch-action:manipulation!important;
   }
 }
+
+
+/* V14.33 — real two-sheet binder spread + explicit price refresh state */
+@media(min-width:821px){
+  .binder-spread.v1433-two-sheets{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+    width:min(1240px,100%)!important;
+    gap:7px!important;
+  }
+  .binder-spread .binder-cover.v1433-cover-hidden{display:none!important}
+  .binder-spread.v1433-two-sheets .binder-sheet-wrap{
+    min-width:0!important;
+    width:100%!important;
+  }
+  .binder-spread.v1433-two-sheets .v1433-sheet-left{
+    transform-origin:right center!important;
+    transform:perspective(1800px) rotateY(1.15deg)!important;
+    border-radius:9px 3px 3px 9px!important;
+    padding:9px 16px 9px 9px!important;
+    background:linear-gradient(270deg,#090c0e 0 12px,rgba(37,43,47,.92) 12px)!important;
+  }
+  .binder-spread.v1433-two-sheets .v1433-sheet-left .binder-spine{
+    left:auto!important;right:5px!important;
+  }
+  .binder-spread.v1433-two-sheets .v1433-secondary-sheet{
+    transform-origin:left center!important;
+    transform:perspective(1800px) rotateY(-1.15deg)!important;
+    border-radius:3px 9px 9px 3px!important;
+  }
+  .binder-spread.v1433-last-single{
+    grid-template-columns:minmax(420px,560px)!important;
+    justify-content:center!important;
+  }
+}
+.v1433-sheet-page-label{
+  position:absolute;top:8px;right:12px;z-index:8;
+  padding:3px 7px;border-radius:999px;
+  background:rgba(5,7,9,.76);border:1px solid rgba(255,255,255,.09);
+  color:#999;font-size:7px;font-weight:900;pointer-events:none
+}
+.v14-price-pending{
+  left:5px!important;right:5px!important;bottom:5px!important;
+  display:block!important;text-align:center!important;
+  color:#ffd45a!important;background:rgba(7,9,11,.94)!important;
+  border-color:rgba(255,212,90,.42)!important;
+  z-index:9!important;letter-spacing:.045em!important
+}
+.pocket-card:has(.v14-price-pending) .card-value{opacity:.18!important}
+#v12UpdatePrices.v1433-price-running{
+  cursor:progress!important;
+  color:#ffd45a!important;
+  border-color:rgba(255,212,90,.42)!important;
+  background:rgba(255,212,90,.08)!important;
+}
