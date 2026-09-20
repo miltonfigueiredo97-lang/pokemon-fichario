@@ -65,6 +65,14 @@ function scoreProduct(product, wanted) {
 
 function normalizeProduct(product) {
   const num = productNumber(product);
+  const labels = Array.isArray(product.deck_labels) ? product.deck_labels : [];
+  const rawLanguage = product.language || product.lang || product.idioma || product.language_code || '';
+  const editionCode = product.edition_code || '';
+  const jpHay = [rawLanguage, product.edition_pt, product.edition_en, editionCode, product.card_code, ...labels].filter(Boolean).join(' ');
+  const explicitJapanese = /japon(?:e|ê|e?s)|japanese|japao|japan|\bjp\b/i.test(jpHay);
+  const japaneseSetCode = /^(?:sv|s|sm|xy|bw)\d+[a-z](?:[-_].*)?$/i.test(String(editionCode).trim()) && !/pt\d/i.test(String(editionCode));
+  const isJapanese = !!(explicitJapanese || japaneseSetCode);
+  const imageJa = product.img_jp || product.img_ja || product.image_jp || product.image_ja || (isJapanese ? (product.img_en || product.img_pt || '') : '');
   return {
     internalCode: product.internal_code ?? null,
     cardCode: product.card_code || '',
@@ -73,7 +81,10 @@ function normalizeProduct(product) {
     nameEn: product.name_en || '',
     editionPt: product.edition_pt || '',
     editionEn: product.edition_en || '',
-    editionCode: product.edition_code || '',
+    editionCode,
+    rawLanguage,
+    isJapanese,
+    imageJa,
     number: num.full,
     numerator: num.numerator,
     denominator: num.denominator,
