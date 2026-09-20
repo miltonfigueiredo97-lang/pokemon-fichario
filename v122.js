@@ -554,20 +554,22 @@
     const title=board.querySelector('.market-board-title');
     if(title){
       title.querySelector('span').textContent='Mercado brasileiro';
-      title.querySelector('small').textContent='Fonte automática: MYP Cards';
+      title.querySelector('small').textContent='Liga Pokémon + MYP Cards';
     }
     const primary=document.createElement('p');
     primary.id='v122PrimaryNote';
     primary.className='v122-primary-note';
-    primary.textContent='Os preços automáticos vêm da MYP Cards e respeitam condição + acabamento. O botão Liga Pokémon abaixo continua disponível para consulta manual.';
+    primary.textContent='Liga e MYP são consultadas automaticamente. A Liga é a referência principal quando possui cotação válida; MYP funciona como fallback.';
     board.appendChild(primary);
     const wrap=document.createElement('div');
     wrap.id='v122MarketSources';
-    wrap.className='v122-market-sources v122-market-single';
+    wrap.className='v122-market-sources';
     wrap.innerHTML=`
+      <section data-market-source="liga"><header><strong>Liga Pokémon</strong><span>fonte automática</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>
       <section data-market-source="myp"><header><strong>MYP Cards</strong><span>fonte automática</span></header><div><b>Mín.</b><strong data-price="min">—</strong><b>Médio</b><strong data-price="avg">—</strong><b>Máx.</b><strong data-price="max">—</strong></div></section>`;
     board.appendChild(wrap);
   }
+
   function renderSource(key,m,condition){
     const box=$v(`[data-market-source="${key}"]`);if(!box)return;
     ['min','avg','max'].forEach(k=>{
@@ -586,60 +588,74 @@
   function renderDualMarket(dual,card){
     ensureMarketBoard();
     const condition=dual?.condition||card?.condition||'Nova';
-    const myp=dual?.myp;
+    const liga=dual?.liga,myp=dual?.myp;
+    renderSource('liga',liga,condition);
     renderSource('myp',myp,condition);
-    if(hasPrice(myp)){
-      try{if(typeof setPrices==='function')setPrices(myp?.min||0,myp?.avg||0,myp?.max||0)}catch{}
+    const primary=primaryMarket(liga,myp);
+    if(hasPrice(primary)){
+      try{if(typeof setPrices==='function')setPrices(primary.min||0,primary.avg||0,primary.max||0)}catch{}
     }
     const status=$v('#marketStatus');
     if(!status)return;
     const variant=`${finishLabel(card?.finish||dual?.finish)} · ${conditionLabel(condition)}`;
-    if(hasPrice(myp)){
-      const samples=Number(myp?.samples||0);
-      status.textContent=`MYP Cards · ${variant}${samples?` · ${samples} oferta${samples===1?'':'s'}`:''}`;
-    }else if(myp?.error==='variant_not_found'){
-      status.textContent=`MYP Cards · ${variant} · sem oferta para esta condição/acabamento · preço salvo mantido`;
+    if(hasPrice(primary)){
+      status.textContent=`${primarySource(liga,myp)} · ${variant} · Liga e MYP verificadas`;
     }else{
-      status.textContent=`MYP Cards · ${variant} · sem cotação automática · preço salvo mantido`;
+      const errors=[liga?.error,myp?.error].filter(Boolean).join(' / ');
+      status.textContent=`Sem cotação BR automática · ${variant}${errors?' · '+errors:''}`;
     }
+  }
+
+  function ligaLinkMatchesNumber(link,full){
+    if(!link||!full)return false;
+    try{return decodeURIComponent(String(link)).replace(/\+/g,' ').includes(full)}
+    catch{return String(link).includes(full)}
   }
 
   async function fixLinks(card){
     if(!card)return;
     const full=await resolveFullNumber(card);
-    const liga=$v('#ligaSearchLink');
-    if(liga){
-      liga.href=card.liga_price_link||ligaSearchUrl(card,full);
-      liga.classList.remove('hidden');
-    }
 
-    const myp=$v('#mypcardsLink');
-    if(!myp)return;
-
-    // Nunca esconder o acesso à MYP. Enquanto a página exata não estiver resolvida,
-    // o link leva ao catálogo Pokémon da própria MYP.
-    let u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'https://mypcards.com/pokemon';
-    myp.href=u;
-    myp.classList.remove('hidden');
-
-    if(!card.myp_price_link){
+    // Persist the canonical complete collector number so future market lookups
+    // do not fall back to incomplete searches such as "146".
+    if(full&&full!==String(card.number||'')&&full.includes('/')){
+      card.number=full;
       try{
-        const resolved=await querySource('/api/mypcards-public','myp',card,normalizeFinish(card.finish||'Normal'),card.condition||'Nova');
-        if(resolved?.link&&isMypUrl(resolved.link)){
-          u=resolved.link;
-          myp.href=u;
-          card.myp_price_link=u;
-          if(card.id&&typeof db!=='undefined'&&typeof currentUser!=='undefined'&&currentUser){
-            db.from('pokemon_cards')
-              .update({myp_price_link:u})
-              .eq('id',card.id)
-              .eq('user_id',currentUser.id)
-              .then(()=>{})
-              .catch(()=>{});
-          }
+        const local=collection.find(x=>x.id===card.id);if(local)local.number=full;
+        if(card.id&&typeof db!=='undefined'&&currentUser){
+          db.from('pokemon_cards').update({number:full}).eq('id',card.id).eq('user_id',currentUser.id).then(()=>{}).catch(()=>{});
         }
       }catch{}
     }
+
+    const liga=$v('#ligaSearchLink');
+    if(liga){
+      const verified=ligaLinkMatchesNumber(card.liga_price_link,full)?card.liga_price_link:'';
+      liga.href=verified||ligaSearchUrl(card,full);
+      liga.classList.remove('hidden');
+    }
+
+    const mypEl=$v('#mypcardsLink');
+    if(!mypEl)return;
+    let u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'https://mypcards.com/pokemon';
+    mypEl.href=u;
+    mypEl.classList.remove('hidden');
+
+    try{
+      const resolved=await querySource('/api/mypcards-public','myp',card,normalizeFinish(card.finish||'Normal'),card.condition||'Nova');
+      if(resolved?.link&&isMypUrl(resolved.link)){
+        u=resolved.link;
+        mypEl.href=u;
+        card.myp_price_link=u;
+        card.price_last_error=null;
+        if(card.id&&typeof db!=='undefined'&&currentUser){
+          db.from('pokemon_cards')
+            .update({myp_price_link:u,price_last_error:null})
+            .eq('id',card.id).eq('user_id',currentUser.id)
+            .then(()=>{}).catch(()=>{});
+        }
+      }
+    }catch{}
   }
 
   function installExistingCardMarketView(){
