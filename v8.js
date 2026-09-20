@@ -503,9 +503,13 @@
       ]);
 
       const mypCards=myp.cards||[];
-      const tcgPool=q.language==='ja'&&jpOfficial.length
+      const basePool=q.language==='ja'&&jpOfficial.length
         ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==='ja')]
         : [...groups.flat(),...legacyCards,...jpOfficial,...mypCards];
+      const limitlessVariants=q.number&&q.raw
+        ? await searchLimitlessVariants(q.raw,q.number,basePool,q.language)
+        : [];
+      const tcgPool=[...basePool,...limitlessVariants];
       let tcg=hardFilterCatalog(dedupe(tcgPool),{number:q.number,setHint:q.setHint,setIds,language:q.language});
       let market=[];
 
