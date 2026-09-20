@@ -294,6 +294,11 @@
   // -------------------------------------------------------------
   function sourceCardById(id){
     try{
+      const all=window.PB14?.allCards;
+      if(Array.isArray(all)){
+        const found=all.find(c=>String(c.id)===String(id));
+        if(found)return found;
+      }
       if(typeof collection!=='undefined'&&Array.isArray(collection))return collection.find(c=>String(c.id)===String(id))||null;
     }catch(_e){}
     return null;
@@ -301,10 +306,60 @@
   function clearDrag(){
     if(!dragState)return;
     clearTimeout(dragState.timer);
+    clearTimeout(dragState.edgeTimer);
     dragState.ghost?.remove();
     dragState.card?.classList.remove('v11-drag-source');
     document.querySelectorAll('.binder-pocket.v11-drop-target').forEach(p=>p.classList.remove('v11-drop-target'));
     dragState=null;
+  }
+
+  function activatePointerDrag(state){
+    if(!state||dragState!==state||state.active)return;
+    state.active=true;
+    state.card.classList.add('v11-drag-source');
+    const r=state.card.getBoundingClientRect();
+    const ghost=state.card.cloneNode(true);
+    ghost.removeAttribute('id');
+    ghost.className='v11-drag-ghost';
+    ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';
+    ghost.style.left=state.x+'px';ghost.style.top=state.y+'px';
+    document.body.appendChild(ghost);state.ghost=ghost;
+    try{state.card.setPointerCapture(state.pointerId)}catch(_e){}
+    if(state.pointerType!=='mouse')navigator.vibrate?.(22);
+  }
+
+  function queueEdgePage(state,x){
+    if(!state?.active)return;
+    const wrap=document.querySelector('#binderStage .binder-sheet-wrap')||$id('binderStage');
+    if(!wrap)return;
+    const r=wrap.getBoundingClientRect();
+    const threshold=Math.max(42,Math.min(78,r.width*.10));
+    let dir=0;
+    if(x>=r.right-threshold)dir=1;
+    else if(x<=r.left+threshold)dir=-1;
+
+    const prev=$id('prevPage'),next=$id('nextPage');
+    if((dir<0&&prev?.disabled)||(dir>0&&next?.disabled))dir=0;
+    if(!dir){
+      clearTimeout(state.edgeTimer);state.edgeTimer=null;state.edgeDir=0;return;
+    }
+    if(state.edgeDir===dir&&state.edgeTimer)return;
+    clearTimeout(state.edgeTimer);state.edgeDir=dir;
+    state.edgeTimer=setTimeout(()=>{
+      if(dragState!==state||!state.active)return;
+      try{window.cancelBinderPageFlipV14?.({suppress:true})}catch(_e){}
+      let page=1;try{page=Number(currentPage||1)}catch(_e){}
+      const target=page+dir;
+      if(target<1)return;
+      try{
+        currentPage=target;
+        renderBinder();
+        renderPagesGrid();
+      }catch(_e){return}
+      state.edgeTimer=null;
+      state.edgeDir=0;
+      document.querySelectorAll('.binder-pocket.v11-drop-target').forEach(p=>p.classList.remove('v11-drop-target'));
+    },380);
   }
 
   function installTouchDrag(){
@@ -318,56 +373,57 @@
     },true);
 
     window.addEventListener('pointerdown',e=>{
-      if(e.pointerType==='mouse')return;
       const card=e.target.closest&&e.target.closest('.pocket-card');
-      if(!card)return;
-      lastTouch=Date.now();
+      if(!card||e.target.closest?.('.v14-favorite-star'))return;
+      if(card.dataset.v14Movable==='0'||card.classList.contains('v14-no-drag'))return;
+      if(e.pointerType!=='mouse')lastTouch=Date.now();
       clearDrag();
-      const state={id:card.dataset.id,card,pointerId:e.pointerId,startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,active:false,ghost:null,timer:null};
-      state.timer=setTimeout(()=>{
-        if(dragState!==state)return;
-        state.active=true;
-        card.classList.add('v11-drag-source');
-        const r=card.getBoundingClientRect();
-        const ghost=card.cloneNode(true);
-        ghost.removeAttribute('id');
-        ghost.className='v11-drag-ghost';
-        ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';ghost.style.left=state.x+'px';ghost.style.top=state.y+'px';
-        document.body.appendChild(ghost);state.ghost=ghost;
-        try{card.setPointerCapture(state.pointerId)}catch(_e){}
-        navigator.vibrate?.(22);
-      },210);
+      const state={
+        id:card.dataset.id,card,pointerId:e.pointerId,pointerType:e.pointerType,
+        startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,
+        active:false,ghost:null,timer:null,edgeTimer:null,edgeDir:0
+      };
       dragState=state;
-      e.stopImmediatePropagation();
+      if(e.pointerType!=='mouse'){
+        state.timer=setTimeout(()=>activatePointerDrag(state),210);
+        e.stopImmediatePropagation();
+      }
     },true);
 
     window.addEventListener('pointermove',e=>{
       const s=dragState;
-      if(!s||e.pointerType==='mouse'||e.pointerId!==s.pointerId)return;
+      if(!s||e.pointerId!==s.pointerId)return;
       s.x=e.clientX;s.y=e.clientY;
+      const distance=Math.hypot(e.clientX-s.startX,e.clientY-s.startY);
       if(!s.active){
-        if(Math.hypot(e.clientX-s.startX,e.clientY-s.startY)>18){clearTimeout(s.timer);dragState=null}
-        e.stopImmediatePropagation();
-        return;
+        if(s.pointerType==='mouse'){
+          if(distance<5)return;
+          activatePointerDrag(s);
+        }else{
+          if(distance>18){clearTimeout(s.timer);dragState=null}
+          e.stopImmediatePropagation();
+          return;
+        }
       }
       e.preventDefault();e.stopImmediatePropagation();
       if(s.ghost){s.ghost.style.left=e.clientX+'px';s.ghost.style.top=e.clientY+'px'}
       document.querySelectorAll('.binder-pocket.v11-drop-target').forEach(p=>p.classList.remove('v11-drop-target'));
       const hit=document.elementFromPoint(e.clientX,e.clientY);
       hit?.closest('.binder-pocket')?.classList.add('v11-drop-target');
+      queueEdgePage(s,e.clientX);
     },{capture:true,passive:false});
 
     window.addEventListener('pointerup',e=>{
       const s=dragState;
-      if(!s||e.pointerType==='mouse'||e.pointerId!==s.pointerId)return;
-      clearTimeout(s.timer);
+      if(!s||e.pointerId!==s.pointerId)return;
+      clearTimeout(s.timer);clearTimeout(s.edgeTimer);
       if(s.active){
         e.preventDefault();e.stopImmediatePropagation();
         const hit=document.elementFromPoint(e.clientX,e.clientY);
         const pocket=hit?.closest('.binder-pocket');
         const source=sourceCardById(s.id);
+        suppressClickUntil=Date.now()+750;
         if(source&&pocket&&typeof moveCard==='function'){
-          suppressClickUntil=Date.now()+750;
           moveCard(source,Number(pocket.dataset.page),Number(pocket.dataset.slot));
         }
       }
@@ -382,6 +438,7 @@
   }
 
   // -------------------------------------------------------------
+  // SEARCH — language buttons really change the data source// -------------------------------------------------------------
   // SEARCH — language buttons really change the data source
   // -------------------------------------------------------------
   function parseSmartQuery(){
