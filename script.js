@@ -433,6 +433,26 @@ async function searchTCGdex(lang,name,number,options={}){
   out.fuzzyTerm=fuzzyTerm;
   return out;
 }
+function tcgplayerImageFromTCGdex(card){
+  if(!card)return"";
+  const ids=[];
+  for(const variant of Array.isArray(card.variants_detailed)?card.variants_detailed:[]){
+    const id=variant?.thirdParty?.tcgplayer||
+      variant?.pricing?.tcgplayer?.holofoil?.productId||
+      variant?.pricing?.tcgplayer?.normal?.productId||
+      variant?.pricing?.tcgplayer?.reverseHolofoil?.productId;
+    if(id)ids.push({id,size:String(variant?.size||"standard"),type:String(variant?.type||"")});
+  }
+  const root=card?.pricing?.tcgplayer||{};
+  for(const key of Object.keys(root)){
+    const id=root?.[key]?.productId;
+    if(id)ids.push({id,size:"standard",type:key});
+  }
+  const chosen=ids.find(x=>x.size==="standard")||ids[0];
+  if(!chosen?.id)return"";
+  const direct="https://tcgplayer-cdn.tcgplayer.com/product/"+encodeURIComponent(String(chosen.id))+"_in_1000x1000.jpg";
+  return "/api/image-proxy?url="+encodeURIComponent(direct);
+}
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
 
@@ -452,6 +472,24 @@ async function hydrateMissingCatalogImage(card,lang){
     }
   }catch(e){console.warn("Limitless image fallback",card?.name,e)}
 
+  // TCGdex can know the exact printing and TCGplayer product id while omitting
+  // its own scan. Use that exact product id as the safest image fallback.
+  if(card.apiId){
+    try{
+      const apiLang=tcgApiLang(lang||card.languageCode||"en");
+      const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards/${encodeURIComponent(card.apiId)}`,{cache:"force-cache"});
+      if(r.ok){
+        const exact=await r.json();
+        const tcgplayerImage=tcgplayerImageFromTCGdex(exact);
+        if(tcgplayerImage){
+          card.imageUrl=tcgplayerImage;
+          card.imageFallbackSource="TCGplayer · impressão exata";
+          return card;
+        }
+      }
+    }catch(e){console.warn("TCGplayer image fallback",card.apiId,e)}
+  }
+
   // Localized TCGdex records (especially PT promo sets) can have metadata but no image.
   // First try the exact same canonical card ID in EN, preserving PT metadata/language.
   if(lang!=="en"&&card.apiId){
@@ -462,6 +500,12 @@ async function hydrateMissingCatalogImage(card,lang){
         if(en?.image){
           card.imageUrl=en.image;
           card.imageFallbackSource="TCGdex EN · mesma impressão";
+          return card;
+        }
+        const tcgplayerImage=tcgplayerImageFromTCGdex(en);
+        if(tcgplayerImage){
+          card.imageUrl=tcgplayerImage;
+          card.imageFallbackSource="TCGplayer · mesma impressão";
           return card;
         }
       }
@@ -656,7 +700,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.37",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.40",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
