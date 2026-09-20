@@ -12,7 +12,7 @@
     priceQueue:[],
     priceWorkers:0,
     singlePriceWatch:null,
-    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null,lastVisualDescriptors:[],imageDescriptorCache:new Map(),pendingPosition:null,setHint:''},
+    scan:{stream:null,timer:null,busy:false,evidenceNames:new Map(),evidenceNumbers:new Map(),lastFingerprint:null,lastVisualDescriptors:[],imageDescriptorCache:new Map(),pendingPosition:null,setHint:'',visualFrameCount:0},
     setsCache:new Map(),
     seriesCache:new Map(),
     masterPreview:null,
@@ -1959,81 +1959,185 @@
     const sw=source.videoWidth||source.naturalWidth||source.width,sh=source.videoHeight||source.naturalHeight||source.height;
     if(!sw||!sh)return[];
     const ratio=63/88,out=[],seen=new Set();
-    const add=(heightFrac,centerY)=>{
+
+    const add=(heightFrac,cx=.5,cy=.5,angle=0)=>{
       let ch=sh*heightFrac,cw=ch*ratio;
       if(cw>sw*.96){cw=sw*.96;ch=cw/ratio}
-      const sx=(sw-cw)/2,sy=Math.max(0,Math.min(sh-ch,sh*centerY-ch/2));
-      const key=[Math.round(sx),Math.round(sy),Math.round(cw),Math.round(ch)].join('|');
+      const sx=Math.max(0,Math.min(sw-cw,sw*cx-cw/2));
+      const sy=Math.max(0,Math.min(sh-ch,sh*cy-ch/2));
+      const key=[Math.round(sx),Math.round(sy),Math.round(cw),Math.round(ch),angle].join('|');
       if(seen.has(key))return;seen.add(key);
-      const canvas=document.createElement('canvas');canvas.width=360;canvas.height=Math.round(360/ratio);
-      canvas.getContext('2d',{willReadFrequently:true}).drawImage(source,sx,sy,cw,ch,0,0,canvas.width,canvas.height);
+
+      const canvas=document.createElement('canvas');
+      canvas.width=252;canvas.height=352;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});
+      ctx.save();
+      ctx.translate(canvas.width/2,canvas.height/2);
+      ctx.rotate(angle*Math.PI/180);
+      const scale=Math.abs(angle)>0?.94:1;
+      ctx.scale(scale,scale);
+      ctx.drawImage(source,sx,sy,cw,ch,-canvas.width/2,-canvas.height/2,canvas.width,canvas.height);
+      ctx.restore();
       out.push(canvas);
     };
-    // A carta pode estar dentro de One-Touch/toploader. Variamos escala e eixo Y
-    // para que a comparação visual encontre a borda real da carta, não a do plástico.
-    [0.70,0.78,0.86,0.92].forEach(h=>[0.47,0.50,0.53].forEach(cy=>add(h,cy)));
+
+    [0.72,0.80,0.88,0.94].forEach(h=>{
+      [[.50,.50],[.47,.50],[.53,.50],[.50,.47],[.50,.53]].forEach(([cx,cy])=>add(h,cx,cy,0));
+    });
+    [-6,-3,3,6].forEach(a=>add(.84,.5,.5,a));
     const legacy=scannerCardCanvas(source);if(legacy)out.unshift(legacy);
-    return out.slice(0,13);
+    return out.slice(0,25);
   }
-  function descriptorGrid(source,x0,y0,x1,y1,cols,rows){
-    const crop=cropRectCanvas(source,x0,y0,x1,y1,cols);
+
+  function normalizedGrayPatch(source,x0,y0,x1,y1,w,h){
+    const crop=cropRectCanvas(source,x0,y0,x1,y1,w);
     if(!crop)return null;
-    const c=document.createElement('canvas');c.width=cols;c.height=rows;
-    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,cols,rows);
-    const d=ctx.getImageData(0,0,cols,rows).data,cells=[],lums=[];
-    for(let i=0;i<d.length;i+=4){
-      const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
-      const lum=.299*r+.587*g+.114*b,s=Math.max(.08,r+g+b);
-      cells.push([r/s,g/s,b/s,lum]);lums.push(lum);
-    }
-    const mean=lums.reduce((a,b)=>a+b,0)/Math.max(1,lums.length);
-    const variance=lums.reduce((a,b)=>a+(b-mean)*(b-mean),0)/Math.max(1,lums.length);
-    const sd=Math.max(.08,Math.sqrt(variance));
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,w,h);
+    const d=ctx.getImageData(0,0,w,h).data,v=[];
+    for(let i=0;i<d.length;i+=4)v.push((.299*d[i]+.587*d[i+1]+.114*d[i+2])/255);
+    const mean=v.reduce((a,b)=>a+b,0)/Math.max(1,v.length);
+    const variance=v.reduce((a,b)=>a+(b-mean)*(b-mean),0)/Math.max(1,v.length);
+    const sd=Math.max(.045,Math.sqrt(variance));
+    return{v:v.map(x=>Math.max(-3,Math.min(3,(x-mean)/sd))),w,h};
+  }
+
+  function dHashPatch(source,x0,y0,x1,y1,w,h){
+    const crop=cropRectCanvas(source,x0,y0,x1,y1,w+1);
+    if(!crop)return null;
+    const c=document.createElement('canvas');c.width=w+1;c.height=h;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,w+1,h);
+    const d=ctx.getImageData(0,0,w+1,h).data,g=[];
+    for(let i=0;i<d.length;i+=4)g.push(.299*d[i]+.587*d[i+1]+.114*d[i+2]);
     const out=[];
-    for(const cell of cells)out.push(cell[0],cell[1],cell[2],(cell[3]-mean)/sd);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)out.push(g[y*(w+1)+x+1]>=g[y*(w+1)+x]?1:0);
     return out;
   }
+
+  function colorHistogram(source,x0=.03,y0=.04,x1=.97,y1=.88){
+    const crop=cropRectCanvas(source,x0,y0,x1,y1,28);
+    if(!crop)return null;
+    const c=document.createElement('canvas');c.width=28;c.height=28;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,28,28);
+    const d=ctx.getImageData(0,0,28,28).data,hist=new Array(16).fill(0);
+    let total=0;
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),delta=max-min;
+      const sat=max?delta/max:0;
+      if(sat<.16){
+        hist[12+Math.min(3,Math.floor(max*4))]++;total++;continue;
+      }
+      let hue=0;
+      if(delta){
+        if(max===r)hue=((g-b)/delta)%6;
+        else if(max===g)hue=(b-r)/delta+2;
+        else hue=(r-g)/delta+4;
+        hue=(hue*60+360)%360;
+      }
+      hist[Math.min(11,Math.floor(hue/30))]++;total++;
+    }
+    return hist.map(x=>x/Math.max(1,total));
+  }
+
   function edgeDescriptor(source,x0=0,y0=0,x1=1,y1=1){
-    const cols=17,rows=23,crop=cropRectCanvas(source,x0,y0,x1,y1,cols);
+    const cols=20,rows=28,crop=cropRectCanvas(source,x0,y0,x1,y1,cols);
     if(!crop)return null;
     const c=document.createElement('canvas');c.width=cols;c.height=rows;
     const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(crop,0,0,cols,rows);
     const d=ctx.getImageData(0,0,cols,rows).data,g=[];
     for(let i=0;i<d.length;i+=4)g.push(.299*d[i]+.587*d[i+1]+.114*d[i+2]);
     const out=[];
-    for(let y=0;y<rows;y++)for(let x=0;x<cols-1;x++)out.push(g[y*cols+x+1]>=g[y*cols+x]?1:0);
-    for(let y=0;y<rows-1;y++)for(let x=0;x<cols;x++)out.push(g[(y+1)*cols+x]>=g[y*cols+x]?1:0);
+    for(let y=1;y<rows-1;y++)for(let x=1;x<cols-1;x++){
+      const gx=g[y*cols+x+1]-g[y*cols+x-1],gy=g[(y+1)*cols+x]-g[(y-1)*cols+x];
+      const mag=Math.hypot(gx,gy);
+      if(mag<18){out.push(8);continue}
+      const a=(Math.atan2(gy,gx)+Math.PI)/(2*Math.PI);
+      out.push(Math.min(7,Math.floor(a*8)));
+    }
     return out;
   }
+
   function visualDescriptor(source){
     return{
-      full:descriptorGrid(source,.02,.02,.98,.98,12,17),
-      art:descriptorGrid(source,.045,.075,.955,.61,13,8),
-      edge:edgeDescriptor(source,.025,.025,.975,.975)
+      art:normalizedGrayPatch(source,.055,.10,.945,.61,28,17),
+      center:normalizedGrayPatch(source,.08,.18,.92,.82,24,24),
+      full:normalizedGrayPatch(source,.035,.035,.965,.965,22,31),
+      artHash:dHashPatch(source,.05,.10,.95,.61,20,12),
+      fullHash:dHashPatch(source,.04,.04,.96,.96,16,22),
+      color:colorHistogram(source),
+      edge:edgeDescriptor(source,.04,.05,.96,.90)
     };
   }
-  function vectorDistance(a,b){
-    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
-    let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
-    return sum/a.length;
+
+  function shiftedCorrelationDistance(a,b,maxShift=1){
+    if(!a?.v||!b?.v||a.w!==b.w||a.h!==b.h)return Number.POSITIVE_INFINITY;
+    let best=Number.POSITIVE_INFINITY;
+    for(let dy=-maxShift;dy<=maxShift;dy++)for(let dx=-maxShift;dx<=maxShift;dx++){
+      let dot=0,aa=0,bb=0,n=0;
+      for(let y=0;y<a.h;y++){
+        const by=y+dy;if(by<0||by>=b.h)continue;
+        for(let x=0;x<a.w;x++){
+          const bx=x+dx;if(bx<0||bx>=b.w)continue;
+          const av=a.v[y*a.w+x],bv=b.v[by*b.w+bx];
+          dot+=av*bv;aa+=av*av;bb+=bv*bv;n++;
+        }
+      }
+      if(n<Math.min(a.v.length,b.v.length)*.70)continue;
+      const corr=(aa&&bb)?dot/Math.sqrt(aa*bb):0;
+      const dist=(1-Math.max(-1,Math.min(1,corr)))/2;
+      if(dist<best)best=dist;
+    }
+    return best;
   }
+
   function binaryDistance(a,b){
     if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
     let diff=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])diff++;
     return diff/a.length;
   }
+
+  function histogramDistance(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
+    return sum/2;
+  }
+
+  function categoricalDistance(a,b){
+    if(!a||!b||a.length!==b.length)return Number.POSITIVE_INFINITY;
+    let diff=0,valid=0;
+    for(let i=0;i<a.length;i++){
+      if(a[i]===8&&b[i]===8)continue;
+      valid++;if(a[i]!==b[i])diff++;
+    }
+    return valid?diff/valid:1;
+  }
+
   function visualDescriptorDistance(a,b){
     if(!a||!b)return Number.POSITIVE_INFINITY;
-    const full=vectorDistance(a.full,b.full),art=vectorDistance(a.art,b.art),edge=binaryDistance(a.edge,b.edge);
-    if(!Number.isFinite(full)&&!Number.isFinite(art))return Number.POSITIVE_INFINITY;
-    return (Number.isFinite(art)?art*.58:0)+(Number.isFinite(full)?full*.27:0)+(Number.isFinite(edge)?edge*.15:0);
+    const parts=[
+      [shiftedCorrelationDistance(a.art,b.art,2),.36],
+      [shiftedCorrelationDistance(a.center,b.center,2),.21],
+      [shiftedCorrelationDistance(a.full,b.full,1),.16],
+      [binaryDistance(a.artHash,b.artHash),.10],
+      [binaryDistance(a.fullHash,b.fullHash),.06],
+      [histogramDistance(a.color,b.color),.07],
+      [categoricalDistance(a.edge,b.edge),.04]
+    ];
+    let sum=0,weight=0;
+    for(const [d,w] of parts){if(Number.isFinite(d)){sum+=d*w;weight+=w}}
+    return weight?sum/weight:Number.POSITIVE_INFINITY;
   }
+
   function bestVisualDistance(reference,targets){
     if(!reference||!targets?.length)return Number.POSITIVE_INFINITY;
     let best=Number.POSITIVE_INFINITY;
-    for(const target of targets)best=Math.min(best,visualDescriptorDistance(reference,target));
+    for(const target of targets){
+      const d=visualDescriptorDistance(reference,target);
+      if(d<best)best=d;
+    }
     return best;
   }
+
   async function descriptorForCard(card){
     let url=cardImage(card);
     if(!url)return null;
@@ -2047,11 +2151,14 @@
         const r=await fetch(requestUrl,{cache:'force-cache'});
         if(!r.ok)return null;
         const blob=await r.blob(),bitmap=await createImageBitmap(blob);
-        const c=document.createElement('canvas');c.width=180;c.height=Math.round(180/(63/88));
+        const c=document.createElement('canvas');c.width=252;c.height=352;
         c.getContext('2d',{willReadFrequently:true}).drawImage(bitmap,0,0,c.width,c.height);
         bitmap.close?.();
         return visualDescriptor(c);
-      }catch{return null}
+      }catch(e){
+        console.warn('[Scanner imagem candidata]',card?.name,e);
+        return null;
+      }
     })();
     V14.scan.imageDescriptorCache.set(cacheKey,job);
     const result=await job;
@@ -2119,12 +2226,20 @@
     }
     return dedupe(groups);
   }
+  function savedCardAsCandidate(c){
+    return{
+      source:c.api_source||'Fichário',apiId:c.api_id||c.id,name:c.name||'',languageCode:c.language_code||'',
+      language:c.language||'',setName:c.set_name||'',setId:c.set_id||'',number:c.number||'',
+      printedTotal:'',rarity:c.rarity||'',type:c.card_type||'',imageUrl:c.image_url||''
+    };
+  }
+
   async function scanCandidatePool(hint,status){
     const names=scannerNames(hint),numbers=scannerNumbers(hint),langs=['pt-br','en','ja'];
     const setCards=await scanSetCandidates(hint,status);
     if(setCards.length){
       setCards.sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint));
-      return setCards.slice(0,180);
+      return setCards.slice(0,260);
     }
 
     const jobs=[];
@@ -2133,36 +2248,69 @@
       for(const name of names.slice(0,3))jobs.push(searchTCGdex(lang,name,'',{live:false}));
       if(names[0]&&numbers[0])jobs.push(searchTCGdex(lang,names[0],numbers[0],{live:false}));
     }
-    if(status)status.textContent=numbers.length?'Número lido. Buscando artes com esse número…':'Buscando um banco visual de candidatos…';
+    if(names[0]&&typeof searchJapaneseOfficial==='function'){
+      jobs.push(searchJapaneseOfficial(names[0],numbers[0]||'',V14.scan.setHint||'',{live:false}));
+    }
+    if(names[0]&&typeof searchMypCards==='function'){
+      jobs.push(searchMypCards(names[0],numbers[0]||'',V14.scan.setHint||'').then(x=>x?.cards||[]).catch(()=>[]));
+    }
+
+    if(status)status.textContent=numbers.length
+      ?'Número lido. Baixando artes candidatas para comparar…'
+      :names.length?'Nome usado só para montar o banco. A imagem decidirá a carta…':'Montando banco visual disponível…';
+
     const groups=jobs.length?await Promise.all(jobs):[];
-    const cards=dedupe(groups.flat().filter(Boolean));
+    let cards=dedupe(groups.flat().filter(Boolean));
+
+    if(!cards.length){
+      const fallback=[
+        ...(Array.isArray(catalogResults)?catalogResults:[]),
+        ...((V14.allCards||[]).map(savedCardAsCandidate))
+      ].filter(c=>cardImage(c));
+      cards=dedupe(fallback);
+    }
+
     cards.sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint));
-    return cards.slice(0,120);
+    return cards.slice(0,260);
   }
+
   async function visuallyRankCandidates(cards,hint={}){
     const targets=V14.scan.lastVisualDescriptors||[];
     if(!targets.length||!cards?.length)return cards||[];
+
     const prelim=[...cards].sort((a,b)=>scanTextScore(b,hint)-scanTextScore(a,hint));
-    const cap=prelim.length>120?72:prelim.length;
-    const sample=prelim.slice(0,Math.max(36,cap));
+    const maxVisual=prelim.length>180?120:prelim.length;
+    const sample=prelim.slice(0,Math.max(48,maxVisual));
     const scored=[];
-    const concurrency=10;
+    const concurrency=12;
+
     for(let i=0;i<sample.length;i+=concurrency){
       const batch=sample.slice(i,i+concurrency);
       const rows=await Promise.all(batch.map(async(card,index)=>{
         const descriptor=await descriptorForCard(card);
         const distance=bestVisualDistance(descriptor,targets);
-        const textScore=scanTextScore(card,hint);
-        const combined=(Number.isFinite(distance)?distance:9)-(Math.min(1200,textScore)/1200)*.055+(i+index)*.00015;
         card._scanVisualDistance=distance;
-        return{card,distance,combined};
+        return{card,distance,textScore:scanTextScore(card,hint),order:i+index};
       }));
-      scored.push(...rows);
+      scored.push(...rows.filter(x=>Number.isFinite(x.distance)));
     }
-    scored.sort((a,b)=>a.combined-b.combined);
+
+    scored.sort((a,b)=>{
+      const delta=a.distance-b.distance;
+      if(Math.abs(delta)>.012)return delta;
+      return b.textScore-a.textScore||a.order-b.order;
+    });
+
+    const best=scored[0]?.distance,runner=scored[1]?.distance;
+    for(const row of scored){
+      const absolute=Number.isFinite(row.distance)?Math.max(0,1-row.distance*1.75):0;
+      const margin=Number.isFinite(runner)&&row===scored[0]?Math.max(0,Math.min(1,(runner-best)*7)):0;
+      row.card._scanVisualConfidence=Math.round(Math.max(0,Math.min(1,absolute*.82+margin*.18))*100);
+    }
+
     const ranked=scored.map(x=>x.card);
-    const used=new Set(ranked.map(card=>[card.apiId,card.languageCode].join('|')));
-    return ranked.concat(cards.filter(card=>!used.has([card.apiId,card.languageCode].join('|'))));
+    const used=new Set(ranked.map(card=>[card.apiId,card.languageCode,card.setId,card.number].join('|')));
+    return ranked.concat(cards.filter(card=>!used.has([card.apiId,card.languageCode,card.setId,card.number].join('|'))));
   }
   function cleanTitleLine(v){
     let s=cleanOCRLine(v)
@@ -2200,7 +2348,9 @@
   async function ocrCard(source,status){
     const full=scannerCardCanvas(source);
     V14.scan.lastFingerprint=imageFingerprint(full);
-    V14.scan.lastVisualDescriptors=scannerVisualCanvases(source).map(visualDescriptor).filter(Boolean);
+    const frameVisual=scannerVisualCanvases(source).map(visualDescriptor).filter(Boolean);
+    V14.scan.visualFrameCount=(V14.scan.visualFrameCount||0)+1;
+    V14.scan.lastVisualDescriptors=[...frameVisual,...(V14.scan.lastVisualDescriptors||[])].slice(0,48);
 
     if(activeBinder()?.set_id){
       if(status)status.textContent='Imagem capturada. Comparando com as artes da coleção…';
@@ -2287,10 +2437,10 @@
     populateRarityFilter();renderCatalog();
 
     const dlg=byId('v14ScanCandidates'),grid=byId('v14ScanCandidateGrid');
-    byId('v14ScanReadout').textContent='Resultado por semelhança de imagem'+((hint.name||hint.number)?' · OCR usado apenas para reduzir candidatos':' · comparação visual direta')+'.';
+    byId('v14ScanReadout').textContent='Resultado ordenado pela imagem da carta'+((hint.name||hint.number)?' · texto usado somente para montar o banco de candidatos':' · banco visual local')+'.';
     grid.innerHTML=best.map((card,i)=>{
-      const img=cardImage(card),distance=card._scanVisualDistance;
-      const visual=Number.isFinite(distance)?'<small>Semelhança visual '+Math.max(1,Math.round((1-Math.min(1,distance))*100))+'%</small>':'';
+      const img=cardImage(card),distance=card._scanVisualDistance,confidence=card._scanVisualConfidence;
+      const visual=Number.isFinite(confidence)?'<small>Confiança visual '+confidence+'%</small>':(Number.isFinite(distance)?'<small>Comparação visual concluída</small>':'');
       return '<button type="button" class="catalog-card" data-scan-index="'+i+'">'+(img?'<img src="'+esc(img)+'" alt="'+esc(card.name)+'">':'')+'<strong>'+esc(card.name)+'</strong><small>'+esc(card.setName||'')+' · '+esc(card.number||'')+'</small>'+visual+'</button>';
     }).join('');
     grid.querySelectorAll('[data-scan-index]').forEach(b=>b.onclick=()=>{
@@ -2313,7 +2463,7 @@
       const num=evidenceBest(V14.scan.evidenceNumbers),name=evidenceBest(V14.scan.evidenceNames);
       const hasSetBank=!!activeBinder()?.set_id;
       if(status)status.textContent=hasSetBank?'Imagem pronta · iniciando comparação visual…':'Pista: '+([hint.number,hint.name].filter(Boolean).join(' · ')||'procurando…');
-      if(hasSetBank||num||(name&&name.value.length>=4)){
+      if((hasSetBank&&V14.scan.visualFrameCount>=2)||num||(name&&name.value.length>=4)){
         await showScanCandidates(hint);return;
       }
     }catch(e){console.warn('[Scanner V14]',e);if(status)status.textContent='Ajuste distância, foco e reflexo — tentando novamente…'}
@@ -2332,7 +2482,7 @@
     if(isGeneral())return toast('Escolha um fichário antes de escanear e adicionar uma carta.');
     V14.scan.pendingPosition=pendingPosition?{...pendingPosition}:{page:currentPage,slot:null};
     V14.scan.setHint=String(byId('searchSet')?.value||'').trim();
-    stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();V14.scan.lastFingerprint=null;V14.scan.lastVisualDescriptors=[];
+    stopScanner();V14.scan.evidenceNames.clear();V14.scan.evidenceNumbers.clear();V14.scan.lastFingerprint=null;V14.scan.lastVisualDescriptors=[];V14.scan.visualFrameCount=0;
     if(byId('addDialog')?.open)byId('addDialog').close();
     if(!byId('scanDialog')?.open)byId('scanDialog').showModal();
     const status=byId('scanLiveStatus');if(status)status.textContent='Abrindo câmera traseira…';
@@ -2347,6 +2497,7 @@
     if(!file)return;
     V14.scan.pendingPosition=pendingPosition?{...pendingPosition}:{page:currentPage,slot:null};
     V14.scan.setHint=String(byId('searchSet')?.value||'').trim();
+    V14.scan.lastVisualDescriptors=[];V14.scan.visualFrameCount=0;
     const status=byId('ocrStatus');if(status)status.textContent='Preparando comparação visual…';
     let url='';
     try{
