@@ -67,8 +67,10 @@ function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^
 
 async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cached=CACHE.get(key);if(cached&&cached.expires>Date.now())return cached.value;const wantedSlug=slugify(name),matches=[];let root;try{root=await fetchText(`${ROOT}/sitemap.xml`,12000)}catch(error){if(error?.code==='cloudflare_blocked')throw error;return[]}const first=xmlLocs(root);const accept=url=>{if(!/\/pokemon\/produto\/\d+\//i.test(url))return;const slug=url.split('/').filter(Boolean).pop()||'';if(!wantedSlug||slug===wantedSlug||slug.includes(wantedSlug)||wantedSlug.includes(slug))matches.push(url)};first.forEach(accept);if(!matches.length){const childMaps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));const preferred=[...childMaps.filter(x=>/pokemon|produto|product|card/i.test(x)),...childMaps.filter(x=>!/pokemon|produto|product|card/i.test(x))].slice(0,18);for(const mapUrl of preferred){try{const xml=await fetchText(mapUrl,12000);xmlLocs(xml).forEach(accept);if(matches.length>=18)break}catch{}}}const unique=[...new Set(matches)].slice(0,18);CACHE.set(key,{value:unique,expires:Date.now()+6*60*60*1000});return unique}
 
-function pageIdentity(html){const text=stripTags(html);const titleMatch=text.match(/(?:^|\n)\s*([^\n]{1,120}?)\s*\((\d{1,4}\s*\/\s*\d{1,4})\)\s*(?:\n|$)/m);const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
-function matchesWanted(identity,wanted){const wn=normalize(wanted.name),pn=normalize(identity.name);if(wn&&pn&&wn!==pn&&!pn.includes(wn)&&!wn.includes(pn))return false;const wantedNumber=String(wanted.number||'').replace(/\s/g,'');if(wantedNumber&&identity.number){const[a,ad]=wantedNumber.split('/'),[b,bd]=identity.number.split('/');if(String(Number(a))!==String(Number(b)))return false;if(ad&&bd&&String(Number(ad))!==String(Number(bd)))return false}return true}
+function normalizeCollectorToken(value){const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');if(!raw)return'';const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);if(!m)return raw.toLowerCase();return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase()}
+function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const m=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));if(m)return{n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2]),full:normalizeCollectorToken(m[1])+'/'+normalizeCollectorToken(m[2])};const x=text.match(new RegExp(token,'i'));return x?{n:normalizeCollectorToken(x[0]),d:'',full:normalizeCollectorToken(x[0])}:{n:'',d:'',full:''}}
+function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'\\s*\\/\\s*'+token+')\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
+function matchesWanted(identity,wanted){const wn=normalize(wanted.name),pn=normalize(identity.name);if(wn&&pn&&wn!==pn&&!pn.includes(wn)&&!wn.includes(pn))return false;const w=numberParts(wanted.number),f=numberParts(identity.number);if(w.n&&f.n!==w.n)return false;if(w.d&&f.d&&f.d!==w.d)return false;return true}
 
 function extractMarket(identity,finish,condition){
   const text=identity.text;
@@ -121,7 +123,7 @@ function extractMarket(identity,finish,condition){
   return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
 }
 
-async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(identity.number===wantedNumber)score+=1000;else if(wantedNumber&&identity.number&&String(Number(identity.number.split('/')[0]))===String(Number(wantedNumber.split('/')[0])))score+=420;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
+async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(matchesWanted(identity,{name,number:wantedNumber,set}))score+=1000;else if(wantedNumber)score-=1200;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
 
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');
@@ -191,7 +193,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1438:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1439:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -264,7 +266,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1438:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1439:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const found=await resolvePage({name,number,set,link,lang,finish,condition});
