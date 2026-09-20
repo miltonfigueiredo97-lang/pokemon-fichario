@@ -489,12 +489,14 @@
       const langs=q.language==='all'?['pt-br','en','ja']:[q.language];
       const setIds=q.setHint?await resolveCatalogSetIds(langs,q.setHint):[];
       const mypPromise=q.raw&&q.language!=='ja'?searchMypCards(q.raw,q.number,q.setHint):Promise.resolve({cards:[],needsToken:false});
-      const [myp,...groups]=await Promise.all([
+      const jpPromise=(q.language==='ja'||q.language==='all')&&q.raw?searchJapaneseOfficial(q.raw,q.number,q.setHint,{live:false}):Promise.resolve([]);
+      const [myp,jpOfficial,...groups]=await Promise.all([
         mypPromise,
+        jpPromise,
         ...langs.map(l=>searchTCGdex(l,q.raw,q.number,{setHint:q.setHint,setIds,live:false}))
       ]);
 
-      let tcg=hardFilterCatalog(dedupe(groups.flat()),{number:q.number,setHint:q.setHint,setIds,language:q.language});
+      let tcg=hardFilterCatalog(dedupe([...groups.flat(),...jpOfficial]),{number:q.number,setHint:q.setHint,setIds,language:q.language});
       let market=hardFilterCatalog(myp.cards||[],{number:q.number,setHint:q.setHint,setIds,language:q.language});
 
       const maxResults=q.setHint&&!q.raw&&!q.number?400:100;
@@ -502,9 +504,10 @@
       populateRarityFilter();renderCatalog();
 
       const pt=catalogResults.filter(c=>c.languageCode==='pt-br').length;
+      const jpOfficialCount=catalogResults.filter(c=>c.source==='Pokémon Japão Oficial').length;
       const criteria=[q.raw&&`nome “${q.raw}”`,q.number&&`nº ${q.number}`,q.setHint&&`coleção “${q.setHint}”`,q.language!=='all'&&q.language].filter(Boolean).join(' + ');
       if(status){
-        status.textContent=`${catalogResults.length} resultado(s) · ${pt} em português${criteria?` · correspondendo a: ${criteria}`:''}.`;
+        status.textContent=`${catalogResults.length} resultado(s) · ${pt} em português${jpOfficialCount?` · ${jpOfficialCount} impressão(ões) japonesa(s) oficial(is)`:''}${criteria?` · correspondendo a: ${criteria}`:''}.`;
         if(myp.needsToken){
           const a=document.createElement('a');
           a.href='https://mypcards.github.io/mypcards-api/';
