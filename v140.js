@@ -1558,21 +1558,41 @@
   }
 
   function pricePatchFromDual(card,dual){
-    const m=dual?.myp;
-    if(!(m&&(Number(m.min)||Number(m.avg)||Number(m.max))))return null;
-    const checked=m.checkedAt||new Date().toISOString();
-    return {
-      myp_price_min:+m.min||0,myp_price_avg:+m.avg||0,myp_price_max:+m.max||0,
-      myp_price_link:m.link||card.myp_price_link||null,myp_price_checked_at:checked,
-      price_min:+m.min||0,price_avg:+m.avg||+m.min||+m.max||0,price_max:+m.max||0,currency:'BRL',
-      price_source:'MYP Cards',price_link:m.link||card.price_link||'',
-      price_br_source:'MYP Cards',price_br_link:m.link||card.price_br_link||null,price_checked_at:checked,
-      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_last_error:null
+    const liga=dual?.liga,myp=dual?.myp;
+    const hasLiga=!!(liga&&(Number(liga.min)||Number(liga.avg)||Number(liga.max)));
+    const hasMyp=!!(myp&&(Number(myp.min)||Number(myp.avg)||Number(myp.max)));
+    if(!hasLiga&&!hasMyp)return null;
+
+    const market=hasLiga&&Number(liga.avg)>0?liga:
+      hasMyp&&Number(myp.avg)>0?myp:
+      hasLiga?liga:myp;
+    const source=market===liga?'Liga Pokémon':'MYP Cards';
+    const checked=market.checkedAt||new Date().toISOString();
+    const patch={
+      price_min:+market.min||0,
+      price_avg:+market.avg||+market.min||+market.max||0,
+      price_max:+market.max||0,currency:'BRL',
+      price_source:source,price_link:market.link||'',
+      price_br_source:source,price_br_link:market.link||null,
+      price_checked_at:checked,
+      price_pending:false,price_processing_at:null,price_next_retry_at:null,
+      price_priority:0,price_last_error:null
     };
+    if(hasLiga)Object.assign(patch,{
+      liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,
+      liga_price_link:liga.link||card.liga_price_link||null,
+      liga_price_checked_at:liga.checkedAt||checked
+    });
+    if(hasMyp)Object.assign(patch,{
+      myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,
+      myp_price_link:myp.link||card.myp_price_link||null,
+      myp_price_checked_at:myp.checkedAt||checked
+    });
+    return patch;
   }
 
   function priceFailureCode(dual,error){
-    return String(dual?.myp?.error||dual?.error||error?.name||error?.message||'temporary_error');
+    return String(dual?.liga?.error||dual?.myp?.error||dual?.error||error?.name||error?.message||'temporary_error');
   }
 
   function terminalPriceFailure(code){
@@ -1857,7 +1877,7 @@
         link:row.myp_price_link||row.price_br_link||row.price_link||'',
         checkedAt:row.price_checked_at||row.myp_price_checked_at||null
       };
-      if(byId('marketStatus'))byId('marketStatus').textContent='MYP Cards · atualizado agora';
+      if(byId('marketStatus'))byId('marketStatus').textContent=(row.price_source||row.price_br_source||'Mercado BR')+' · atualizado agora';
       const link=selectedMarket.link;
       if(link&&byId('mypcardsLink')){
         byId('mypcardsLink').href=link;
@@ -1887,7 +1907,7 @@
         }
 
         const {data,error}=await db.from('pokemon_cards')
-          .select('id,price_min,price_avg,price_max,currency,price_source,price_link,price_br_source,price_br_link,myp_price_link,myp_price_checked_at,price_checked_at,price_pending,price_processing_at,price_requested_at,price_next_retry_at,price_attempts,price_priority,price_last_error')
+          .select('id,price_min,price_avg,price_max,currency,price_source,price_link,price_br_source,price_br_link,liga_price_min,liga_price_avg,liga_price_max,liga_price_link,liga_price_checked_at,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_pending,price_processing_at,price_requested_at,price_next_retry_at,price_attempts,price_priority,price_last_error')
           .eq('id',cardId).eq('user_id',currentUser.id).maybeSingle();
 
         if(error){
@@ -1999,10 +2019,18 @@
       dual=await querySingleCardPriceFast(card);
       const patch=pricePatchFromDual(card,dual);
       if(patch){
+        Object.assign(patch,{
+          price_pending:true,price_processing_at:null,price_requested_at:requestedAt,
+          price_next_retry_at:new Date().toISOString(),price_attempts:0,price_priority:1000,
+          price_last_error:null
+        });
         const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
         if(error)throw error;
-        renderFreshSinglePrice(card.id,patch);
-        toast('Preço desta carta atualizado.');
+        applyLocalPricePatch(card.id,patch);
+        setPrices(patch.price_min,patch.price_avg,patch.price_max);
+        setSinglePriceWatchLabel('MYP encontrada · conferindo Liga…');
+        kickPriceWorkerNow();
+        await waitForSinglePrice(card,requestedAt);
         return;
       }
 
