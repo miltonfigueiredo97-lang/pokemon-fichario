@@ -42,5 +42,6 @@ jobs:
             echo "Visual index unchanged."
           else
             git commit -m "chore: refresh card visual index [skip ci]"
+            git pull --rebase origin main
             git push
           fi
