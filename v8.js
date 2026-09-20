@@ -426,24 +426,28 @@
     const btn=$id('btnSearchCards');
     busy(btn,true,'Buscando...');
     const status=$id('searchStatus');
-    if(status)status.textContent='Combinando nome, número, coleção e idioma…';
+    if(status)status.textContent='Cruzando todos os critérios informados…';
 
     try{
       const langs=q.language==='all'?['pt-br','en','ja']:[q.language];
+      const setIds=q.setHint?await resolveCatalogSetIds(langs,q.setHint):[];
       const mypPromise=q.raw&&q.language!=='ja'?searchMypCards(q.raw,q.number,q.setHint):Promise.resolve({cards:[],needsToken:false});
-      const [myp,...groups]=await Promise.all([mypPromise,...langs.map(l=>searchTCGdex(l,q.raw,q.number,{setHint:q.setHint,live:false}))]);
+      const [myp,...groups]=await Promise.all([
+        mypPromise,
+        ...langs.map(l=>searchTCGdex(l,q.raw,q.number,{setHint:q.setHint,setIds,live:false}))
+      ]);
 
-      let tcg=dedupe(groups.flat()).filter(c=>q.language==='all'||c.languageCode===q.language);
-      let market=(myp.cards||[]).filter(c=>q.language==='all'||c.languageCode===q.language);
+      let tcg=hardFilterCatalog(dedupe(groups.flat()),{number:q.number,setHint:q.setHint,setIds,language:q.language});
+      let market=hardFilterCatalog(myp.cards||[],{number:q.number,setHint:q.setHint,setIds,language:q.language});
 
       const maxResults=q.setHint&&!q.raw&&!q.number?400:100;
       catalogResults=rank(dedupe([...market,...tcg]),{name:q.raw,number:q.number,setHint:q.setHint,language:q.language}).slice(0,maxResults);
-      populateRarityFilter();
-      renderCatalog();
+      populateRarityFilter();renderCatalog();
+
       const pt=catalogResults.filter(c=>c.languageCode==='pt-br').length;
-      const criteria=[q.raw&&`nome “${q.raw}”`,q.number&&`nº ${q.number}`,q.setHint&&`coleção “${q.setHint}”`,q.language!=='all'&&q.language].filter(Boolean).join(' · ');
+      const criteria=[q.raw&&`nome “${q.raw}”`,q.number&&`nº ${q.number}`,q.setHint&&`coleção “${q.setHint}”`,q.language!=='all'&&q.language].filter(Boolean).join(' + ');
       if(status){
-        status.textContent=`${catalogResults.length} resultado(s) · ${pt} em português${criteria?` · filtros combinados: ${criteria}`:''}.`;
+        status.textContent=`${catalogResults.length} resultado(s) · ${pt} em português${criteria?` · correspondendo a: ${criteria}`:''}.`;
         if(myp.needsToken){
           const a=document.createElement('a');
           a.href='https://mypcards.github.io/mypcards-api/';
