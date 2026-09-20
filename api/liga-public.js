@@ -25,6 +25,22 @@ function mergeMarket(preferred,fallback){
   return {min,avg,max,samples:a.samples??b.samples??null,exactVariant:a.exactVariant===true||(a.exactVariant==null&&b.exactVariant===true),complete:!!(min&&avg&&max)};
 }
 
+async function resolveFullNumber(number,apiId){
+  const raw=String(number||'').trim().replace(/\s/g,'');
+  if(!raw)return'';
+  if(/[A-Za-z]{0,8}\d+[A-Za-z]*\/[A-Za-z]{0,8}\d+[A-Za-z]*/i.test(raw))return raw;
+  if(!/^\d+$/.test(raw)||!apiId)return raw;
+  try{
+    const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.42'}
+    });
+    if(!rr.ok)return raw;
+    const d=await rr.json();
+    const local=String(d?.localId||raw).trim();
+    const total=Number(d?.set?.cardCount?.official||0);
+    return /^\d+$/.test(local)&&total>0 ? String(Number(local))+'/'+String(total) : raw;
+  }catch{return raw}
+}
 async function fetchJina(target,timeout=18000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
   try{
@@ -37,7 +53,7 @@ async function fetchJina(target,timeout=18000){
 async function fetchPage(url,timeout=11000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
   try{
-    const r=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,*/*;q=.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.7; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
+    const r=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,*/*;q=.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/14.42; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
     const html=await r.text();
     if(r.ok&&!/just a moment|cf-chl|cloudflare/i.test(html))return{html,url:r.url};
     if(r.status===403||/just a moment|cf-chl|cloudflare/i.test(html)){
@@ -129,7 +145,9 @@ module.exports=async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({ok:false,error:'method_not_allowed'});
 
   const name=String(req.query.name||'').trim();
-  const number=String(req.query.number||'').trim();
+  const inputNumber=String(req.query.number||'').trim();
+  const apiId=String(req.query.apiId||req.query.api_id||'').trim();
+  const number=await resolveFullNumber(inputNumber,apiId);
   const finish=String(req.query.finish||'').trim();
   const condition=String(req.query.condition||'').trim();
   const set=String(req.query.set||'').trim();
