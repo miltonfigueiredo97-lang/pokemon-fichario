@@ -171,16 +171,20 @@
   function langName(code){return code==='ja'?'Japonês':code==='en'?'Inglês':'Português'}
 
   async function resolveFullNumber(card){
-    const raw=String(card?.number||'').trim();
-    if(/\d+\s*\/\s*\d+/.test(raw))return raw.replace(/\s/g,'');
+    const raw=String(card?.number||'').trim().replace(/\s/g,'');
+    if(/[A-Za-z]{0,8}\d+[A-Za-z]*\/[A-Za-z]{0,8}\d+[A-Za-z]*/i.test(raw))return raw;
     if(!raw)return'';
+    if(!/^\d+$/.test(raw))return raw;
     const printed=String(card?.printedTotal||card?.printed_total||'').trim();
     if(/^\d+$/.test(printed))return `${Number(raw)}/${Number(printed)}`;
     const apiId=String(card?.apiId||card?.api_id||'').trim();
     if(!apiId)return raw;
     try{
-      const r=await fetch(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(apiId)}`,{cache:'force-cache'});
-      if(r.ok){const d=await r.json();const total=Number(d?.set?.cardCount?.official||0);if(total>0)return `${Number(raw)}/${total}`}
+      const rr=await fetch(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(apiId)}`,{cache:'force-cache'});
+      if(rr.ok){
+        const d=await rr.json(),local=String(d?.localId||raw).trim(),total=Number(d?.set?.cardCount?.official||0);
+        if(/^\d+$/.test(local)&&total>0)return `${Number(local)}/${total}`;
+      }
     }catch{}
     return raw;
   }
@@ -197,15 +201,23 @@
     const setId=String(card?.setId||card?.set_id||'').trim();
     if(setName)p.set('set',setName);
     if(setId)p.set('setId',setId);
+    const apiId=String(card?.apiId||card?.api_id||'').trim();if(apiId)p.set('apiId',apiId);
     const set=setName||setId;
     const lang=String(card?.languageCode||card?.language_code||'').trim();if(lang)p.set('lang',lang);
+    let known='';
     if(source==='myp'){
-      const known=[card?.myp_price_link,card?.price_br_link,card?.price_link].find(isMypUrl);if(known)p.set('link',known);
+      known=[card?.myp_price_link,card?.price_br_link,card?.price_link].find(isMypUrl)||'';
+      if(known)p.set('link',known);
     }
     let r,j;
     try{
       r=await fetch(`${endpoint}?${p.toString()}`,{cache:'no-store'});
       j=await r.json();
+      if(source==='myp'&&known&&!j?.ok&&['wrong_product','product_not_found'].includes(j?.error)){
+        p.delete('link');
+        r=await fetch(`${endpoint}?${p.toString()}`,{cache:'no-store'});
+        j=await r.json();
+      }
     }catch(error){
       const out={source,failed:true,error:'network_error',message:error?.message||'Falha de rede',provider:''};
       console.warn('[Preços]',source,card?.name,card?.number,out);
@@ -259,24 +271,21 @@
   }
 
   async function queryBothMarkets(card,finish='Normal',condition='Nova'){
-    const myp=await querySource('/api/mypcards-public','myp',card,finish,condition)
-      .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''}));
-    const primary=hasPrice(myp)?myp:null;
+    const [myp,liga]=await Promise.all([
+      querySource('/api/mypcards-public','myp',card,finish,condition)
+        .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''})),
+      querySource('/api/liga-public','liga',card,finish,condition)
+        .catch(error=>({source:'Liga Pokémon',failed:true,error:'exception',message:error?.message||''}))
+    ]);
+    const primary=primaryMarket(liga,myp);
     const result={
-      source:primary?'MYP Cards':'Sem preço BR',
-      min:Number(primary?.min||0),
-      avg:Number(primary?.avg||0),
-      max:Number(primary?.max||0),
-      link:primary?.link||'',
-      checkedAt:primary?.checkedAt||new Date().toISOString(),
-      liga:null,
-      myp,
-      finish,
-      condition
+      source:primarySource(liga,myp),
+      min:Number(primary?.min||0),avg:Number(primary?.avg||0),max:Number(primary?.max||0),
+      link:primary?.link||'',checkedAt:primary?.checkedAt||new Date().toISOString(),
+      liga,myp,finish,condition
     };
     console.groupCollapsed?.(`[Preços] ${card?.name||'Carta'} ${card?.number||''}`);
-    console.log?.('MYP:',myp);
-    console.log?.('Resultado:',result);
+    console.log?.('Liga:',liga);console.log?.('MYP:',myp);console.log?.('Resultado:',result);
     console.groupEnd?.();
     return result;
   }
@@ -284,60 +293,51 @@
 
   function savedDual(card){
     if(!card)return {source:'Sem preço BR',min:0,avg:0,max:0,link:'',liga:null,myp:null};
+    const liga={
+      source:'Liga Pokémon',
+      min:+card.liga_price_min||0,avg:+card.liga_price_avg||0,max:+card.liga_price_max||0,
+      link:card.liga_price_link||'',checkedAt:card.liga_price_checked_at||null
+    };
     const myp={
       source:'MYP Cards',
-      min:+card.myp_price_min||0,
-      avg:+card.myp_price_avg||0,
-      max:+card.myp_price_max||0,
-      link:card.myp_price_link||'',
-      checkedAt:card.myp_price_checked_at||null
+      min:+card.myp_price_min||0,avg:+card.myp_price_avg||0,max:+card.myp_price_max||0,
+      link:card.myp_price_link||'',checkedAt:card.myp_price_checked_at||null
     };
+    const primary=primaryMarket(liga,myp);
     return {
-      source:hasPrice(myp)?'MYP Cards':'Sem preço BR',
-      min:+myp.min||0,
-      avg:+myp.avg||0,
-      max:+myp.max||0,
-      link:myp.link||'',
-      liga:null,
-      myp,
-      finish:card.finish||'Normal',
-      condition:card.condition||'Nova'
+      source:primarySource(liga,myp),
+      min:+primary?.min||0,avg:+primary?.avg||+primary?.min||+primary?.max||0,max:+primary?.max||0,
+      link:primary?.link||'',liga,myp,
+      finish:card.finish||'Normal',condition:card.condition||'Nova'
     };
   }
 
   function marketPatch(card,dual){
-    const oldMyp={
-      min:+card?.myp_price_min||0,
-      avg:+card?.myp_price_avg||0,
-      max:+card?.myp_price_max||0,
-      link:card?.myp_price_link||'',
-      checkedAt:card?.myp_price_checked_at||null
-    };
-    const mypHasNew=hasPrice(dual?.myp);
-    const myp=mypHasNew?dual.myp:oldMyp;
+    const oldLiga={min:+card?.liga_price_min||0,avg:+card?.liga_price_avg||0,max:+card?.liga_price_max||0,link:card?.liga_price_link||'',checkedAt:card?.liga_price_checked_at||null};
+    const oldMyp={min:+card?.myp_price_min||0,avg:+card?.myp_price_avg||0,max:+card?.myp_price_max||0,link:card?.myp_price_link||'',checkedAt:card?.myp_price_checked_at||null};
+    const liga=hasPrice(dual?.liga)?dual.liga:oldLiga;
+    const myp=hasPrice(dual?.myp)?dual.myp:oldMyp;
+    const primary=primaryMarket(liga,myp);
     const oldPrimary={
-      min:+card?.price_min||0,
-      avg:+card?.price_avg||0,
-      max:+card?.price_max||0,
+      min:+card?.price_min||0,avg:+card?.price_avg||0,max:+card?.price_max||0,
       source:card?.price_source||card?.price_br_source||'Sem preço BR',
       link:card?.price_br_link||card?.price_link||''
     };
-
+    const hasPrimary=hasPrice(primary);
     return {
-      myp_price_min:+myp.min||0,
-      myp_price_avg:+myp.avg||0,
-      myp_price_max:+myp.max||0,
-      myp_price_link:myp.link||oldMyp.link||null,
-      myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
-      price_min:mypHasNew?(+myp.min||0):oldPrimary.min,
-      price_avg:mypHasNew?(+myp.avg||+myp.min||+myp.max||0):oldPrimary.avg,
-      price_max:mypHasNew?(+myp.max||0):oldPrimary.max,
+      liga_price_min:+liga.min||0,liga_price_avg:+liga.avg||0,liga_price_max:+liga.max||0,
+      liga_price_link:liga.link||oldLiga.link||null,liga_price_checked_at:liga.checkedAt||oldLiga.checkedAt||null,
+      myp_price_min:+myp.min||0,myp_price_avg:+myp.avg||0,myp_price_max:+myp.max||0,
+      myp_price_link:myp.link||oldMyp.link||null,myp_price_checked_at:myp.checkedAt||oldMyp.checkedAt||null,
+      price_min:hasPrimary?(+primary.min||0):oldPrimary.min,
+      price_avg:hasPrimary?(+primary.avg||+primary.min||+primary.max||0):oldPrimary.avg,
+      price_max:hasPrimary?(+primary.max||0):oldPrimary.max,
       currency:'BRL',
-      price_source:mypHasNew?'MYP Cards':oldPrimary.source,
-      price_link:mypHasNew?(myp.link||oldPrimary.link||''):(oldPrimary.link||''),
-      price_br_source:mypHasNew?'MYP Cards':(card?.price_br_source||null),
-      price_br_link:mypHasNew?(myp.link||card?.price_br_link||null):(card?.price_br_link||null),
-      price_checked_at:mypHasNew?(myp.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
+      price_source:hasPrimary?primarySource(liga,myp):oldPrimary.source,
+      price_link:hasPrimary?(primary.link||oldPrimary.link||''):(oldPrimary.link||''),
+      price_br_source:hasPrimary?primarySource(liga,myp):(card?.price_br_source||null),
+      price_br_link:hasPrimary?(primary.link||card?.price_br_link||null):(card?.price_br_link||null),
+      price_checked_at:hasPrimary?(primary.checkedAt||new Date().toISOString()):(card?.price_checked_at||null)
     };
   }
 
@@ -417,18 +417,7 @@
   }
 
   async function priceForNewCard(card,finish,condition){
-    const myp=await querySource('/api/mypcards-public','myp',card,finish,condition)
-      .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''}));
-    const primary=hasPrice(myp)?myp:null;
-    return {
-      source:primary?'MYP Cards':'Sem preço BR',
-      min:Number(primary?.min||0),
-      avg:Number(primary?.avg||0),
-      max:Number(primary?.max||0),
-      link:primary?.link||'',
-      checkedAt:primary?.checkedAt||new Date().toISOString(),
-      liga:null,myp,finish,condition
-    };
+    return queryBothMarkets(card,finish,condition);
   }
 
   async function backgroundPriceNewCard(saved,card,finish,condition){
@@ -436,7 +425,7 @@
       const full=await resolveFullNumber(card);
       if(full)card.number=full;
       const dual=await priceForNewCard(card,finish,condition);
-      if(!hasPrice(dual?.myp))return false;
+      if(!hasPrice(dual?.myp)&&!hasPrice(dual?.liga))return false;
       const patch=marketPatch({...saved,...card},dual);
       if(full)patch.number=full;
       const{error}=await db.from('pokemon_cards')
