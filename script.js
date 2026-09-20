@@ -321,13 +321,54 @@ async function searchTCGdex(lang,name,number,options={}){
   out.fuzzyTerm=fuzzyTerm;
   return out;
 }
+async function hydrateMissingCatalogImage(card,lang){
+  if(!card||cardImage(card))return card;
+
+  // Localized TCGdex records (especially PT promo sets) can have metadata but no image.
+  // First try the exact same canonical card ID in EN, preserving PT metadata/language.
+  if(lang!=="en"&&card.apiId){
+    try{
+      const r=await fetch(`${TCGDEX_BASE}/en/cards/${encodeURIComponent(card.apiId)}`,{cache:"force-cache"});
+      if(r.ok){
+        const en=await r.json();
+        if(en?.image){
+          card.imageUrl=en.image;
+          card.imageFallbackSource="TCGdex EN · mesma impressão";
+          return card;
+        }
+      }
+    }catch(e){console.warn("TCGdex image EN fallback",card.apiId,e)}
+  }
+
+  // Second safe fallback: resolve by name + collector number + set.
+  try{
+    const p=new URLSearchParams({
+      name:card.name||"",
+      number:card.number||"",
+      hp:String(card.hp||""),
+      rarity:card.rarity||"",
+      set:card.setId||card.setName||""
+    });
+    const r=await fetch("/api/card-image-fallback?"+p.toString(),{cache:"force-cache"});
+    if(r.ok){
+      const j=await r.json();
+      if(j?.ok&&j.url){
+        card.imageUrl=j.url;
+        card.imageFallbackSource=j.source||"fallback";
+      }
+    }
+  }catch(e){console.warn("Catalog image fallback",card?.name,e)}
+  return card;
+}
 async function fetchTCGdexCard(lang,id,fallback=null){
   const apiLang=tcgApiLang(lang),fb=()=>fallback?(fallback.source==="TCGdex"?fallback:mapTCG(fallback,lang)):null;
   try{
     const r=await fetch(`${TCGDEX_BASE}/${apiLang}/cards/${encodeURIComponent(id)}`);
-    if(!r.ok)return fb();
-    return mapTCG(await r.json(),lang);
-  }catch{return fb()}
+    const card=r.ok?mapTCG(await r.json(),lang):fb();
+    return await hydrateMissingCatalogImage(card,lang);
+  }catch{
+    return await hydrateMissingCatalogImage(fb(),lang);
+  }
 }
 function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"";let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:local,printedTotal:String(s.cardCount?.official||""),rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
@@ -470,7 +511,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.33",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.34",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
