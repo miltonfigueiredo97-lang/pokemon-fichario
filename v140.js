@@ -302,6 +302,19 @@
       ensureUnifiedTopbar();
       requestAnimationFrame(positionUnifiedTopbar);
     }
+    // Migração defensiva: se o usuário veio de uma UI V14 já montada antes
+    // do botão social existir, adiciona "Amigos" sem exigir recriar a topbar.
+    const binderControls=byId('v14BinderControls');
+    if(binderControls&&!byId('v14Friends')){
+      const friendsButton=document.createElement('button');
+      friendsButton.id='v14Friends';
+      friendsButton.className='v1451-friends-btn';
+      friendsButton.type='button';
+      friendsButton.setAttribute('aria-label','Amigos');
+      friendsButton.textContent='♙ Amigos';
+      binderControls.insertBefore(friendsButton,byId('v14AddBinder')||null);
+    }
+
     if(!byId('v14BinderDialog')){
       const d=document.createElement('dialog');
       d.id='v14BinderDialog';
@@ -3216,7 +3229,9 @@
     wireRemoveCardAction();
     wireSpreadNavigationV14();
     const friends=byId('v14Friends');
-    if(friends)friends.onclick=async()=>{try{await loadFriendships();openDialog('friendsDialog')}catch(e){console.error('[Amigos]',e);toast('Não consegui abrir Amigos.')}};
+    if(friends)friends.onclick=()=>window.openPokemonFriends
+      ?window.openPokemonFriends()
+      :(async()=>{try{await loadFriendships();openDialog('friendsDialog')}catch(e){console.error('[Amigos]',e);toast('Não consegui abrir Amigos.')}})();
     syncSingleCardPriceButton();
     rewireFilteredPriceButton();
     organizeSummaryActionsV14();

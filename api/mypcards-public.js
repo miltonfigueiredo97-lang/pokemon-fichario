@@ -47,7 +47,7 @@ async function resolveNameAliases(name,apiId){
   if(apiId){
     try{
       const r=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-        headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.51'}
+        headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.52'}
       });
       if(r.ok){
         const d=await r.json();
@@ -66,7 +66,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.51'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.52'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -106,6 +106,26 @@ async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cach
 function normalizeCollectorToken(value){const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');if(!raw)return'';const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);if(!m)return raw.toLowerCase();return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase()}
 function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const m=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));if(m)return{n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2]),full:normalizeCollectorToken(m[1])+'/'+normalizeCollectorToken(m[2])};const x=text.match(new RegExp(token,'i'));return x?{n:normalizeCollectorToken(x[0]),d:'',full:normalizeCollectorToken(x[0])}:{n:'',d:'',full:''}}
 function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'(?:\\s*\\/\\s*'+token+')?)\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
+function marketIdentityLocaleScore(identity,wanted={}){
+  const lang=String(wanted?.lang||'').toLowerCase();
+  const hay=normalize([identity?.edition,identity?.code,identity?.text].filter(Boolean).join(' '));
+  const tokens=new Set(hay.split(/\s+/).filter(Boolean));
+  const japanese=tokens.has('japones')||tokens.has('japanese')||tokens.has('sv2a');
+  let score=0;
+  if(lang==='ja'||lang==='jp')score+=japanese?900:-250;
+  else if(lang&&japanese)score-=1500;
+  const setId=normalize(wanted?.setId||'');
+  if(setId==='sv03 5'||setId==='sv3 5'){
+    if(lang==='ja'||lang==='jp'){
+      if(tokens.has('sv2a'))score+=1100;
+      if(tokens.has('mew'))score-=1100;
+    }else{
+      if(tokens.has('mew'))score+=1100;
+      if(tokens.has('sv2a'))score-=1800;
+    }
+  }
+  return score;
+}
 function matchesWanted(identity,wanted){
   const aliases=[wanted?.name,...(Array.isArray(wanted?.nameAliases)?wanted.nameAliases:[])].map(normalize).filter(Boolean);
   const pn=normalize(identity.name);
@@ -113,6 +133,7 @@ function matchesWanted(identity,wanted){
   const w=numberParts(wanted.number),f=numberParts(identity.number);
   if(w.n&&f.n!==w.n)return false;
   if(w.d&&f.d&&f.d!==w.d)return false;
+  if(marketIdentityLocaleScore(identity,wanted)<=-1000)return false;
   return true;
 }
 
@@ -164,7 +185,7 @@ function extractMarket(identity,finish,condition){
   return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
 }
 
-async function resolvePage({name,nameAliases=[],number,set,link,lang,finish,condition}){
+async function resolvePage({name,nameAliases=[],number,set,setId,link,lang,finish,condition}){
   const direct=safeMypProductUrl(link);
   let urls=[];
   if(direct)urls=[direct];
@@ -176,10 +197,11 @@ async function resolvePage({name,nameAliases=[],number,set,link,lang,finish,cond
   for(const url of urls){
     try{
       const html=await fetchText(url),identity=pageIdentity(html);
-      if(!matchesWanted(identity,{name,nameAliases,number,set}))continue;
+      if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang}))continue;
       const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);
       let score=0;
-      if(matchesWanted(identity,{name,nameAliases,number:wantedNumber,set}))score+=1000;else if(wantedNumber)score-=1200;
+      if(matchesWanted(identity,{name,nameAliases,number:wantedNumber,set,setId,lang}))score+=1000;else if(wantedNumber)score-=1200;
+      score+=marketIdentityLocaleScore(identity,{setId,lang});
       const identityName=normalize(identity.name);
       if([name,...nameAliases].map(normalize).some(n=>n&&n===identityName))score+=350;
       if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
@@ -230,7 +252,7 @@ module.exports=async function handler(req,res){
     try{
       const text=await fetchJina(directLink,8000);
       const identity=pageIdentity(text);
-      if(!matchesWanted(identity,{name,nameAliases,number,set})){
+      if(!matchesWanted(identity,{name,nameAliases,number,set,setId:String(req.query.setId||'').trim(),lang})){
         return res.status(200).json({
           ok:false,error:'wrong_product',source:'MYP Cards',provider:'Fast Reader',link:directLink,
           message:'O link salvo não corresponde à carta consultada.'
@@ -266,7 +288,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1451:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1452:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -296,7 +318,7 @@ module.exports=async function handler(req,res){
         CACHE.set(browserKey,{value:out,expires:Date.now()+10*60*1000});
         return res.status(200).json(out);
       }
-      if(['variant_not_found','wrong_product','product_not_found'].includes(market?.error)){
+      if(['wrong_product','product_not_found'].includes(market?.error)){
         const out={
           ok:false,
           error:market.error,
@@ -304,16 +326,20 @@ module.exports=async function handler(req,res){
           provider:'Chromium',
           mode:directLink?'browser-page':'browser-search-page',
           link:safeMypProductUrl(market?.link)||directLink||'',
-          message:market?.message||(market.error==='variant_not_found'
-            ?'A página correta foi localizada, mas não há oferta com este acabamento + condição.'
-            :market.error==='wrong_product'
-              ?'O link salvo não corresponde à carta consultada.'
-              :'A busca da MYP não encontrou a impressão correta.')
+          message:market?.message||(market.error==='wrong_product'
+            ?'O link salvo não corresponde à carta consultada.'
+            :'A busca da MYP não encontrou a impressão correta.')
         };
         CACHE.set(browserKey,{value:out,expires:Date.now()+3*60*1000});
         return res.status(200).json(out);
       }
-      console.warn('MYP Chromium falhou; tentando fallbacks:',market?.error||'unknown');
+      if(market?.error==='variant_not_found'){
+        // O Reader/Apify ainda pode enxergar anúncios que o DOM do Chromium
+        // não classificou corretamente. Não encerramos a busca cedo.
+        console.warn('MYP Chromium não achou a variante; tentando fallbacks.');
+      }else{
+        console.warn('MYP Chromium falhou; tentando fallbacks:',market?.error||'unknown');
+      }
     }catch(error){
       console.warn('MYP Chromium lançou erro; tentando fallbacks:',error?.message||error);
     }
@@ -339,10 +365,10 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1451:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1452:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
-    const found=await resolvePage({name,nameAliases,number,set,link,lang,finish,condition});
+    const found=await resolvePage({name,nameAliases,number,set,setId:String(req.query.setId||'').trim(),link,lang,finish,condition});
     if(!found){
       if(apifyFound){
         const partial=mergeMarket(apifyFound,null);
