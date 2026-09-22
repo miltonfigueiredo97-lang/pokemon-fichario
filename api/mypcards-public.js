@@ -173,8 +173,10 @@ function extractMarket(identity,finish,condition){
   // Strict market identity: never fall back to another quality or another
   // explicit finish just to avoid an empty price.
   if(exact.length){selected=exact;exactVariant=true}
-  else if(byCondition.length){
-    const safeDefault=byCondition.filter(x=>!normalize(x).match(/altered art|reverse foil|reverse holo|masterball|master ball|pokeball|poke ball/));
+  else if(byCondition.length&&finishKind(finish)==='normal'){
+    // Só o acabamento Normal pode usar linhas sem rótulo de superfície.
+    // Reverse/Foil/Poké Ball/Master Ball jamais caem para anúncios normais.
+    const safeDefault=byCondition.filter(x=>!normalize(x).match(/altered art|reverse foil|reverse holo|masterball|master ball|pokeball|poke ball|\bfoil\b|holo/));
     selected=safeDefault;
   }
 
@@ -334,7 +336,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1454:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1455:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -406,7 +408,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1454:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1455:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const candidateLink=safeMypProductUrl(apifyFound?.link)||link;
