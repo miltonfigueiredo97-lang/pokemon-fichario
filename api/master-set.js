@@ -2,8 +2,8 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='23';
-const SPECIAL_MASTER_PRINTED_NUMBERS={
+const MASTER_ALGO_VERSION='24';
+const SPECIAL_MASTER_ORIGINAL_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
     CC006:'15/82',CC007:'15/132',CC008:'24',CC009:'20/111',CC010:'66/64',
@@ -21,8 +21,15 @@ const SPECIAL_MASTER_PRINTED_NUMBERS={
   }
 };
 function specialMasterNumber(setId,localId){
+  const set=String(setId||''),local=String(localId||'').trim();
+  const digits=local.match(/(\d+)/)?.[1]||'';
+  if(set==='cel25cc'&&digits)return String(Number(digits))+'/25';
+  if(set==='30th-c'&&digits)return String(Number(digits))+'/30';
+  return local;
+}
+function specialMasterOriginalNumber(setId,localId){
   const local=String(localId||'').trim();
-  return SPECIAL_MASTER_PRINTED_NUMBERS[String(setId||'')]?.[local]||local;
+  return SPECIAL_MASTER_ORIGINAL_NUMBERS[String(setId||'')]?.[local]||'';
 }
 function printedDenominator(number,fallback=''){
   const m=String(number||'').match(/\/\s*([A-Za-z0-9]+)/);
@@ -322,6 +329,12 @@ module.exports=async function handler(req,res){
           apiId:card.id,
           name:card.name||list[i]?.name||'',
           number:specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
+          originalNumber:specialMasterOriginalNumber(set.id||setId,card.localId||list[i]?.localId||''),
+          numberAliases:[
+            String(card.localId||list[i]?.localId||''),
+            specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
+            specialMasterOriginalNumber(set.id||setId,card.localId||list[i]?.localId||'')
+          ].filter(Boolean),
           printedTotal:printedDenominator(
             specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
             card?.set?.cardCount?.official||set?.cardCount?.official||''
