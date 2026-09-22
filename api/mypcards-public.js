@@ -46,7 +46,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.42'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.44'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -107,15 +107,12 @@ function extractMarket(identity,finish,condition){
   const exact=byCondition.filter(x=>lineMatchesFinish(x,finish));
   let selected=[];
   let exactVariant=false;
-  // Se existe ao menos uma oferta que corresponde ao acabamento + condição,
-  // respeitamos essa variante estritamente. Uma única oferta gera apenas mínimo;
-  // não misturamos anúncios de outro acabamento para fabricar média/máximo.
+  // Strict market identity: never fall back to another quality or another
+  // explicit finish just to avoid an empty price.
   if(exact.length){selected=exact;exactVariant=true}
-  else if(byCondition.length){selected=byCondition}
-  else{
-    const byFinish=priceLines.filter(x=>lineMatchesFinish(x,finish));
-    selected=byFinish.length?byFinish:priceLines;
-    exactVariant=byFinish.length>=2;
+  else if(byCondition.length){
+    const safeDefault=byCondition.filter(x=>!normalize(x).match(/altered art|reverse foil|reverse holo|masterball|master ball|pokeball|poke ball/));
+    selected=safeDefault;
   }
 
   const usable=selected.flatMap(moneyMatches)
@@ -211,7 +208,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1442:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1444:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -284,7 +281,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1442:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1444:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const found=await resolvePage({name,number,set,link,lang,finish,condition});
