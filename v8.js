@@ -101,8 +101,9 @@
     const sr=spread.getBoundingClientRect();
     if(sr.width<20||sr.height<20)return;
 
-    const size=isMobile()?38:42;
-    const gap=isMobile()?6:12;
+    const mobile=isMobile();
+    const size=mobile?38:42;
+    const gap=mobile?6:12;
     const left=Math.max(6,sr.left-ar.left-size-gap);
     const right=Math.min(ar.width-size-6,sr.right-ar.left+gap);
     const top=Math.max(48,sr.top-ar.top+sr.height/2-size/2);
@@ -113,6 +114,22 @@
     next.style.left=right+'px';
     next.style.top=top+'px';
     next.style.right='auto';
+
+    // V14.43: "+ página" mirrors the navigation on BOTH sides,
+    // directly above each arrow, using the arrow position as the anchor.
+    const addLeft=$id('v1443AddPageLeft');
+    const addRight=$id('v1443AddPageRight');
+    const addSize=mobile?30:32;
+    const addTop=Math.max(mobile?8:10,top-addSize-7);
+    const placeAdd=(btn,arrowLeft)=>{
+      if(!btn)return;
+      btn.style.left=(arrowLeft+(size-addSize)/2)+'px';
+      btn.style.top=addTop+'px';
+      btn.style.right='auto';
+      btn.style.bottom='auto';
+    };
+    placeAdd(addLeft,left);
+    placeAdd(addRight,right);
   }
 
   function fitBinder(){
