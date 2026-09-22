@@ -60,6 +60,62 @@ function collectorNumberMatches(wantedValue,foundValue){
   if(w.d&&f.d&&!collectorTokenMatches(w.d,f.d))return false;
   return true;
 }
+const SPECIAL_PRINTED_NUMBERS={
+  cel25cc:{
+    CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
+    CC006:'15/82',CC007:'15/132',CC008:'24',CC009:'20/111',CC010:'66/64',
+    CC011:'9/95',CC012:'86/109',CC013:'88/92',CC014:'93/101',CC015:'17/17',
+    CC016:'15/106',CC017:'109/111',CC018:'145/147',CC019:'107/123',CC020:'113/114',
+    CC021:'114/114',CC022:'54/99',CC023:'97/146',CC024:'76/108',CC025:'60/145'
+  },
+  '30th-c':{
+    '001':'4/102','002':'5/109','003':'11/113','004':'11/101','005':'18/132',
+    '006':'19/109','007':'25/111','008':'33/181','009':'41/122','010':'43/146',
+    '011':'47/127','012':'50/185','013':'57/111','014':'58/102','015':'69/132',
+    '016':'85/124','017':'89/149','018':'94/102','019':'99/102','020':'100/102',
+    '021':'101/101','022':'106/106','023':'106/160','024':'106/105','025':'108/115',
+    '026':'114/264','027':'123/172','028':'138/202','029':'149/147','030':'203/193'
+  }
+};
+function specialPrintedNumber(setId,localId){
+  const set=String(setId||''),local=String(localId||'').trim();
+  return SPECIAL_PRINTED_NUMBERS[set]?.[local]||local;
+}
+function isAnniversaryClassicSet(setId){
+  return ['cel25cc','30th-c'].includes(String(setId||''));
+}
+function anniversaryHintInfo(value){
+  const h=norm(value);
+  if(!h)return null;
+  const classic=/classic|classica|classico|colecao classica|collection classic/.test(h);
+  const y25=(/\b25\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('celebrations')||h.includes('celebracoes');
+  if(y25)return{year:25,classic,ids:classic?['cel25cc']:['cel25','cel25cc']};
+  const y30=(/\b30\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('30th celebration');
+  if(y30)return{year:30,classic,ids:classic?['30th-c']:['30th','30th-c']};
+  return null;
+}
+function anniversarySetAliasScore(set,hint){
+  const info=anniversaryHintInfo(hint);
+  if(!info)return 0;
+  const id=String(set?.id||'');
+  if(!info.ids.includes(id))return 0;
+  return info.classic?1190:1140;
+}
+function anniversaryCardSetMatches(card,setHint){
+  const info=anniversaryHintInfo(setHint);
+  if(!info)return false;
+  const id=String(card?.setId||card?.set_id||'').toLowerCase();
+  const name=norm(card?.setName||card?.set_name||card?.setTitle||card?.set_title||'');
+  if(info.year===25){
+    if(info.classic)return id==='cel25cc'||id==='cel25c'||(name.includes('celebr')&&name.includes('classic'));
+    return id==='cel25'||id==='cel25cc'||id==='cel25c'||name.includes('celebr');
+  }
+  if(info.year===30){
+    if(info.classic)return id==='30th-c'||(name.includes('30')&&name.includes('classic'));
+    return id==='30th'||id==='30th-c'||(name.includes('30')&&name.includes('celebr'));
+  }
+  return false;
+}
 function toast(msg){const e=$("toast");if(!e)return;e.textContent=msg;e.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("show"),2400)}
 function openDialog(id){const e=$(id);if(e&&!e.open)e.showModal()}
 function closeDialog(id){const e=$(id);if(e?.open)e.close()}
