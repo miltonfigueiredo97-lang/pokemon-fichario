@@ -810,3 +810,8 @@ dialog.sheet-dialog:not([open]){
 .v1451-readonly-note{margin:10px 0 0;text-align:center;color:#7f898f;font-size:8px}
 @media(max-width:1180px) and (min-width:821px){.v1451-friends-btn{font-size:0;width:34px;padding:0}.v1451-friends-btn::before{content:"♙";font-size:16px}}
 @media(max-width:820px){.v1451-friends-btn{flex:0 0 auto;height:34px;min-height:34px}.v1451-friend-toolbar{grid-template-columns:1fr}.v1451-friend-nav{justify-content:center}.v1451-friend-spread,.v1451-friend-spread.double{grid-template-columns:1fr}.v1451-friend-binder-shell{width:96vw!important}}
+
+
+/* V14.56 — build stamp + cache-coherent release */
+.app-build-version{display:inline-flex;align-items:center;justify-content:center;min-height:24px;padding:4px 7px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:#8f969c;background:rgba(255,255,255,.035);font-size:8px;font-weight:900;letter-spacing:.06em;white-space:nowrap}
+@media(max-width:820px){.app-build-version{min-height:22px;padding:3px 6px;font-size:7px}}
