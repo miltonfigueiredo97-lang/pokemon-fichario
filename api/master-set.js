@@ -2,7 +2,32 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='21';
+const MASTER_ALGO_VERSION='22';
+const SPECIAL_MASTER_PRINTED_NUMBERS={
+  cel25cc:{
+    CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
+    CC006:'15/82',CC007:'15/132',CC008:'24',CC009:'20/111',CC010:'66/64',
+    CC011:'9/95',CC012:'86/109',CC013:'88/92',CC014:'93/101',CC015:'17/17',
+    CC016:'15/106',CC017:'109/111',CC018:'145/147',CC019:'107/123',CC020:'113/114',
+    CC021:'114/114',CC022:'54/99',CC023:'97/146',CC024:'76/108',CC025:'60/145'
+  },
+  '30th-c':{
+    '001':'4/102','002':'5/109','003':'11/113','004':'11/101','005':'18/132',
+    '006':'19/109','007':'25/111','008':'33/181','009':'41/122','010':'43/146',
+    '011':'47/127','012':'50/185','013':'57/111','014':'58/102','015':'69/132',
+    '016':'85/124','017':'89/149','018':'94/102','019':'99/102','020':'100/102',
+    '021':'101/101','022':'106/106','023':'106/160','024':'106/105','025':'108/115',
+    '026':'114/264','027':'123/172','028':'138/202','029':'149/147','030':'203/193'
+  }
+};
+function specialMasterNumber(setId,localId){
+  const local=String(localId||'').trim();
+  return SPECIAL_MASTER_PRINTED_NUMBERS[String(setId||'')]?.[local]||local;
+}
+function printedDenominator(number,fallback=''){
+  const m=String(number||'').match(/\/\s*([A-Za-z0-9]+)/);
+  return m?m[1]:String(fallback||'');
+}
 
 function apiLang(v){
   const x=String(v||'pt').toLowerCase();
@@ -288,8 +313,11 @@ module.exports=async function handler(req,res){
         entries.push({
           apiId:card.id,
           name:card.name||list[i]?.name||'',
-          number:String(card.localId||list[i]?.localId||''),
-          printedTotal:String(card?.set?.cardCount?.official||set?.cardCount?.official||''),
+          number:specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
+          printedTotal:printedDenominator(
+            specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
+            card?.set?.cardCount?.official||set?.cardCount?.official||''
+          ),
           setId:set.id||setId,
           setName:set.name||card?.set?.name||'',
           seriesName:set?.serie?.name||'',
