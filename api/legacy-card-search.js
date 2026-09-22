@@ -13,6 +13,37 @@ function parts(v){
   const x=s.match(/[A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4}/i);
   return x?{n:collector(x[0]),d:''}:{n:'',d:''};
 }
+function tokenShape(v){
+  const raw=collector(v),m=raw.match(/^([a-z]*)(\d+)([a-z]*)$/i);
+  return m?{raw,prefix:m[1]||'',digits:String(Number(m[2])),suffix:m[3]||''}:{raw,prefix:'',digits:'',suffix:''};
+}
+function tokenMatches(wanted,found){
+  const w=tokenShape(wanted),f=tokenShape(found);
+  if(!w.raw)return true;
+  if(w.raw===f.raw)return true;
+  return !w.prefix&&!w.suffix&&!!w.digits&&w.digits===f.digits;
+}
+function numberMatches(wantedValue,foundValue){
+  const w=parts(wantedValue),f=parts(foundValue);
+  if(w.n&&!tokenMatches(w.n,f.n))return false;
+  if(w.d&&f.d&&!tokenMatches(w.d,f.d))return false;
+  return true;
+}
+function anniversarySetMatch(setHint,setId,setName){
+  const h=norm(setHint),id=String(setId||'').toLowerCase(),name=norm(setName);
+  const classic=/classic|classica|classico|colecao classica/.test(h);
+  const y25=(/\b25\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('celebrations')||h.includes('celebracoes');
+  const y30=(/\b30\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('30th celebration');
+  if(y25){
+    if(classic)return id==='cel25c'||id==='cel25cc'||(name.includes('celebr')&&name.includes('classic'));
+    return id==='cel25'||id==='cel25c'||id==='cel25cc'||name.includes('celebr');
+  }
+  if(y30){
+    if(classic)return id==='30th-c'||(name.includes('30')&&name.includes('classic'));
+    return id==='30th'||id==='30th-c'||(name.includes('30')&&name.includes('celebr'));
+  }
+  return false;
+}
 function similarName(cardName,wanted){
   const a=norm(cardName),b=norm(wanted);
   if(!a||!b)return false;
@@ -33,7 +64,7 @@ module.exports=async function handler(req,res){
     const base=name.replace(/\b(ex|gx|vmax|vstar|v)\b/ig,'').trim()||name;
     const q='name:'+JSON.stringify(base);
     const r=await fetch('https://api.pokemontcg.io/v2/cards?q='+encodeURIComponent(q)+'&pageSize=100',{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.35'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.47'}
     });
     if(!r.ok)return res.status(200).json({ok:true,cards:[],upstream:r.status});
     const data=await r.json();
@@ -41,12 +72,11 @@ module.exports=async function handler(req,res){
     const cards=[];
     for(const d of data?.data||[]){
       if(!similarName(d?.name,name))continue;
-      const found=parts(d?.number||'');
-      if(wanted.n&&found.n!==wanted.n)continue;
-      if(wanted.d&&found.d&&found.d!==wanted.d)continue;
+      if(number&&!numberMatches(number,d?.number||''))continue;
       if(setNorm){
         const setHay=norm([d?.set?.id,d?.set?.name].filter(Boolean).join(' '));
-        if(!(setHay===setNorm||setHay.includes(setNorm)||setNorm.includes(setHay)))continue;
+        const direct=setHay===setNorm||setHay.includes(setNorm)||setNorm.includes(setHay);
+        if(!direct&&!anniversarySetMatch(set,d?.set?.id,d?.set?.name))continue;
       }
       const image=d?.images?.large||d?.images?.small||'';
       const local=String(d?.number||'');
