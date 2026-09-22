@@ -1358,6 +1358,12 @@
       tag.textContent='ATUALIZANDO…';
       tag.setAttribute('aria-label',card.price_processing_at?'Preço sendo atualizado':'Preço aguardando atualização');
       b.appendChild(tag);
+    }else if(!Number(card.price_min||card.price_avg||card.price_max||0)&&card.price_last_error){
+      const tag=document.createElement('span');
+      tag.className='v14-price-unavailable';
+      tag.textContent='SEM COTAÇÃO';
+      tag.setAttribute('aria-label','Nenhuma cotação foi encontrada após as tentativas automáticas');
+      b.appendChild(tag);
     }
     return b;
   }
