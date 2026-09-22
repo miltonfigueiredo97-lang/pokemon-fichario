@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V14.50';
+  const APP_VERSION='V14.51';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,14 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.51',title:'Amigos restaurado e fichários compartilhados em modo leitura',items:[
+      'O botão Amigos voltou para a barra principal do fichário e continua disponível no menu mobile.',
+      'A tela social permite buscar usuários, enviar e aceitar pedidos, cancelar pedidos enviados e remover amigos.',
+      'Cada amigo agora mostra a lista dos próprios fichários; é possível escolher o fichário e navegar pelas páginas 1, 2–3, 4–5 e assim por diante.',
+      'Fichários de amigos são somente leitura na interface: sem adicionar, mover, editar ou remover cartas.',
+      'A proteção também existe no banco: apenas o dono pode inserir, alterar ou excluir seus fichários e cartas; amizade/visibilidade libera somente SELECT.',
+      'A privacidade do perfil continua com Somente eu, Amigos ou Público.'
+    ]},
     {version:'V14.50',title:'Preço MYP corrigido, busca por geração/coleção e fila persistente de Master Set',items:[
       'MYP não confunde mais a bandeira/localidade do vendedor com o idioma da carta; ofertas válidas da mesma página de produto entram novamente no cálculo.',
       'A busca de cartas agora segue Geração → Coleção, como o Master Set, reduzindo ambiguidades em Celebrações, promos e outras coleções especiais.',
