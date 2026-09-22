@@ -2,6 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
+const MASTER_ALGO_VERSION='20';
 
 function apiLang(v){
   const x=String(v||'pt').toLowerCase();
@@ -169,27 +170,33 @@ function uniformOnlySetType(cardCount,expectedCount){
 function isCoreSetVariant(v,cardVariants,profile,totalCards,isPromoSet,uniformOnlyType=''){
   if(v.size==='jumbo')return false;
   if(isPromoSet)return true;
-  if(uniformOnlyType&&v.type===uniformOnlyType)return true;
 
-  const stamps=v.stamp||[];
-  if(stamps.length){
-    const onlyFirst=stamps.every(x=>String(x).toLowerCase()==='1st-edition');
-    const prevalence=(profile.get(v.key)||0)/Math.max(1,totalCards);
-    if(!onlyFirst&&prevalence<0.20)return false;
-  }
-
+  const type=String(v.type||'').toLowerCase();
   const foil=String(v.foil||'').toLowerCase();
-  if(['pokeball','greatball','ultraball','masterball','loveball','friendball','quickball','duskball'].includes(foil))return true;
-  if(v.subtype)return true;
-  if(!foil)return true;
-  if(v.type==='holo')return true;
-
-  const plainSameType=cardVariants.some(x=>x!==v&&x.type===v.type&&!x.foil&&!x.subtype&&!(x.stamp||[]).length);
-  if(!plainSameType)return true;
-
+  const stamps=v.stamp||[];
   const count=profile.get(v.key)||0;
-  const threshold=Math.max(3,Math.ceil(totalCards*0.08));
-  return count>=threshold;
+  const prevalence=count/Math.max(1,totalCards);
+
+  if(uniformOnlyType&&type===uniformOnlyType&&!foil&&!v.subtype&&!stamps.length)return true;
+
+  // These are real set-wide chase finishes in sets that use them (for example
+  // Poké Ball / Master Ball). Keep them even though they are not plain variants.
+  if(['pokeball','greatball','ultraball','masterball','loveball','friendball','quickball','duskball'].includes(foil))return true;
+
+  // Main pack variants. No special foil/stamp/subtype means they belong to the set.
+  if(['normal','holo','reverse'].includes(type)&&!foil&&!v.subtype&&!stamps.length)return true;
+
+  // 1st-edition is a legitimate printing distinction in older sets.
+  if(stamps.length&&stamps.every(x=>String(x).toLowerCase()==='1st-edition')&&!foil&&!v.subtype)return true;
+
+  // One-off treatments such as Cosmos, Gold, Metal, League stamps, etc. are
+  // typically box/promotional variants that share the set number. They should
+  // not inflate a normal Master Set. Only keep a special treatment when it is
+  // genuinely systemic across a meaningful portion of the collection.
+  const systemicThreshold=Math.max(6,Math.ceil(totalCards*0.20));
+  if(count>=systemicThreshold||prevalence>=0.20)return true;
+
+  return false;
 }
 async function json(url){
   const r=await fetch(url,{headers:{accept:'application/json'}});
@@ -210,7 +217,7 @@ module.exports=async function handler(req,res){
   res.setHeader('Cache-Control','s-maxage=3600, stale-while-revalidate=86400');
   const lang=apiLang(req.query.lang),setId=String(req.query.set||'').trim();
   if(!setId)return res.status(400).json({ok:false,error:'set_required'});
-  const cacheKey=lang+'|'+setId;
+  const cacheKey=MASTER_ALGO_VERSION+'|'+lang+'|'+setId;
   const cached=CACHE.get(cacheKey);
   if(cached&&Date.now()-cached.at<3600000)return res.status(200).json(cached.value);
   try{
@@ -306,6 +313,17 @@ module.exports=async function handler(req,res){
         });
       }
     }
+    const dedupedEntries=[];
+    const finalSeen=new Set();
+    for(const entry of entries){
+      const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+      if(finalSeen.has(key))continue;
+      finalSeen.add(key);
+      dedupedEntries.push(entry);
+    }
+    entries.length=0;
+    entries.push(...dedupedEntries);
+
     entries.sort((a,b)=>{
       const an=Number(String(a.number).replace(/\D/g,''))||99999;
       const bn=Number(String(b.number).replace(/\D/g,''))||99999;
