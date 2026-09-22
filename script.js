@@ -426,6 +426,32 @@ function quickCatalogScore(c,name,number){
   if(wanted)s+=collectorTokenMatches(wanted,actual)?800:-250;
   return s;
 }
+async function searchAnniversaryClassicCollections(langs,name,number,options={}){
+  const qn=norm(name),wanted=String(number||'').trim(),live=!!options.live;
+  if(!qn||qn.length<2)return[];
+  const ids=['cel25cc','30th-c'],out=[];
+  for(const lang of (langs||[]).filter(l=>l!=='ja')){
+    for(const id of ids){
+      const set=await fetchTCGdexSet(lang,id);
+      if(!set)continue;
+      const candidates=(Array.isArray(set.cards)?set.cards:[])
+        .map(card=>mapTCGSetBrief(card,set,lang))
+        .filter(card=>{
+          const cn=norm(card.name);
+          const nameOk=cn===qn||cn.includes(qn)||qn.includes(cn)||nameSimilarity(cn,qn)>=.78;
+          if(!nameOk)return false;
+          return !wanted||collectorNumberMatches(wanted,card.number)||collectorNumberMatches(wanted,card.internalNumber);
+        })
+        .sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number))
+        .slice(0,live?8:20);
+      for(const card of candidates){
+        const full=await fetchTCGdexCard(lang,card.apiId,card);
+        if(full)out.push(full);
+      }
+    }
+  }
+  return out;
+}
 async function searchTCGdex(lang,name,number,options={}){
   const parsedNumber=numParts(number),n=parsedNumber.n,lookupLocalId=parsedNumber.rawN||parsedNumber.n,setHint=String(options.setHint||"").trim(),live=!!options.live;
   const setIds=Array.isArray(options.setIds)?options.setIds.filter(Boolean):[];
@@ -667,6 +693,18 @@ function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.ap
 async function searchCards(options={}){
   const live=!!options.live,requestId=++catalogSearchSeq;
   let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
+  if(!setHint){
+    const normalized=norm(raw);
+    const y30=/\b30\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
+    const y25=/\b25\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
+    if(y30){
+      setHint='30 anos';
+      raw=raw.replace(/\b30\s*(?:anos?|years?|th)?(?:\s*(?:anivers[aá]rio|anniversary|celebration))?\b/ig,'').replace(/\s+/g,' ').trim();
+    }else if(y25){
+      setHint='25 anos';
+      raw=raw.replace(/\b25\s*(?:anos?|years?|th)?(?:\s*(?:anivers[aá]rio|anniversary|celebration))?\b/ig,'').replace(/\s+/g,' ').trim();
+    }
+  }
 
   const typedLetters=norm(raw).replace(/\s+/g,"").length;
   const setLetters=norm(setHint).replace(/\s+/g,"").length;
@@ -691,11 +729,12 @@ async function searchCards(options={}){
     const setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
     const wantsJa=language==="all"||language==="ja";
     const wantsLegacy=language==="all"||language==="en";
-    const [groups,jpOfficial,mypSearch,legacyCards]=await Promise.all([
+    const [groups,jpOfficial,mypSearch,legacyCards,anniversaryCards]=await Promise.all([
       Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint,setIds}))),
       wantsJa?searchJapaneseOfficial(raw,number,setHint,{live}):Promise.resolve([]),
       raw?searchMypCards(raw,number,setHint):Promise.resolve({cards:[],needsToken:false}),
-      wantsLegacy&&raw?searchLegacyCards(raw,number,setHint,{live}):Promise.resolve([])
+      wantsLegacy&&raw?searchLegacyCards(raw,number,setHint,{live}):Promise.resolve([]),
+      raw?searchAnniversaryClassicCollections(langs,raw,number,{live}):Promise.resolve([])
     ]);
     if(requestId!==catalogSearchSeq)return;
 
@@ -703,7 +742,7 @@ async function searchCards(options={}){
     const tcgFlat=groups.flat();
     const basePool=language==="ja"&&jpOfficial.length
       ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
-      : [...tcgFlat,...legacyCards,...jpOfficial,...mypCards];
+      : [...tcgFlat,...anniversaryCards,...legacyCards,...jpOfficial,...mypCards];
     const limitlessVariants=number&&raw
       ? await searchLimitlessVariants(raw,number,basePool,language)
       : [];
