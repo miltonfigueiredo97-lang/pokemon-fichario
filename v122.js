@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.57';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.58';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.58',title:'Amigos dentro do Resumo',items:[
+      'Amigos agora aparece no mesmo bloco lateral de Preços, Planilhas e backup, Exportar e imprimir e Configurações.',
+      'Ao expandir Amigos, Buscar usuários é a primeira seção exibida, seguida de pedidos e lista de amigos.',
+      'O painel social deixou de depender do botão da barra superior; os atalhos mobile também levam para o painel Amigos do Resumo.',
+      'Ver fichários continua abrindo a visualização somente leitura do amigo.'
+    ]},
     {version:'V14.57',title:'Versão sincronizada, Amigos visível e correções finais da MYP 151',items:[
       'O número de versão exibido no Resumo agora usa o mesmo build carregado pelo navegador, eliminando a divergência entre rodapé, scripts e Service Worker.',
       'Todos os CSS e JavaScript locais foram atualizados juntos para o build 14.57, com novo cache do PWA.',

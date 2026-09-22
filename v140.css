@@ -815,3 +815,64 @@ dialog.sheet-dialog:not([open]){
 /* V14.56 — build stamp + cache-coherent release */
 .app-build-version{display:inline-flex;align-items:center;justify-content:center;min-height:24px;padding:4px 7px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:#8f969c;background:rgba(255,255,255,.035);font-size:8px;font-weight:900;letter-spacing:.06em;white-space:nowrap}
 @media(max-width:820px){.app-build-version{min-height:22px;padding:3px 6px;font-size:7px}}
+
+
+/* V14.58 — Amigos no painel Resumo */
+#btnFriends,#v14Friends{display:none!important}
+#summaryPanel #v1411Group_friends .v1411-action-body{
+  grid-template-columns:1fr!important;
+  gap:8px!important;
+  max-height:520px;
+  overflow:auto;
+}
+#summaryPanel #v1411Group_friends .v1411-action-icon{color:#ff8fa3!important}
+#summaryPanel #v1411Group_friends .social-card,
+#summaryPanel #v1411Group_friends .social-columns{
+  width:100%!important;
+  min-width:0!important;
+  margin:0!important;
+}
+#summaryPanel #v1411Group_friends .social-card{
+  padding:10px!important;
+  border-radius:9px!important;
+  background:#0d1114!important;
+}
+#summaryPanel #v1411Group_friends .social-card h3{
+  margin:0 0 7px!important;
+  font-size:10px!important;
+}
+#summaryPanel #v1411Group_friends .search-grid,
+#summaryPanel #v1411Group_friends .social-columns{
+  grid-template-columns:1fr!important;
+  gap:7px!important;
+}
+#summaryPanel #v1411Group_friends .inline-search{
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:6px!important;
+}
+#summaryPanel #v1411Group_friends input,
+#summaryPanel #v1411Group_friends select{
+  min-height:34px!important;
+  padding:7px 8px!important;
+  font-size:9px!important;
+}
+#summaryPanel #v1411Group_friends .btn{
+  min-height:34px!important;
+  padding:7px 9px!important;
+  font-size:9px!important;
+}
+#summaryPanel #v1411Group_friends .social-item{
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:6px!important;
+  padding:8px!important;
+}
+#summaryPanel #v1411Group_friends .social-actions{
+  justify-content:flex-start!important;
+}
+#summaryPanel #v1411Group_friends .social-actions button{
+  min-height:28px!important;
+  padding:5px 7px!important;
+}
+@media(max-width:820px){
+  #summaryPanel #v1411Group_friends .v1411-action-body{max-height:none}
+}

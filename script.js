@@ -1044,7 +1044,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.57",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.58",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{

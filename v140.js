@@ -3118,6 +3118,41 @@
     patchJapaneseImages();
   }
 
+  function mountFriendsSummaryV14(body){
+    if(!body)return;
+    body.classList.add('v1458-friends-body');
+    const searchCard=byId('friendSearch')?.closest('.social-card');
+    const columns=byId('friendRequests')?.closest('.social-columns');
+    const profileCard=byId('profileUsername')?.closest('.social-card');
+    // Ordem intencional: buscar primeiro, depois pedidos/amigos, perfil por último.
+    [searchCard,columns,profileCard].filter(Boolean).forEach(node=>body.appendChild(node));
+  }
+
+  async function refreshFriendsSummaryV14(){
+    if(!currentUser)return;
+    try{
+      if(typeof loadCurrentProfile==='function')await loadCurrentProfile().catch(()=>null);
+      await loadFriendships();
+    }catch(error){
+      console.error('[Amigos resumo]',error);
+      toast('Não consegui carregar Amigos agora.');
+    }
+  }
+
+  function openFriendsSummaryV14(){
+    const panel=byId('summaryPanel');
+    if(panel&&window.matchMedia('(max-width:820px)').matches)panel.classList.add('mobile-open');
+    organizeSummaryActionsV14();
+    const details=byId('v1411Group_friends');
+    if(!details)return;
+    details.parentElement?.querySelectorAll('.v1411-action-group[open]').forEach(other=>{if(other!==details)other.open=false});
+    details.open=true;
+    closeDialog('friendsDialog');
+    refreshFriendsSummaryV14();
+    setTimeout(()=>byId('friendSearch')?.focus(),80);
+  }
+  window.openPokemonFriends=openFriendsSummaryV14;
+
   function organizeSummaryActionsV14(){
     const root=document.querySelector('#summaryPanel .action-grid');
     if(!root)return;
@@ -3125,6 +3160,7 @@
       {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
       {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'CSV e impressão',items:['btnExport','btnPrint']},
+      {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
       {id:'settings',icon:'⚙',title:'Configurações',hint:'Aparência e conta',items:['btnSummarySettings','v112Logout']}
     ];
 
@@ -3142,10 +3178,13 @@
         details.addEventListener('toggle',()=>{
           if(!details.open)return;
           root.querySelectorAll('.v1411-action-group[open]').forEach(other=>{if(other!==details)other.open=false});
+          if(def.id==='friends')refreshFriendsSummaryV14();
         });
-        root.appendChild(details);
+        if(def.id==='friends'&&byId('v1411Group_settings'))root.insertBefore(details,byId('v1411Group_settings'));
+        else root.appendChild(details);
       }
       const body=details.querySelector('.v1411-action-body');
+      if(def.id==='friends')mountFriendsSummaryV14(body);
       for(const id of def.items){
         const el=byId(id);
         if(el&&el.parentElement!==body)body.appendChild(el);
@@ -3229,9 +3268,14 @@
     wireRemoveCardAction();
     wireSpreadNavigationV14();
     const friends=byId('v14Friends');
-    if(friends)friends.onclick=()=>window.openPokemonFriends
-      ?window.openPokemonFriends()
-      :(async()=>{try{await loadFriendships();openDialog('friendsDialog')}catch(e){console.error('[Amigos]',e);toast('Não consegui abrir Amigos.')}})();
+    if(friends)friends.onclick=openFriendsSummaryV14;
+    const headerFriends=byId('btnFriends');
+    if(headerFriends)headerFriends.onclick=openFriendsSummaryV14;
+    const mobileFriends=byId('btnMobileFriends');
+    if(mobileFriends)mobileFriends.onclick=openFriendsSummaryV14;
+    const mobileProfile=byId('btnMobileProfile');
+    if(mobileProfile)mobileProfile.onclick=openFriendsSummaryV14;
+    window.openPokemonFriends=openFriendsSummaryV14;
     syncSingleCardPriceButton();
     rewireFilteredPriceButton();
     organizeSummaryActionsV14();
