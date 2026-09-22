@@ -2,7 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='20';
+const MASTER_ALGO_VERSION='21';
 
 function apiLang(v){
   const x=String(v||'pt').toLowerCase();
@@ -168,7 +168,7 @@ function uniformOnlySetType(cardCount,expectedCount){
   return full.length===1&&nonZero.length===1?full[0]:'';
 }
 function isCoreSetVariant(v,cardVariants,profile,totalCards,isPromoSet,uniformOnlyType=''){
-  if(v.size==='jumbo')return false;
+  if(slug(v.size)==='jumbo')return false;
   if(isPromoSet)return true;
 
   const type=String(v.type||'').toLowerCase();
