@@ -39,6 +39,26 @@ function mergeMarket(preferred,fallback){
   };
 }
 
+async function resolveNameAliases(name,apiId){
+  const aliases=[String(name||'').trim()].filter(Boolean);
+  const key='name-aliases:'+String(apiId||'').trim();
+  const cached=CACHE.get(key);
+  if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
+  if(apiId){
+    try{
+      const r=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
+        headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.51'}
+      });
+      if(r.ok){
+        const d=await r.json();
+        if(d?.name)aliases.push(String(d.name).trim());
+      }
+    }catch{}
+  }
+  const unique=[...new Set(aliases.filter(Boolean))];
+  CACHE.set(key,{value:unique,expires:Date.now()+24*60*60*1000});
+  return unique;
+}
 async function resolveFullNumber(number,apiId){
   const raw=String(number||'').trim().replace(/\s/g,'');
   if(!raw)return'';
@@ -46,7 +66,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.44'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.51'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -86,7 +106,15 @@ async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cach
 function normalizeCollectorToken(value){const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');if(!raw)return'';const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);if(!m)return raw.toLowerCase();return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase()}
 function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const m=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));if(m)return{n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2]),full:normalizeCollectorToken(m[1])+'/'+normalizeCollectorToken(m[2])};const x=text.match(new RegExp(token,'i'));return x?{n:normalizeCollectorToken(x[0]),d:'',full:normalizeCollectorToken(x[0])}:{n:'',d:'',full:''}}
 function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'(?:\\s*\\/\\s*'+token+')?)\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
-function matchesWanted(identity,wanted){const wn=normalize(wanted.name),pn=normalize(identity.name);if(wn&&pn&&wn!==pn&&!pn.includes(wn)&&!wn.includes(pn))return false;const w=numberParts(wanted.number),f=numberParts(identity.number);if(w.n&&f.n!==w.n)return false;if(w.d&&f.d&&f.d!==w.d)return false;return true}
+function matchesWanted(identity,wanted){
+  const aliases=[wanted?.name,...(Array.isArray(wanted?.nameAliases)?wanted.nameAliases:[])].map(normalize).filter(Boolean);
+  const pn=normalize(identity.name);
+  if(aliases.length&&pn&&!aliases.some(wn=>wn===pn||pn.includes(wn)||wn.includes(pn)))return false;
+  const w=numberParts(wanted.number),f=numberParts(identity.number);
+  if(w.n&&f.n!==w.n)return false;
+  if(w.d&&f.d&&f.d!==w.d)return false;
+  return true;
+}
 
 function extractMarket(identity,finish,condition){
   const text=identity.text;
@@ -136,7 +164,36 @@ function extractMarket(identity,finish,condition){
   return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
 }
 
-async function resolvePage({name,number,set,link,lang,finish,condition}){const direct=safeMypProductUrl(link),urls=direct?[direct]:await sitemapCandidates(name);let best=null;for(const url of urls){try{const html=await fetchText(url),identity=pageIdentity(html);if(!matchesWanted(identity,{name,number,set}))continue;const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);let score=0;if(matchesWanted(identity,{name,number:wantedNumber,set}))score+=1000;else if(wantedNumber)score-=1200;if(normalize(identity.name)===normalize(name))score+=350;if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);if(langNorm==='ja'&&japanese)score+=220;if(langNorm&&langNorm!=='ja'&&japanese)score-=260;score+=(market.samples||0);const candidate={url,identity,market,score};if(!best||candidate.score>best.score)best=candidate;if(score>=1000&&market.samples)break}catch{}}return best}
+async function resolvePage({name,nameAliases=[],number,set,link,lang,finish,condition}){
+  const direct=safeMypProductUrl(link);
+  let urls=[];
+  if(direct)urls=[direct];
+  else{
+    const groups=await Promise.all([...new Set([name,...nameAliases].filter(Boolean))].map(n=>sitemapCandidates(n).catch(()=>[])));
+    urls=[...new Set(groups.flat())];
+  }
+  let best=null;
+  for(const url of urls){
+    try{
+      const html=await fetchText(url),identity=pageIdentity(html);
+      if(!matchesWanted(identity,{name,nameAliases,number,set}))continue;
+      const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);
+      let score=0;
+      if(matchesWanted(identity,{name,nameAliases,number:wantedNumber,set}))score+=1000;else if(wantedNumber)score-=1200;
+      const identityName=normalize(identity.name);
+      if([name,...nameAliases].map(normalize).some(n=>n&&n===identityName))score+=350;
+      if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
+      const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);
+      if(langNorm==='ja'&&japanese)score+=220;
+      if(langNorm&&langNorm!=='ja'&&japanese)score-=260;
+      score+=(market.samples||0);
+      const candidate={url,identity,market,score};
+      if(!best||candidate.score>best.score)best=candidate;
+      if(score>=1000&&market.samples)break;
+    }catch{}
+  }
+  return best;
+}
 
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');
@@ -157,6 +214,7 @@ module.exports=async function handler(req,res){
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
   const directLink=safeMypProductUrl(link);
+  const nameAliases=await resolveNameAliases(name,apiId);
 
   // Atualização manual de uma única carta: nunca prende a interface por
   // Chromium/Apify. Se já sabemos a página da MYP, tentamos uma leitura direta
@@ -172,7 +230,7 @@ module.exports=async function handler(req,res){
     try{
       const text=await fetchJina(directLink,8000);
       const identity=pageIdentity(text);
-      if(!matchesWanted(identity,{name,number,set})){
+      if(!matchesWanted(identity,{name,nameAliases,number,set})){
         return res.status(200).json({
           ok:false,error:'wrong_product',source:'MYP Cards',provider:'Fast Reader',link:directLink,
           message:'O link salvo não corresponde à carta consultada.'
@@ -208,11 +266,11 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1444:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1451:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
-      const market=await findAndScrapeMypBrowser(directLink||'',{name,number,set,setId:String(req.query.setId||'').trim(),lang,finish,condition});
+      const market=await findAndScrapeMypBrowser(directLink||'',{name,nameAliases,number,set,setId:String(req.query.setId||'').trim(),apiId,lang,finish,condition});
       if(market?.ok&&hasAnyMarket(market)){
         const resolvedLink=safeMypProductUrl(market.link)||directLink||'';
         const out={
@@ -281,10 +339,10 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1444:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1451:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
-    const found=await resolvePage({name,number,set,link,lang,finish,condition});
+    const found=await resolvePage({name,nameAliases,number,set,link,lang,finish,condition});
     if(!found){
       if(apifyFound){
         const partial=mergeMarket(apifyFound,null);
