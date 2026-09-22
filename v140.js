@@ -854,6 +854,92 @@
     toast('Fichário criado.');
   }
 
+  function catalogLangV1450(){
+    const value=byId('searchLanguage')?.value||'all';
+    if(value==='ja')return'ja';
+    if(value==='en')return'en';
+    return'pt';
+  }
+
+  async function loadCatalogGenerationOptionsV1450(force=false){
+    const series=byId('searchSeries'),sets=byId('searchSet');
+    if(!series||!sets)return;
+    if(!force&&series.options.length>1)return;
+    const lang=catalogLangV1450();
+    const oldSeries=force?'':series.value;
+    series.disabled=true;
+    series.innerHTML='<option value="">Carregando gerações…</option>';
+    if(force){
+      sets.disabled=true;
+      sets.innerHTML='<option value="">Coleção — escolha a geração</option>';
+    }
+    try{
+      const list=[...(await fetchSeries(lang))];
+      let englishById=new Map();
+      if(lang==='ja'){
+        try{
+          const en=await fetchSeries('en');
+          englishById=new Map(en.map(s=>[String(s.id||'').toLowerCase(),s.name||s.id]));
+        }catch{}
+      }
+      series.innerHTML='<option value="">Geração — todas</option>'+list.map(s=>{
+        const label=lang==='ja'?(englishById.get(String(s.id||'').toLowerCase())||s.name||s.id):(s.name||s.id);
+        return '<option value="'+esc(s.id)+'">'+esc(label)+'</option>';
+      }).join('');
+      series.disabled=false;
+      if(oldSeries&&[...series.options].some(o=>o.value===oldSeries)){
+        series.value=oldSeries;
+        await loadCatalogCollectionsV1450(false);
+      }
+    }catch(e){
+      console.error('[Catálogo gerações]',e);
+      series.innerHTML='<option value="">Geração indisponível</option>';
+    }
+  }
+
+  async function loadCatalogCollectionsV1450(runSearch=false){
+    const series=byId('searchSeries'),sets=byId('searchSet');
+    if(!series||!sets)return;
+    const seriesId=series.value||'';
+    if(!seriesId){
+      sets.disabled=true;
+      sets.innerHTML='<option value="">Coleção — escolha a geração</option>';
+      if(runSearch&&typeof searchCards==='function')searchCards({live:false});
+      return;
+    }
+    const lang=catalogLangV1450();
+    sets.disabled=true;
+    sets.innerHTML='<option value="">Carregando coleções…</option>';
+    try{
+      const r=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const j=await r.json();
+      if(!j?.ok)throw new Error(j?.message||'Falha ao carregar coleções');
+      const list=Array.isArray(j.sets)?j.sets:[];
+      sets.innerHTML='<option value="">Coleção — todas da geração</option>'+list.map(s=>
+        '<option value="'+esc(s.id)+'">'+esc(s.displayName||s.name||s.id)+(s.isPromo?' · PROMOS':'')+'</option>'
+      ).join('');
+      sets.disabled=false;
+      if(runSearch&&typeof searchCards==='function')searchCards({live:false});
+    }catch(e){
+      console.error('[Catálogo coleções]',e);
+      sets.innerHTML='<option value="">Coleções indisponíveis</option>';
+      sets.disabled=true;
+    }
+  }
+
+  function wireCatalogCollectionSearchV1450(){
+    const lang=byId('searchLanguage'),series=byId('searchSeries'),sets=byId('searchSet');
+    if(!series||!sets||series.dataset.v1450==='1')return;
+    series.dataset.v1450='1';
+    series.addEventListener('change',()=>loadCatalogCollectionsV1450(false));
+    sets.addEventListener('change',()=>{if(typeof searchCards==='function')searchCards({live:false})});
+    if(lang&&!lang.dataset.v1450Catalog){
+      lang.dataset.v1450Catalog='1';
+      lang.addEventListener('change',()=>loadCatalogGenerationOptionsV1450(true));
+    }
+    loadCatalogGenerationOptionsV1450(false);
+  }
+
   async function fetchSeries(lang){
     const key='series|'+lang;
     if(V14.seriesCache.has(key))return V14.seriesCache.get(key);
@@ -3094,6 +3180,7 @@
   }
 
   function wireFastAdd(){
+    wireCatalogCollectionSearchV1450();
     const b=byId('btnAddSelected');if(b)b.onclick=addSelectedFast;
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
     const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
