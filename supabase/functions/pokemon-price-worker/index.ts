@@ -3,9 +3,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH = 3;
+const BATCH = 4;
+const RETRY_LIMIT = 12;
 const STALE_MS = 5 * 60 * 1000;
-const TERMINAL = new Set(["variant_not_found","wrong_product","product_not_found","no_price_data"]);
+const TERMINAL = new Set(["no_price_data"]);
 
 const CORS={
   "Access-Control-Allow-Origin":"*",
@@ -37,7 +38,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true){
   const timer=setTimeout(()=>controller.abort(),58000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.42"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.50"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -162,7 +163,7 @@ Deno.serve(async(req:Request)=>{
         return {state:"terminal"};
       }
 
-      if(attempts>=6){
+      if(attempts>=RETRY_LIMIT){
         const {error}=await db.from("pokemon_cards").update({
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
           price_priority:0,price_last_error:errorCode||"retry_limit"
@@ -183,7 +184,7 @@ Deno.serve(async(req:Request)=>{
       return {state:"retry"};
     }catch(error:any){
       const message=error?.name==="AbortError"?"timeout":String(error?.message||error||"worker_error");
-      if(attempts>=6){
+      if(attempts>=RETRY_LIMIT){
         await db.from("pokemon_cards").update({
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
           price_priority:0,price_last_error:message
