@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V14.49';
+  const APP_VERSION='V14.50';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,14 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.50',title:'Preço MYP corrigido, busca por geração/coleção e fila persistente de Master Set',items:[
+      'MYP não confunde mais a bandeira/localidade do vendedor com o idioma da carta; ofertas válidas da mesma página de produto entram novamente no cálculo.',
+      'A busca de cartas agora segue Geração → Coleção, como o Master Set, reduzindo ambiguidades em Celebrações, promos e outras coleções especiais.',
+      'Celebrações Coleção Clássica usa a numeração de mercado da coleção como número principal; Zekrom é 21/25, mantendo CC021 e 114/114 como aliases de busca.',
+      'A coleção clássica de 30 anos também usa numeração da própria coleção (1/30…30/30), preservando os números originais como aliases.',
+      'Master Sets entram completos na fila persistente com próxima tentativa, prioridade e contador inicializados; o worker do servidor continua processando mesmo com o app fechado.',
+      'Falhas temporárias de mercado passam por mais tentativas e cartas realmente sem cotação exibem SEM COTAÇÃO em vez de simplesmente perder o indicador.'
+    ]},
     {version:'V14.49',title:'Busca por coleções comemorativas e numeração especial',items:[
       'Celebrations Classic Collection passou a aceitar o número físico original como alias do número interno da base; Zekrom pode ser encontrado por 114/114 mesmo sendo CC021 no TCGdex.',
       'A busca reconhece 25 anos, Celebrations, Celebrações e Coleção Clássica como a mesma família de coleção.',
