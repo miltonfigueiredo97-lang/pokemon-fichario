@@ -274,7 +274,25 @@
 
   <dialog id="friendsDialog" class="sheet-dialog"><div class="dialog-shell"><div class="dialog-head"><div><p class="kicker">Social</p><h2>Amigos</h2></div><button class="icon-only" data-close="friendsDialog" type="button">×</button></div><section class="social-card"><h3>Meu perfil</h3><div class="search-grid"><label>@usuário<input id="profileUsername" type="text" maxlength="24"></label><label>Privacidade<select id="profileVisibility"><option value="private">Somente eu</option><option value="friends">Amigos</option><option value="public">Público</option></select></label></div><button id="btnSaveProfile" class="btn btn-secondary" type="button">Salvar perfil</button></section><section class="social-card"><h3>Buscar usuários</h3><div class="inline-search"><input id="friendSearch" type="search" placeholder="@usuário"><button id="btnSearchFriends" class="btn btn-primary" type="button">Buscar</button></div><div id="friendSearchResults" class="social-list"></div></section><div class="social-columns"><section class="social-card"><h3>Pedidos</h3><div id="friendRequests" class="social-list"></div></section><section class="social-card"><h3>Amigos</h3><div id="friendsList" class="social-list"></div></section></div></div></dialog>
 
-  <dialog id="friendBinderDialog" class="sheet-dialog"><div class="dialog-shell"><div class="dialog-head"><div><p class="kicker">Fichário de amigo</p><h2 id="friendBinderTitle">@usuário</h2></div><button class="icon-only" data-close="friendBinderDialog" type="button">×</button></div><div id="friendBinderGrid" class="friend-grid"></div></div></dialog>
+  <dialog id="friendBinderDialog" class="sheet-dialog v1451-friend-binder-dialog">
+    <div class="dialog-shell v1451-friend-binder-shell">
+      <div class="dialog-head">
+        <div><p class="kicker">Fichários de amigo</p><h2 id="friendBinderTitle">@usuário</h2><p id="friendBinderStatus" class="muted compact-copy">Somente leitura</p></div>
+        <button class="icon-only" data-close="friendBinderDialog" type="button">×</button>
+      </div>
+      <div class="v1451-friend-toolbar">
+        <select id="friendBinderSelect" aria-label="Fichário do amigo"></select>
+        <span id="friendBinderMeta"></span>
+        <div class="v1451-friend-nav">
+          <button id="friendBinderPrev" type="button" aria-label="Páginas anteriores">‹</button>
+          <strong id="friendBinderPageLabel">Página 1</strong>
+          <button id="friendBinderNext" type="button" aria-label="Próximas páginas">›</button>
+        </div>
+      </div>
+      <div id="friendBinderSpread" class="v1451-friend-spread"></div>
+      <p class="v1451-readonly-note">Você pode navegar pelos fichários, mas somente o dono pode editar, mover, adicionar ou remover cartas.</p>
+    </div>
+  </dialog>
 
   <div id="cardContextMenu" class="context-menu hidden"><button data-ctx="view">Detalhes da carta</button><button data-ctx="owned">Marcar Tenho</button><button data-ctx="wanted">Marcar Wishlist</button><button data-ctx="ordered">Marcar Pedido</button><button data-ctx="move">Mover para...</button><hr><button data-ctx="delete" class="danger-text">Remover carta</button></div>
   <div id="toast" class="toast"></div>
