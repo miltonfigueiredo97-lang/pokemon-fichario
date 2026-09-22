@@ -2,7 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='22';
+const MASTER_ALGO_VERSION='23';
 const SPECIAL_MASTER_PRINTED_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
@@ -308,7 +308,15 @@ module.exports=async function handler(req,res){
       const card=details[i];
       if(!card||card.__error)continue;
       const rawVariants=rawByCard[i];
-      const variants=rawVariants.filter(v=>isCoreSetVariant(v,rawVariants,profile,details.length,isPromoSet,uniformOnlyType));
+      const anniversaryClassic=['cel25cc','30th-c'].includes(String(set.id||setId));
+      let variants;
+      if(anniversaryClassic){
+        const standard=rawVariants.filter(v=>slug(v.size)!=='jumbo').sort((a,b)=>a.order-b.order);
+        const chosen=standard.find(v=>v.type==='holo')||standard.find(v=>v.type==='normal')||standard[0];
+        variants=chosen?[chosen]:[];
+      }else{
+        variants=rawVariants.filter(v=>isCoreSetVariant(v,rawVariants,profile,details.length,isPromoSet,uniformOnlyType));
+      }
       for(const variant of variants){
         entries.push({
           apiId:card.id,
