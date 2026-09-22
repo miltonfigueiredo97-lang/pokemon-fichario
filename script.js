@@ -329,6 +329,8 @@ async function fetchTCGdexSets(apiLang){
 function setSearchScore(s,hint){
   const h=norm(hint),name=norm(s?.name),id=norm(s?.id);
   if(!h)return 0;
+  const anniversaryScore=anniversarySetAliasScore(s,hint);
+  if(anniversaryScore)return anniversaryScore;
   if(name===h||id===h)return 1200;
   if(name.startsWith(h)||id.startsWith(h))return 980;
   if(name.includes(h)||h.includes(name)||id.includes(h)||h.includes(id))return 820;
@@ -373,6 +375,7 @@ async function resolveCatalogSetIds(langs,hint){
 }
 function cardMatchesSetFilter(c,setHint,setIds=[]){
   if(!String(setHint||"").trim())return true;
+  if(anniversaryCardSetMatches(c,setHint))return true;
   const ids=new Set((setIds||[]).map(String));
   const cid=String(c?.setId||c?.set_id||"");
   if(ids.size&&cid&&ids.has(cid))return true;
@@ -408,7 +411,8 @@ async function fetchTCGdexSet(lang,setId){
 }
 function mapTCGSetBrief(c,set,lang){
   const local=String(c?.localId||""),setId=set?.id||"",image=c?.image||"";
-  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:local,printedTotal:String(set?.cardCount?.official||""),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
+  const physical=specialPrintedNumber(setId,local),physicalParts=numParts(physical);
+  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:physical,internalNumber:local,numberAliases:[local,physical],printedTotal:physicalParts.rawD||String(set?.cardCount?.official||""),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
 }
 function quickCatalogScore(c,name,number){
   let s=0;
@@ -615,7 +619,7 @@ async function fetchTCGdexCard(lang,id,fallback=null){
     return await hydrateMissingCatalogImage(fb(),lang);
   }
 }
-function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=String(s.cardCount?.official||"");const displayNumber=/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local;let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,printedTotal:total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
+function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=String(s.cardCount?.official||"");const physical=specialPrintedNumber(setId,local),physicalParts=numParts(physical);const displayNumber=isAnniversaryClassicSet(setId)?physical:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,numberAliases:[local,displayNumber],printedTotal:physicalParts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
   const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);
   return [...cards].sort((a,b)=>score(b)-score(a));
