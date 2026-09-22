@@ -1025,7 +1025,7 @@
     byId('v14SetStatus').textContent='Carregando cartas e variantes do Master Set…';
     byId('v14MasterStep').classList.add('hidden');
     try{
-      const r=await fetch('/api/master-set?v=23&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+      const r=await fetch('/api/master-set?v=24&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
       const j=await r.json();
       if(epoch!==V14.masterEpoch)return;
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
@@ -1166,6 +1166,14 @@
     return base+' ('+(same.length+1)+')';
   }
 
+  function fullMasterEntryNumberV1450(entry){
+    const n=String(entry?.number||'').trim();
+    const total=String(entry?.printedTotal||'').trim();
+    if(!n)return'';
+    if(n.includes('/'))return n;
+    return total?n+'/'+total:n;
+  }
+
   async function createMasterBinder(){
     const previews=masterPreviewsForCreate();
     if(!previews.length)return toast('Escolha pelo menos um Master Set.');
@@ -1213,18 +1221,26 @@
       if(be)throw be;
       createdBinder=binder;
 
+      V14.masterPriceRequestedAt=new Date().toISOString();
       const rows=flat.map(({preview:p,entry:e,index:localIndex},globalIndex)=>{
         const owned=p.owned.has(localIndex),page=Math.floor(globalIndex/9)+1,slot=globalIndex%9+1;
         const base={
           source:e.source,apiId:e.apiId,name:e.name,languageCode:e.languageCode,language:e.language,
-          setName:e.setName,setId:e.setId,number:e.printedTotal?e.number+'/'+e.printedTotal:e.number,
+          setName:e.setName,setId:e.setId,number:fullMasterEntryNumberV1450(e),
           rarity:e.rarity,type:e.type,imageUrl:e.imageUrl
         };
         const payload=cardPayload(base,{page,slot,status:owned?'owned':'missing',quantity:owned?1:0,condition:'Nova',finish:e.finish,finishConfirmed:true,notes:e.variantLabel},{});
         payload.user_id=currentUser.id;
         payload.binder_id=binder.id;
         payload.card_key=(payload.card_key||cardKey(base))+'|variant:'+String(e.variantKey||e.variantLabel||e.finish);
+        const requestedAt=V14.masterPriceRequestedAt||new Date().toISOString();
         payload.price_pending=true;
+        payload.price_processing_at=null;
+        payload.price_requested_at=requestedAt;
+        payload.price_next_retry_at=requestedAt;
+        payload.price_attempts=0;
+        payload.price_priority=100;
+        payload.price_last_error=null;
         payload.price_checked_at=null;
         return payload;
       });
@@ -1245,6 +1261,11 @@
       try{activeStatusFilter='all'}catch{}
       await db.from('pokemon_settings').update({current_binder_id:binder.id}).eq('user_id',currentUser.id);
       await loadCardsV14(false);
+      kickPriceWorkerNow();
+      setTimeout(kickPriceWorkerNow,2500);
+      const createdPending=collection.filter(x=>x.binder_id===binder.id&&x.price_pending);
+      if(createdPending.length)watchVisiblePriceBatch(createdPending,{resume:true}).catch(()=>{});
+      V14.masterPriceRequestedAt=null;
 
       releaseMobileInteraction();
       setTimeout(releaseMobileInteraction,180);
@@ -1261,6 +1282,7 @@
       }
       toast('Erro ao criar Master Set: '+(e.message||e));
     }finally{
+      V14.masterPriceRequestedAt=null;
       busy(btn,false);
       releaseMobileInteraction();
     }
