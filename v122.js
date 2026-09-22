@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V14.46';
+  const APP_VERSION='V14.47';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,14 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.47',title:'Busca por coleções comemorativas e numeração especial',items:[
+      'Celebrations Classic Collection passou a aceitar o número físico original como alias do número interno da base; Zekrom pode ser encontrado por 114/114 mesmo sendo CC021 no TCGdex.',
+      'A busca reconhece 25 anos, Celebrations, Celebrações e Coleção Clássica como a mesma família de coleção.',
+      'A coleção de 30 anos recebeu o mesmo tratamento: 30 anos, 30th Celebration e Classic Collection resolvem os sets 30th e 30th-c.',
+      'As 30 cartas da 30th Classic Collection usam seus números físicos originais na pesquisa e no mercado, mesmo quando a base usa a sequência interna 001–030.',
+      'Nome + número sem coleção agora também consulta automaticamente as Classic Collections comemorativas.',
+      'A fonte legada deixou de exigir igualdade literal entre 114 e 114_A, evitando perder reprints com sufixo interno.'
+    ]},
     {version:'V14.46',title:'Preços por variante correta e Master Set sem duplicações artificiais',items:[
       'MYP agora separa rigidamente idioma, condição e acabamento antes de calcular mínimo, médio e máximo; anúncios de outra qualidade ou versão não entram como fallback.',
       'A leitura de idioma da MYP também reconhece as bandeiras pela classe CSS, evitando misturar Português, Inglês e Japonês quando o atributo title não existe.',
