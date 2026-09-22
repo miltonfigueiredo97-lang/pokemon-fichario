@@ -787,3 +787,5 @@ dialog.sheet-dialog:not([open]){
   .catalog-filters-v1450 #btnSearchCards{grid-column:1/-1}
 }
 @media (max-width:430px){.catalog-filters-v1450{grid-template-columns:1fr!important}}
+
+.v14-price-unavailable{position:absolute;left:5px;right:5px;bottom:5px;z-index:9;display:block;text-align:center;padding:3px 6px;border:1px solid rgba(255,255,255,.16);border-radius:999px;background:rgba(7,9,11,.94);color:#9aa3a7;font-size:7px;font-weight:900;letter-spacing:.045em;text-transform:uppercase}
