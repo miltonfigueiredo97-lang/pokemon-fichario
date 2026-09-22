@@ -214,6 +214,9 @@ async function resolvePage({name,nameAliases=[],number,set,setId,link,lang,finis
       if(score>=1000&&market.samples)break;
     }catch{}
   }
+  if(!best&&direct){
+    return resolvePage({name,nameAliases,number,set,setId,link:'',lang,finish,condition});
+  }
   return best;
 }
 
@@ -227,6 +230,7 @@ module.exports=async function handler(req,res){
   const apiId=String(req.query.apiId||req.query.api_id||'').trim();
   const number=await resolveFullNumber(inputNumber,apiId);
   const set=String(req.query.set||'').trim();
+  const setId=String(req.query.setId||req.query.set_id||'').trim();
   const link=String(req.query.link||'').trim();
   const lang=String(req.query.lang||'').trim();
   const finish=String(req.query.finish||'Normal').trim();
@@ -252,7 +256,7 @@ module.exports=async function handler(req,res){
     try{
       const text=await fetchJina(directLink,8000);
       const identity=pageIdentity(text);
-      if(!matchesWanted(identity,{name,nameAliases,number,set,setId:String(req.query.setId||'').trim(),lang})){
+      if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
         return res.status(200).json({
           ok:false,error:'wrong_product',source:'MYP Cards',provider:'Fast Reader',link:directLink,
           message:'O link salvo não corresponde à carta consultada.'
@@ -288,11 +292,11 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1452:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1453:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
-      const market=await findAndScrapeMypBrowser(directLink||'',{name,nameAliases,number,set,setId:String(req.query.setId||'').trim(),apiId,lang,finish,condition});
+      const market=await findAndScrapeMypBrowser(directLink||'',{name,nameAliases,number,set,setId,apiId,lang,finish,condition});
       if(market?.ok&&hasAnyMarket(market)){
         const resolvedLink=safeMypProductUrl(market.link)||directLink||'';
         const out={
@@ -349,33 +353,23 @@ module.exports=async function handler(req,res){
   let apifyFound=null,apifyError='';
   if(apifyConfigured){
     try{
-      const found=await queryMyp({name,number,set,lang,finish,condition});
+      const found=await queryMyp({name,number,set,setId,lang,finish,condition});
       if(hasAnyMarket(found))apifyFound=found;
-      if(completeMarket(found)){
-        return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Apify',mode:'apify',
-          name,number,edition:set,finish,condition,link:found.link||'',
-          min:Number(found.min||0),avg:Number(found.avg||0),max:Number(found.max||0),
-          samples:found.samples??null,exactVariant:found.exactVariant!==false,complete:true,checkedAt:new Date().toISOString()
-        });
-      }
+      // Nunca devolvemos preço do Actor sem validar a página da MYP.
+      // Em 151, MEW e SV2A compartilham nome+número e o Actor pode devolver
+      // a impressão japonesa mesmo quando a consulta é PT-BR.
     }catch(error){
       apifyError=error?.code||error?.message||'apify_error';
       console.warn('MYP Apify falhou; usando fallback Reader:',apifyError);
     }
   }
 
-  const cacheKey='market:v1452:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1453:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
-    const found=await resolvePage({name,nameAliases,number,set,setId:String(req.query.setId||'').trim(),link,lang,finish,condition});
+    const candidateLink=safeMypProductUrl(apifyFound?.link)||link;
+    const found=await resolvePage({name,nameAliases,number,set,setId,link:candidateLink,lang,finish,condition});
     if(!found){
-      if(apifyFound){
-        const partial=mergeMarket(apifyFound,null);
-        const out={ok:true,source:'MYP Cards',provider:'Apify',mode:'apify-partial',name,number,edition:set,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()};
-        CACHE.set(cacheKey,{value:out,expires:Date.now()+8*60*1000});
-        return res.status(200).json(out);
-      }
       const out={
         ok:false,
         error:apifyConfigured?'not_found':'price_connector_unavailable',
@@ -400,10 +394,6 @@ module.exports=async function handler(req,res){
     CACHE.set(cacheKey,{value:out,expires:Date.now()+25*60*1000});
     return res.status(200).json(out);
   }catch(error){
-    if(apifyFound){
-      const partial=mergeMarket(apifyFound,null);
-      return res.status(200).json({ok:true,source:'MYP Cards',provider:'Apify',mode:'apify-partial',name,number,edition:set,finish,condition,link:apifyFound.link||'',...partial,checkedAt:new Date().toISOString()});
-    }
     const code=error?.code==='cloudflare_blocked'?'cloudflare_blocked':(error?.name==='AbortError'?'timeout':'upstream_error');
     return res.status(200).json({ok:false,error:code,connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:code==='cloudflare_blocked'?'MYP bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a página pública da MYP agora.'});
   }
