@@ -88,9 +88,9 @@ function anniversaryHintInfo(value){
   const h=norm(value);
   if(!h)return null;
   const classic=/classic|classica|classico|colecao classica|collection classic/.test(h);
-  const y25=(/\b25\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('celebrations')||h.includes('celebracoes');
+  const y25=(/\b25(?:th)?\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('celebrations')||h.includes('celebracoes');
   if(y25)return{year:25,classic,ids:classic?['cel25cc']:['cel25','cel25cc']};
-  const y30=(/\b30\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('30th celebration');
+  const y30=(/\b30(?:th)?\b/.test(h)&&(h.includes('ano')||h.includes('anivers')||h.includes('celebr')))||h.includes('30th celebration');
   if(y30)return{year:30,classic,ids:classic?['30th-c']:['30th','30th-c']};
   return null;
 }
@@ -695,8 +695,8 @@ async function searchCards(options={}){
   let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
   if(!setHint){
     const normalized=norm(raw);
-    const y30=/\b30\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
-    const y25=/\b25\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
+    const y30=/\b30(?:th)?\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
+    const y25=/\b25(?:th)?\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
     if(y30){
       setHint='30 anos';
       raw=raw.replace(/\b30\s*(?:anos?|years?|th)?(?:\s*(?:anivers[aá]rio|anniversary|celebration))?\b/ig,'').replace(/\s+/g,' ').trim();
@@ -816,7 +816,7 @@ async function registerPWA(){
       reloading=true;
       location.reload();
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.47",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v=14.48",{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
