@@ -60,7 +60,7 @@ function collectorNumberMatches(wantedValue,foundValue){
   if(w.d&&f.d&&!collectorTokenMatches(w.d,f.d))return false;
   return true;
 }
-const SPECIAL_PRINTED_NUMBERS={
+const SPECIAL_ORIGINAL_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
     CC006:'15/82',CC007:'15/132',CC008:'24',CC009:'20/111',CC010:'66/64',
@@ -79,7 +79,14 @@ const SPECIAL_PRINTED_NUMBERS={
 };
 function specialPrintedNumber(setId,localId){
   const set=String(setId||''),local=String(localId||'').trim();
-  return SPECIAL_PRINTED_NUMBERS[set]?.[local]||local;
+  const digits=String(local).match(/(\d+)/)?.[1]||'';
+  if(set==='cel25cc'&&digits)return String(Number(digits))+'/25';
+  if(set==='30th-c'&&digits)return String(Number(digits))+'/30';
+  return local;
+}
+function specialOriginalNumber(setId,localId){
+  const set=String(setId||''),local=String(localId||'').trim();
+  return SPECIAL_ORIGINAL_NUMBERS[set]?.[local]||'';
 }
 function isAnniversaryClassicSet(setId){
   return ['cel25cc','30th-c'].includes(String(setId||''));
@@ -387,10 +394,15 @@ function cardMatchesSetFilter(c,setHint,setIds=[]){
   if(name===h||id===h||title===h||name.includes(h)||h.includes(name)||id.includes(h)||h.includes(id)||title.includes(h)||h.includes(title))return true;
   return Math.max(nameSimilarity(h,name),nameSimilarity(h,id),nameSimilarity(h,title))>=.78;
 }
+function cardNumberMatches(wanted,card){
+  if(!String(wanted||'').trim())return true;
+  const values=[card?.number,card?.internalNumber,...(Array.isArray(card?.numberAliases)?card.numberAliases:[])].filter(Boolean);
+  return values.some(v=>collectorNumberMatches(wanted,v));
+}
 function hardFilterCatalog(cards,{number="",setHint="",setIds=[],language="all"}={}){
   return (cards||[]).filter(c=>{
     if(language!=="all"&&c.languageCode!==language)return false;
-    if(number&&!collectorNumberMatches(number,c.number))return false;
+    if(number&&!cardNumberMatches(number,c))return false;
     if(!cardMatchesSetFilter(c,setHint,setIds))return false;
     return true;
   });
@@ -401,7 +413,18 @@ async function fetchTCGdexSet(lang,setId){
   try{
     const r=await fetch(`${TCGDEX_BASE}/${apiLang}/sets/${encodeURIComponent(setId)}`);
     if(!r.ok)return null;
-    const item=await r.json();
+    let item=await r.json();
+    // Algumas coleções especiais existem em PT apenas como cabeçalho (cards: []).
+    // Nestes casos usamos a lista canônica EN, preservando o nome traduzido da coleção.
+    if(apiLang!=="en"&&Array.isArray(item?.cards)&&item.cards.length===0){
+      try{
+        const er=await fetch(`${TCGDEX_BASE}/en/sets/${encodeURIComponent(setId)}`);
+        if(er.ok){
+          const en=await er.json();
+          if(Array.isArray(en?.cards)&&en.cards.length)item={...en,name:item.name||en.name,serie:item.serie||en.serie,localizedFallback:true};
+        }
+      }catch{}
+    }
     catalogSearchCache.set(key,{at:Date.now(),item});
     return item;
   }catch(e){
@@ -411,19 +434,19 @@ async function fetchTCGdexSet(lang,setId){
 }
 function mapTCGSetBrief(c,set,lang){
   const local=String(c?.localId||""),setId=set?.id||"",image=c?.image||"";
-  const physical=specialPrintedNumber(setId,local),physicalParts=numParts(physical);
-  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:physical,internalNumber:local,numberAliases:[local,physical],printedTotal:physicalParts.rawD||String(set?.cardCount?.official||""),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
+  const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);
+  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:marketNumber,internalNumber:local,originalNumber,numberAliases:[local,marketNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||String(set?.cardCount?.official||""),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
 }
 function quickCatalogScore(c,name,number){
   let s=0;
-  const qn=norm(name),cn=norm(c?.name),wanted=numParts(number).n,actual=numParts(c?.number).n;
+  const qn=norm(name),cn=norm(c?.name),wanted=numParts(number).n;
   if(qn){
     if(cn===qn)s+=900;
     else if(cn.startsWith(qn))s+=720;
     else if(cn.includes(qn)||qn.includes(cn))s+=580;
     else s+=Math.round(nameSimilarity(qn,cn)*420);
   }
-  if(wanted)s+=collectorTokenMatches(wanted,actual)?800:-250;
+  if(wanted)s+=cardNumberMatches(number,c)?800:-250;
   return s;
 }
 async function searchAnniversaryClassicCollections(langs,name,number,options={}){
@@ -440,7 +463,7 @@ async function searchAnniversaryClassicCollections(langs,name,number,options={})
           const cn=norm(card.name);
           const nameOk=cn===qn||cn.includes(qn)||qn.includes(cn)||nameSimilarity(cn,qn)>=.78;
           if(!nameOk)return false;
-          return !wanted||collectorNumberMatches(wanted,card.number)||collectorNumberMatches(wanted,card.internalNumber);
+          return !wanted||cardNumberMatches(wanted,card);
         })
         .sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number))
         .slice(0,live?8:20);
@@ -470,7 +493,7 @@ async function searchTCGdex(lang,name,number,options={}){
         for(const card of Array.isArray(set.cards)?set.cards:[])pool.push(mapTCGSetBrief(card,set,lang));
       }
       // Número + coleção é interseção obrigatória, nunca só um bônus de ranking.
-      if(n)pool=pool.filter(c=>collectorTokenMatches(n,numParts(c.number).n));
+      if(n)pool=pool.filter(c=>cardNumberMatches(number,c));
       pool.sort((a,b)=>quickCatalogScore(b,name,number)-quickCatalogScore(a,name,number));
       const cap=!String(name||"").trim()&&!n?400:(live?48:120);
       pool=pool.slice(0,cap);
@@ -645,7 +668,7 @@ async function fetchTCGdexCard(lang,id,fallback=null){
     return await hydrateMissingCatalogImage(fb(),lang);
   }
 }
-function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=String(s.cardCount?.official||"");const physical=specialPrintedNumber(setId,local),physicalParts=numParts(physical);const displayNumber=isAnniversaryClassicSet(setId)?physical:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,numberAliases:[local,displayNumber],printedTotal:physicalParts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
+function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=String(s.cardCount?.official||"");const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);const displayNumber=isAnniversaryClassicSet(setId)?marketNumber:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,originalNumber,numberAliases:[local,displayNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
   const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);
   return [...cards].sort((a,b)=>score(b)-score(a));
@@ -668,9 +691,8 @@ function rank(cards,q){
       }
     }
     if(num.n){
-      if(collectorTokenMatches(num.n,nn))s+=650;else s-=420;
-      const foundParts=numParts(c.number);
-      if(num.d&&(collectorTokenMatches(num.d,foundParts.d)||collectorTokenMatches(num.d,String(c.printedTotal||""))))s+=260;
+      if(cardNumberMatches(q.number,c))s+=910;
+      else s-=420;
     }
     if(set){
       if(cs===set||ci===set)s+=760;
