@@ -293,6 +293,7 @@
             '<option value="price_desc">Preço · maior → menor</option>'+
           '</select>'+
           '<button id="v14DeleteBinder" class="v14-delete-binder" type="button" aria-label="Excluir fichário">🗑 Excluir fichário</button>'+
+          '<button id="v14Friends" class="v1451-friends-btn" type="button" aria-label="Amigos">♙ Amigos</button>'+
           '<button id="v14AddBinder" class="btn btn-primary" type="button">＋ Fichário</button>';
         host.appendChild(wrap);
         requestAnimationFrame(positionUnifiedTopbar);
@@ -3214,6 +3215,8 @@
     const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
     wireRemoveCardAction();
     wireSpreadNavigationV14();
+    const friends=byId('v14Friends');
+    if(friends)friends.onclick=async()=>{try{await loadFriendships();openDialog('friendsDialog')}catch(e){console.error('[Amigos]',e);toast('Não consegui abrir Amigos.')}};
     syncSingleCardPriceButton();
     rewireFilteredPriceButton();
     organizeSummaryActionsV14();
