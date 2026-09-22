@@ -939,7 +939,7 @@
     byId('v14SetStatus').textContent='Carregando cartas e variantes do Master Set…';
     byId('v14MasterStep').classList.add('hidden');
     try{
-      const r=await fetch('/api/master-set?v=21&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+      const r=await fetch('/api/master-set?v=22&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
       const j=await r.json();
       if(epoch!==V14.masterEpoch)return;
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
