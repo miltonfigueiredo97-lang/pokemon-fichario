@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V14.51';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.57';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.57',title:'Versão sincronizada, Amigos visível e correções finais da MYP 151',items:[
+      'O número de versão exibido no Resumo agora usa o mesmo build carregado pelo navegador, eliminando a divergência entre rodapé, scripts e Service Worker.',
+      'Todos os CSS e JavaScript locais foram atualizados juntos para o build 14.57, com novo cache do PWA.',
+      'O menu Amigos permanece disponível na barra V14 e no mobile, com fichários de amigos em somente leitura.',
+      'A coleção 151 usa a impressão MEW correta para PT-BR, separada da SV2A japonesa.',
+      'Normal, Reverse Foil e demais acabamentos da MYP são calculados separadamente.'
+    ]},
     {version:'V14.51',title:'Amigos restaurado e fichários compartilhados em modo leitura',items:[
       'O botão Amigos voltou para a barra principal do fichário e continua disponível no menu mobile.',
       'A tela social permite buscar usuários, enviar e aceitar pedidos, cancelar pedidos enviados e remover amigos.',
