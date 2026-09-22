@@ -241,7 +241,34 @@
     return bar;
   }
 
+  function installPageAddControlsV1443(){
+    const toolbar=document.querySelector('.binder-toolbar');
+    if(!toolbar)return;
+    const make=(id,label)=>{
+      let b=byId(id);
+      if(b)return b;
+      b=document.createElement('button');
+      b.id=id;
+      b.type='button';
+      b.className='v1443-page-add';
+      b.textContent='＋';
+      b.title=label;
+      b.setAttribute('aria-label',label);
+      b.onclick=e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        addPageV14();
+      };
+      toolbar.appendChild(b);
+      return b;
+    };
+    make('v1443AddPageLeft','Adicionar página');
+    make('v1443AddPageRight','Adicionar página');
+    requestAnimationFrame(()=>window.fitBinderV11?.());
+  }
+
   function injectUI(){
+    installPageAddControlsV1443();
     if(!byId('v14BinderControls')){
       const host=ensureUnifiedTopbar();
       if(host){
@@ -467,12 +494,17 @@
   function syncTopbarNavigation(){
     const start=byId('v14GoStart');
     if(start)start.disabled=currentPage<=1;
+    const disableAdd=isGeneral();
+    ['v1443AddPageLeft','v1443AddPageRight'].forEach(id=>{
+      const b=byId(id);if(b)b.disabled=disableAdd;
+    });
     if(physicalManualViewV14()){
       const pages=currentBinderPages(),last=binderLastSessionAnchorV14(pages);
       const prev=byId('prevPage'),next=byId('nextPage');
       if(prev)prev.disabled=currentPage<=1;
       if(next)next.disabled=currentPage>=last;
     }
+    requestAnimationFrame(()=>window.fitBinderV11?.());
   }
 
   function goToBinderStart(){
