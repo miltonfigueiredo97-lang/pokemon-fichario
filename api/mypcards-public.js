@@ -100,6 +100,20 @@ async function fetchText(url,timeout=9000){
   }finally{clearTimeout(timer)}
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
+function deterministicMypProductUrl({setId,lang,number,name}={}){
+  const sid=normalize(setId),language=normalize(lang);
+  const collector=numberParts(number).n;
+  const n=/^\d+$/.test(collector)?Number(collector):0;
+  if(!n||n<1||n>207)return'';
+  const isJapanese=language==='ja'||language==='jp'||language.includes('jap');
+  let productId=0;
+  // Scarlet & Violet—151: MEW (PT/internacional) e SV2A (japonês) usam
+  // intervalos contíguos distintos na MYP. Isso elimina a busca ambígua.
+  if((sid==='sv03 5'||sid==='sv3 5')&&!isJapanese)productId=205873+n;
+  else if((sid==='sv2a'||sid==='sv2 a')&&isJapanese)productId=201796+n;
+  if(!productId)return'';
+  return ROOT+'/pokemon/produto/'+productId+'/'+(slugify(name)||'card');
+}
 
 async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cached=CACHE.get(key);if(cached&&cached.expires>Date.now())return cached.value;const wantedSlug=slugify(name),matches=[];let root;try{root=await fetchText(`${ROOT}/sitemap.xml`,12000)}catch(error){if(error?.code==='cloudflare_blocked')throw error;return[]}const first=xmlLocs(root);const accept=url=>{if(!/\/pokemon\/produto\/\d+\//i.test(url))return;const slug=url.split('/').filter(Boolean).pop()||'';if(!wantedSlug||slug===wantedSlug||slug.includes(wantedSlug)||wantedSlug.includes(slug))matches.push(url)};first.forEach(accept);if(!matches.length){const childMaps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));const preferred=[...childMaps.filter(x=>/pokemon|produto|product|card/i.test(x)),...childMaps.filter(x=>!/pokemon|produto|product|card/i.test(x))].slice(0,18);for(const mapUrl of preferred){try{const xml=await fetchText(mapUrl,12000);xmlLocs(xml).forEach(accept);if(matches.length>=18)break}catch{}}}const unique=[...new Set(matches)].slice(0,18);CACHE.set(key,{value:unique,expires:Date.now()+6*60*60*1000});return unique}
 
@@ -239,7 +253,8 @@ module.exports=async function handler(req,res){
   if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  const directLink=safeMypProductUrl(link);
+  const deterministicLink=deterministicMypProductUrl({setId,lang,number,name});
+  const directLink=deterministicLink||safeMypProductUrl(link);
   const nameAliases=await resolveNameAliases(name,apiId);
 
   // Atualização manual de uma única carta: nunca prende a interface por
@@ -288,11 +303,38 @@ module.exports=async function handler(req,res){
     }
   }
 
+  // Para 151, tenta primeiro a página determinística pelo Reader. Assim uma
+  // carta comum não gasta quase um minuto tentando descobrir um produto que
+  // já conhecemos exatamente pelo número de colecionador.
+  if(deterministicLink){
+    try{
+      const text=await fetchJina(deterministicLink,12000);
+      const identity=pageIdentity(text);
+      if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
+        const market=extractMarket(identity,finish,condition);
+        if(hasAnyMarket(market)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'Direct Reader',mode:'deterministic-set-page',
+            name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
+            finish,condition,link:deterministicLink,
+            min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+            samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+            exactVariant:market.exactVariant!==false,
+            complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+      }
+    }catch(error){
+      console.warn('MYP deterministic Reader falhou; tentando Chromium:',error?.message||error);
+    }
+  }
+
   // Fonte completa: abrir a página pública real em Chromium.
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1453:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1454:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -364,7 +406,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1453:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1454:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const candidateLink=safeMypProductUrl(apifyFound?.link)||link;
