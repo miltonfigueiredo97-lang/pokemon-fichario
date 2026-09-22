@@ -12,6 +12,7 @@ let currentUser=null,currentProfile=null,collection=[],currentPage=1,activeStatu
 let settings={binder_name:"Meu Fichário",binder_pages:1,binder_background:"graphite",show_values:false,display_price_mode:"avg",total_price_mode:"avg",summary_value_scope:"all",binder_view_scope:"all"};
 let selectedCard=null,selectedStatus="owned",selectedMarket=null,editingCardId=null,pendingPosition=null;
 let friendships=[],profilesById=new Map(),catalogResults=[],catalogSelection=new Map(),contextCard=null,draggedCard=null,ocrLoaded=false;
+let friendViewer={profile:null,binders:[],binderId:null,cards:[],page:1};
 let catalogSearchSeq=0,catalogSearchTimer=null;
 const catalogSearchCache=new Map();
 const $=id=>document.getElementById(id);
@@ -819,16 +820,206 @@ async function ensureOCR(){if(window.Tesseract)return true;if(ocrLoaded)return!!
 async function usePhotoHints(){const f=$("cardPhoto").files?.[0];if(!f)return toast("Tire uma foto primeiro.");$("ocrStatus").textContent="Lendo pistas...";if(!await ensureOCR())return $("ocrStatus").textContent="OCR indisponível.";try{const r=await Tesseract.recognize(f,"por+eng",{logger:m=>{if(m.progress)$("ocrStatus").textContent=`Lendo ${Math.round(m.progress*100)}%`}}),t=r?.data?.text||"",num=t.match(/(\d{1,4})\s*\/\s*(\d{1,4})/),lines=t.split(/\n+/).map(v=>v.replace(/[^\p{L}\p{N}\s.'-]/gu," ").replace(/\s+/g," ").trim()).filter(v=>v.length>2),name=lines.find(v=>!(/^(basico|basic|hp|habilidade|ability|trainer|treinador)/i.test(v)));if(name&&!$("searchName").value)$("searchName").value=name.replace(/\bHP\s*\d+.*/i,"").trim();if(num)$("searchNumber").value=`${num[1]}/${num[2]}`;$("ocrStatus").textContent="Pistas preenchidas. O reconhecimento visual definitivo virá depois.";searchCards()}catch(e){$("ocrStatus").textContent="OCR não conseguiu ler esta carta. Use a busca visual/manual."}}
 async function saveAppearance(){await updateSettings({binder_name:$("binderNameInput").value.trim()||"Meu Fichário",binder_background:document.querySelector(".theme-swatch.active")?.dataset.theme||"graphite"});renderAll();closeDialog("appearanceDialog");toast("Aparência salva.")}
 function exportCSV(){const h=["Nome","Coleção","Número","Idioma","Status","Quantidade","Condição","Acabamento","Preço médio BR","Página","Bolso","Link"],rows=collection.map(c=>[c.name,c.set_name,c.number,c.language,STATUS[c.collection_status],c.quantity,c.condition,c.finish,c.price_avg,c.binder_page,c.binder_slot,c.price_br_link||c.price_link]),csv=[h,...rows].map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(";")).join("\n"),blob=new Blob(["\ufeff"+csv],{type:"text/csv"}),u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="pokemon-fichario.csv";a.click();URL.revokeObjectURL(u)}
-async function loadFriendships(){const{data,error}=await db.from("pokemon_friendships").select("*").or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`).order("created_at",{ascending:false});if(error)throw error;friendships=data||[];const ids=[...new Set(friendships.flatMap(f=>[f.requester_id,f.addressee_id]).filter(x=>x!==currentUser.id))];profilesById=new Map;if(ids.length){const{data:p}=await db.from("pokemon_profiles").select("user_id,username,display_name,binder_visibility").in("user_id",ids);(p||[]).forEach(x=>profilesById.set(x.user_id,x))}renderFriends()}
-function socialItem(p,actions){const e=document.createElement("div");e.className="social-item";e.innerHTML=`<div><strong>@${esc(p?.username||"usuário")}</strong><small>${esc(p?.display_name||"")}</small></div><div class="social-actions"></div>`;actions.forEach(a=>{const b=document.createElement("button");b.textContent=a.label;b.onclick=a.action;e.querySelector(".social-actions").appendChild(b)});return e}
-function renderFriends(){const r=$("friendRequests"),f=$("friendsList");r.innerHTML=f.innerHTML="";const rec=friendships.filter(x=>x.status==="pending"&&x.addressee_id===currentUser.id),acc=friendships.filter(x=>x.status==="accepted");if(!rec.length)r.innerHTML='<p class="muted">Nenhum pedido pendente.</p>';rec.forEach(x=>r.appendChild(socialItem(profilesById.get(x.requester_id),[{label:"Aceitar",action:()=>updateFriendship(x.id,"accepted")},{label:"Recusar",action:()=>removeFriendship(x.id)}])));if(!acc.length)f.innerHTML='<p class="muted">Adicione amigos para ver os fichários deles.</p>';acc.forEach(x=>{const id=x.requester_id===currentUser.id?x.addressee_id:x.requester_id,p=profilesById.get(id);f.appendChild(socialItem(p,[{label:"Ver fichário",action:()=>viewFriendBinder(p)},{label:"Remover",action:()=>removeFriendship(x.id)}]))})}
-async function searchFriends(){const q=$("friendSearch").value.trim().replace(/^@/,""),box=$("friendSearchResults");box.innerHTML="";if(q.length<2)return toast("Digite pelo menos 2 caracteres.");const{data,error}=await db.from("pokemon_profiles").select("user_id,username,display_name,binder_visibility").ilike("username",`%${q}%`).neq("user_id",currentUser.id).limit(20);if(error)return toast("Erro na busca.");if(!data?.length)return box.innerHTML='<p class="muted">Nenhum usuário encontrado.</p>';data.forEach(p=>{const ex=friendships.find(f=>f.requester_id===p.user_id||f.addressee_id===p.user_id);box.appendChild(socialItem(p,ex?[{label:ex.status==="accepted"?"Amigo":"Pendente",action:()=>{}}]:[{label:"Adicionar",action:()=>sendFriendRequest(p.user_id)}]))})}
-async function sendFriendRequest(id){const{error}=await db.from("pokemon_friendships").insert({requester_id:currentUser.id,addressee_id:id,status:"pending"});if(error)return toast("Não consegui enviar.");await loadFriendships();await searchFriends();toast("Pedido enviado.")}
-async function updateFriendship(id,status){const{error}=await db.from("pokemon_friendships").update({status}).eq("id",id);if(error)return toast("Erro ao atualizar.");await loadFriendships();toast("Pedido aceito.")}
-async function removeFriendship(id){await db.from("pokemon_friendships").delete().eq("id",id);await loadFriendships()}
-async function viewFriendBinder(p){if(!p)return;const{data,error}=await db.from("pokemon_cards").select("*").eq("user_id",p.user_id).order("binder_page").order("binder_slot");if(error)return toast("Esse fichário não está disponível.");$("friendBinderTitle").textContent=`@${p.username}`;const g=$("friendBinderGrid");g.innerHTML="";(data||[]).forEach(c=>{const e=document.createElement("div");e.className="friend-card";const img=cardImage(c);e.innerHTML=`${img?`<img src="${esc(img)}">`:""}<strong>${esc(c.name)}</strong><small>${esc(c.set_name||"")} · ${esc(c.number||"")}</small>`;g.appendChild(e)});closeDialog("friendsDialog");openDialog("friendBinderDialog")}
+async function loadFriendships(){
+  const{data,error}=await db.from("pokemon_friendships")
+    .select("*")
+    .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
+    .order("created_at",{ascending:false});
+  if(error)throw error;
+  friendships=data||[];
+  const ids=[...new Set(friendships.flatMap(f=>[f.requester_id,f.addressee_id]).filter(x=>x!==currentUser.id))];
+  profilesById=new Map();
+  if(ids.length){
+    const{data:p,error:pe}=await db.from("pokemon_profiles")
+      .select("user_id,username,display_name,avatar_url,binder_visibility")
+      .in("user_id",ids);
+    if(pe)throw pe;
+    (p||[]).forEach(x=>profilesById.set(x.user_id,x));
+  }
+  renderFriends();
+}
+function socialItem(p,actions){
+  const e=document.createElement("div");
+  e.className="social-item";
+  const visibility=p?.binder_visibility==="public"?"Público":p?.binder_visibility==="private"?"Privado":"Amigos";
+  e.innerHTML=`<div class="v1451-social-copy"><strong>@${esc(p?.username||"usuário")}</strong><small>${esc(p?.display_name||"")}</small><em>${esc(visibility)}</em></div><div class="social-actions"></div>`;
+  actions.forEach(a=>{
+    const b=document.createElement("button");
+    b.type="button";
+    b.textContent=a.label;
+    if(a.kind)b.className=a.kind;
+    b.disabled=!!a.disabled;
+    b.onclick=a.action;
+    e.querySelector(".social-actions").appendChild(b);
+  });
+  return e;
+}
+function renderFriends(){
+  const r=$("friendRequests"),f=$("friendsList");
+  r.innerHTML=f.innerHTML="";
+  const rec=friendships.filter(x=>x.status==="pending"&&x.addressee_id===currentUser.id);
+  const sent=friendships.filter(x=>x.status==="pending"&&x.requester_id===currentUser.id);
+  const acc=friendships.filter(x=>x.status==="accepted");
+  if(!rec.length)r.innerHTML='<p class="muted">Nenhum pedido recebido.</p>';
+  rec.forEach(x=>r.appendChild(socialItem(profilesById.get(x.requester_id),[
+    {label:"Aceitar",kind:"primary",action:()=>updateFriendship(x.id,"accepted")},
+    {label:"Recusar",kind:"danger",action:()=>removeFriendship(x.id)}
+  ])));
+  if(sent.length){
+    const h=document.createElement("p");h.className="v1451-sent-title";h.textContent="Pedidos enviados";r.appendChild(h);
+    sent.forEach(x=>r.appendChild(socialItem(profilesById.get(x.addressee_id),[
+      {label:"Pendente",disabled:true,action:()=>{}},
+      {label:"Cancelar",kind:"danger",action:()=>removeFriendship(x.id)}
+    ])));
+  }
+  if(!acc.length)f.innerHTML='<p class="muted">Adicione amigos para compartilhar seus fichários.</p>';
+  acc.forEach(x=>{
+    const id=x.requester_id===currentUser.id?x.addressee_id:x.requester_id,p=profilesById.get(id);
+    f.appendChild(socialItem(p,[
+      {label:"Ver fichários",kind:"primary",action:()=>viewFriendBinders(p)},
+      {label:"Remover",kind:"danger",action:()=>removeFriendship(x.id)}
+    ]));
+  });
+}
+async function searchFriends(){
+  const q=$("friendSearch").value.trim().replace(/^@/,""),box=$("friendSearchResults");
+  box.innerHTML="";
+  if(q.length<2)return toast("Digite pelo menos 2 caracteres.");
+  const{data,error}=await db.from("pokemon_profiles")
+    .select("user_id,username,display_name,avatar_url,binder_visibility")
+    .ilike("username",`%${q}%`)
+    .neq("user_id",currentUser.id)
+    .limit(20);
+  if(error)return toast("Erro na busca.");
+  if(!data?.length)return box.innerHTML='<p class="muted">Nenhum usuário encontrado.</p>';
+  data.forEach(p=>{
+    const ex=friendships.find(f=>(f.requester_id===p.user_id||f.addressee_id===p.user_id));
+    const actions=ex
+      ? [{label:ex.status==="accepted"?"Amigo":"Pendente",disabled:true,action:()=>{}}]
+      : [{label:"Adicionar",kind:"primary",action:()=>sendFriendRequest(p.user_id)}];
+    if(ex?.status==="accepted")actions.push({label:"Ver fichários",action:()=>viewFriendBinders(p)});
+    box.appendChild(socialItem(p,actions));
+  });
+}
+async function sendFriendRequest(id){
+  const existing=friendships.find(f=>f.requester_id===id||f.addressee_id===id);
+  if(existing)return toast(existing.status==="accepted"?"Vocês já são amigos.":"Já existe um pedido pendente.");
+  const{error}=await db.from("pokemon_friendships").insert({requester_id:currentUser.id,addressee_id:id,status:"pending"});
+  if(error)return toast("Não consegui enviar o pedido.");
+  await loadFriendships();
+  await searchFriends();
+  toast("Pedido enviado.");
+}
+async function updateFriendship(id,status){
+  const{error}=await db.from("pokemon_friendships").update({status,updated_at:new Date().toISOString()}).eq("id",id);
+  if(error)return toast("Erro ao atualizar.");
+  await loadFriendships();
+  toast("Pedido aceito.");
+}
+async function removeFriendship(id){
+  const{error}=await db.from("pokemon_friendships").delete().eq("id",id);
+  if(error)return toast("Não consegui remover.");
+  await loadFriendships();
+}
+function friendBinderAnchor(page,pages){
+  page=Math.min(Math.max(1,+page||1),Math.max(1,+pages||1));
+  if(page<=1)return 1;
+  return page%2===0?page:page-1;
+}
+function friendBinderLastAnchor(pages){
+  return friendBinderAnchor(Math.max(1,+pages||1),pages);
+}
+function friendCardHtml(card){
+  const img=cardImage(card);
+  const status=STATUS[card.collection_status||"owned"]||"";
+  return '<div class="v1451-friend-card" title="'+esc([card.name,card.set_name,card.number].filter(Boolean).join(" · "))+'">'+
+    (img?'<img src="'+esc(img)+'" alt="'+esc(card.name||"Carta")+'" loading="lazy">':'<span>'+esc(card.name||"Carta")+'</span>')+
+    '<b>'+esc(status)+'</b>'+
+    '</div>';
+}
+function friendPageHtml(page){
+  let html='<section class="v1451-friend-page" data-page="'+page+'"><span class="v1451-friend-page-number">Página '+page+'</span><div class="v1451-friend-pockets">';
+  for(let slot=1;slot<=9;slot++){
+    const card=friendViewer.cards.find(c=>+(c.binder_page||1)===+page&&+(c.binder_slot||0)===slot);
+    html+='<div class="v1451-friend-pocket">'+(card?friendCardHtml(card):'')+'</div>';
+  }
+  return html+'</div></section>';
+}
+function renderFriendBinder(){
+  const binder=friendViewer.binders.find(b=>String(b.id)===String(friendViewer.binderId));
+  const spread=$("friendBinderSpread"),label=$("friendBinderPageLabel");
+  if(!spread||!binder)return;
+  const pages=Math.max(1,+binder.pages||1);
+  friendViewer.page=friendBinderAnchor(friendViewer.page,pages);
+  const p=friendViewer.page;
+  const second=p>=2&&p+1<=pages?p+1:null;
+  spread.className="v1451-friend-spread"+(second?" double":"");
+  spread.innerHTML=friendPageHtml(p)+(second?friendPageHtml(second):"");
+  label.textContent=second?`Páginas ${p}–${second} · ${pages} páginas`:`Página ${p} · ${pages} páginas`;
+  $("friendBinderMeta").textContent=[binder.binder_kind==="set"?"Master Set":"Fichário",binder.set_name,binder.set_language].filter(Boolean).join(" · ");
+  $("friendBinderPrev").disabled=p<=1;
+  $("friendBinderNext").disabled=p>=friendBinderLastAnchor(pages);
+}
+async function loadFriendBinderSelection(id,resetPage=true){
+  const binder=friendViewer.binders.find(b=>String(b.id)===String(id));
+  if(!binder)return;
+  friendViewer.binderId=binder.id;
+  if(resetPage)friendViewer.page=1;
+  $("friendBinderSelect").value=String(binder.id);
+  $("friendBinderStatus").textContent="Carregando fichário…";
+  const{data,error}=await db.from("pokemon_cards")
+    .select("id,name,set_name,number,image_url,market_image_pt,market_image_en,collection_status,binder_page,binder_slot,quantity")
+    .eq("user_id",friendViewer.profile.user_id)
+    .eq("binder_id",binder.id)
+    .order("binder_page")
+    .order("binder_slot");
+  if(error){
+    console.error("[Amigos fichário]",error);
+    friendViewer.cards=[];
+    $("friendBinderStatus").textContent="Este fichário não está disponível para sua conta.";
+    renderFriendBinder();
+    return;
+  }
+  friendViewer.cards=data||[];
+  $("friendBinderStatus").textContent=`${friendViewer.cards.length} cartas · somente leitura`;
+  renderFriendBinder();
+}
+async function viewFriendBinders(p){
+  if(!p)return;
+  friendViewer={profile:p,binders:[],binderId:null,cards:[],page:1};
+  $("friendBinderTitle").textContent=`@${p.username||"usuário"}`;
+  $("friendBinderStatus").textContent="Carregando fichários…";
+  $("friendBinderMeta").textContent="";
+  $("friendBinderSpread").innerHTML="";
+  const{data,error}=await db.from("pokemon_binders")
+    .select("id,user_id,name,pages,background,binder_kind,set_id,set_name,set_language,sort_order")
+    .eq("user_id",p.user_id)
+    .order("sort_order")
+    .order("created_at");
+  if(error){
+    console.error("[Amigos]",error);
+    return toast("Esses fichários não estão disponíveis.");
+  }
+  friendViewer.binders=data||[];
+  const sel=$("friendBinderSelect");
+  sel.innerHTML="";
+  if(!friendViewer.binders.length){
+    sel.innerHTML='<option value="">Nenhum fichário visível</option>';
+    sel.disabled=true;
+    $("friendBinderStatus").textContent=p.binder_visibility==="private"
+      ?"Este usuário mantém os fichários privados."
+      :"Nenhum fichário disponível.";
+  }else{
+    sel.disabled=false;
+    sel.innerHTML=friendViewer.binders.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name||"Fichário")+'</option>').join("");
+  }
+  closeDialog("friendsDialog");
+  openDialog("friendBinderDialog");
+  if(friendViewer.binders.length)await loadFriendBinderSelection(friendViewer.binders[0].id,true);
+}
+function viewFriendBinder(p){return viewFriendBinders(p)}
 function setup3d(){const el=$("card3d");el.addEventListener("pointermove",e=>{if(el.classList.contains("flipped"))return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.querySelector(".card-3d-inner").style.transform=`rotateY(${x*18}deg) rotateX(${-y*18}deg)`});el.addEventListener("pointerleave",()=>{if(!el.classList.contains("flipped"))el.querySelector(".card-3d-inner").style.transform="rotateY(0) rotateX(0)"});el.addEventListener("dblclick",()=>el.classList.toggle("flipped"))}
-function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber","searchSet"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=async()=>{await loadFriendships();openDialog("friendsDialog")};$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
+function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber","searchSet"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=async()=>{await loadFriendships();openDialog("friendsDialog")};$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("friendSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchFriends()}});$("friendBinderSelect").onchange=e=>loadFriendBinderSelection(e.target.value,true);$("friendBinderPrev").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;friendViewer.page=friendViewer.page<=2?1:Math.max(2,friendViewer.page-2);renderFriendBinder()};$("friendBinderNext").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;const last=friendBinderLastAnchor(b.pages);friendViewer.page=friendViewer.page<=1?Math.min(last,2):Math.min(last,friendViewer.page+2);renderFriendBinder()};$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
 async function registerPWA(){
   if(!("serviceWorker"in navigator))return;
   try{
