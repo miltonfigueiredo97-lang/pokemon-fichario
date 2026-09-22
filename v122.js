@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION='V14.42';
+  const APP_VERSION='V14.46';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,14 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.46',title:'Preços por variante correta e Master Set sem duplicações artificiais',items:[
+      'MYP agora separa rigidamente idioma, condição e acabamento antes de calcular mínimo, médio e máximo; anúncios de outra qualidade ou versão não entram como fallback.',
+      'A leitura de idioma da MYP também reconhece as bandeiras pela classe CSS, evitando misturar Português, Inglês e Japonês quando o atributo title não existe.',
+      'Master Sets ignoram tratamentos promocionais avulsos, Jumbo, Gold, Metal, Cosmos e outros acabamentos que não pertencem ao conjunto principal.',
+      'Na coleção 151, o gerador validado em produção ficou com 360 entradas; Mew #205, Substituição #206 e Energia Psíquica #207 aparecem uma vez cada.',
+      'Os botões de adicionar página ficam acima das setas de navegação nos dois lados do fichário.',
+      'Liga Pokémon e MYP continuam sendo consultadas separadamente, preservando links e cotações por fonte.'
+    ]},
     {version:'V14.0',title:'Fichários múltiplos, Master Sets e scanner novo',items:[
       'Adição de cartas ficou imediata; a MYP atualiza preços em segundo plano.',
       'Cartas japonesas sem imagem recebem fallback seguro quando existe correspondência confiável.',
