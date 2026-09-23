@@ -214,11 +214,13 @@ function collectionProductCandidatesFromText(raw,wantedNumber,names=[]){
   return found;
 }
 async function collectionPageText(slug,page){
-  const key='collection-page:auto:'+slug+':'+page;
+  const key='collection-page:auto2:'+slug+':'+page;
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const url=ROOT+'/pokemon/'+slug+'?page='+page+'&sort=-codigoproduto';
-  const value=await fetchText(url,12000);
+  // A listagem da coleção é pública e o Reader evita gastar o orçamento
+  // esperando o desafio Cloudflare antes de cair em fallback.
+  const value=await fetchJina(url,12000);
   CACHE.set(key,{value,expires:Date.now()+30*60*1000});
   return value;
 }
@@ -531,11 +533,48 @@ module.exports=async function handler(req,res){
     }
   }
 
+  // Quando o índice da coleção já encontrou uma página, tente o Reader
+  // imediatamente antes de abrir Chromium. Isso mantém o worker abaixo do
+  // limite de execução e ainda valida nome/número/coleção/idioma/variante.
+  if(directLink&&!fast){
+    try{
+      const text=await fetchJina(directLink,12000);
+      const identity=pageIdentity(text);
+      if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
+        const market=extractMarket(identity,finish,condition);
+        if(hasAnyMarket(market)){
+          return res.status(200).json({
+            ok:true,
+            source:'MYP Cards',
+            provider:'Collection Reader',
+            mode:'collection-index-direct',
+            name:identity.name||name,
+            number:identity.number||number,
+            edition:identity.edition||set,
+            finish,
+            condition,
+            link:directLink,
+            min:Number(market.min||0),
+            avg:Number(market.avg||0),
+            max:Number(market.max||0),
+            samples:market.samples??null,
+            availableQuantity:market.availableQuantity??null,
+            exactVariant:market.exactVariant!==false,
+            complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+      }
+    }catch(error){
+      console.warn('MYP Collection Reader falhou; tentando Chromium:',error?.message||error);
+    }
+  }
+
   // Fonte completa: abrir a página pública real em Chromium.
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1465api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1466api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -600,7 +639,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1465api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1466api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
