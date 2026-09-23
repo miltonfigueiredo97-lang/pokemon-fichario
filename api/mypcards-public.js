@@ -941,15 +941,10 @@ module.exports=async function handler(req,res){
         console.warn('Produto MYP localizado pela coleção; detalhe bloqueado. Validando preço via Actor:',collectionDiscoveredLink);
       }
       if(market?.error==='collection_not_found'){
-        return res.status(200).json({
-          ok:false,
-          error:'collection_not_found::'+String(market.message||'').slice(0,700),
-          source:'MYP Cards',
-          provider:'Chromium Collection',
-          stage:market.stage||'collection',
-          elapsedMs:market.elapsedMs||null,
-          message:market.message||'A coleção da MYP não localizou a carta.'
-        });
+        // Uma falha no índice visual da coleção não é terminal. Continue para
+        // busca por número exato, Reader e Actor; nomes/localizações da MYP
+        // podem divergir mesmo quando o produto existe.
+        console.warn('MYP Chromium não localizou na coleção; continuando fallbacks:',market.message||'collection_not_found');
       }
       if(['wrong_product','product_not_found'].includes(market?.error)){
         // Não encerre aqui. A busca visual da MYP pode falhar mesmo com a
