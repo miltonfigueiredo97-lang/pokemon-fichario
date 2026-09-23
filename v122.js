@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.70';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.71';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,10 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.71',title:'RGB Mew entram como extras não listados de 30 anos',items:[
+      'R/RGB, G/RGB e B/RGB agora aparecem na Completa 30 Anos como extras separados.',
+      'Eles ficam explicitamente identificados como extras não listados, sem serem confundidos com a checklist oficial ou com as promos MEP.'
+    ]},
     {version:'V14.70',title:'Completas de 20, 25 e 30 anos com promos e extras',items:[
       'Completa 20 Anos inclui Gerações, Evoluções, promos XY do aniversário, versões com selo 20th/Toys R Us e Jumbos Red & Blue.',
       'Completa 25 Anos inclui Celebrations, Classic Collection, McDonald’s 2021, General Mills, promos SWSH, cards Metal da UPC e todos os First Partner Jumbos.',
