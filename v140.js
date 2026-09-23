@@ -1366,13 +1366,22 @@
     star.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act(e)}});
     b.appendChild(star);
 
-    if(card.price_pending){
+    const processingAt=Date.parse(card.price_processing_at||0);
+    const activelyProcessing=!!(processingAt&&processingAt>Date.now()-5*60_000);
+    const hasSavedPrice=Number(card.price_min||card.price_avg||card.price_max||0)>0;
+    if(activelyProcessing){
       const tag=document.createElement('span');
-      tag.className='v14-price-pending'+(card.price_processing_at?' processing':' queued');
+      tag.className='v14-price-pending processing';
       tag.textContent='ATUALIZANDO…';
-      tag.setAttribute('aria-label',card.price_processing_at?'Preço sendo atualizado':'Preço aguardando atualização');
+      tag.setAttribute('aria-label','Preço sendo atualizado agora');
       b.appendChild(tag);
-    }else if(!Number(card.price_min||card.price_avg||card.price_max||0)&&card.price_last_error){
+    }else if(card.price_pending&&!hasSavedPrice){
+      const tag=document.createElement('span');
+      tag.className='v14-price-pending queued';
+      tag.textContent='NA FILA';
+      tag.setAttribute('aria-label','Cotação aguardando processamento automático');
+      b.appendChild(tag);
+    }else if(!hasSavedPrice&&card.price_last_error){
       const tag=document.createElement('span');
       tag.className='v14-price-unavailable';
       tag.textContent='SEM COTAÇÃO';
