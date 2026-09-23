@@ -4,9 +4,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
 const BATCH = 6;
-const RETRY_LIMIT = 5;
+const RETRY_LIMIT = 3;
 const STALE_MS = 5 * 60 * 1000;
-const TERMINAL = new Set(["no_price_data"]);
+const TERMINAL = new Set(["no_price_data","wrong_product","product_not_found","variant_not_found"]);
 
 const CORS={
   "Access-Control-Allow-Origin":"*",
@@ -38,7 +38,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true){
   const timer=setTimeout(()=>controller.abort(),58000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.59"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.60"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -61,7 +61,7 @@ async function fetchMarkets(card:any){
     fetchSource(MYP_API,card,true).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")})),
     fetchSource(LIGA_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
   ]);
-  if(myp?.error==="wrong_product"&&String(card.myp_price_link||card.price_br_link||card.price_link||"").trim()){
+  if(["wrong_product","product_not_found"].includes(String(myp?.error||""))&&String(card.myp_price_link||card.price_br_link||card.price_link||"").trim()){
     myp=await fetchSource(MYP_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
   }
   return{myp,liga};
