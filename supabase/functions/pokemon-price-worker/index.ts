@@ -39,10 +39,13 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
     }
   }
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
+  // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
+  // Só esse caminho ganha orçamento maior; links conhecidos continuam rápidos.
+  const timeoutMs=fast?15000:(base===MYP_API&&!allowSavedLink?60000:38000);
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.85"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.86"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -117,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.85"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.86"},
             signal:controller.signal
           });
           if(r.ok){
