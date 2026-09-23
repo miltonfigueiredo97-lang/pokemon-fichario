@@ -1006,6 +1006,45 @@ module.exports=async function handler(req,res){
     }
   }
 
+  // Sem link MYP conhecido, tente primeiro o scraper estruturado. Ele já
+  // devolve produto + ofertas e evita gastar o orçamento inteiro em Chromium
+  // antes de chegar ao fallback capaz de resolver cartas novas/localizadas.
+  if(!directLink&&process.env.APIFY_API_TOKEN){
+    try{
+      const early=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
+      if(hasAnyMarket(early)){
+        const exactNeeded=finishKind(finish)!=='normal';
+        if(!exactNeeded||early.exactVariant===true){
+          const actorLink=safeMypProductUrl(early.link);
+          if(actorLink){
+            return res.status(200).json({
+              ok:true,
+              source:'MYP Cards',
+              provider:'Apify early exact market',
+              mode:'actor-first-no-link',
+              name,
+              number,
+              edition:set,
+              finish,
+              condition,
+              link:actorLink,
+              min:Number(early.min||0),
+              avg:Number(early.avg||0),
+              max:Number(early.max||0),
+              samples:early.samples??null,
+              availableQuantity:early.availableQuantity??null,
+              exactVariant:early.exactVariant===true,
+              complete:!!(Number(early.min)>0&&Number(early.avg)>0&&Number(early.max)>0),
+              checkedAt:new Date().toISOString()
+            });
+          }
+        }
+      }
+    }catch(error){
+      console.warn('MYP early Actor falhou; continuando Reader/Chromium:',error?.code||error?.message||error);
+    }
+  }
+
   // Quando o índice da coleção já encontrou uma página, tente o Reader
   // imediatamente antes de abrir Chromium. Isso mantém o worker abaixo do
   // limite de execução e ainda valida nome/número/coleção/idioma/variante.
