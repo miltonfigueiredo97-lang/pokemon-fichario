@@ -566,22 +566,37 @@ async function marketAcrossSellerPages(link,firstRaw,firstIdentity,wanted,finish
   if(marketFitsFinish(first,finish))return first;
   if(finishKind(finish)==='normal')return first;
 
-  const pages=new Set([2,3,4,5]);
+  const certPages=new Set([2,3,4]);
+  const otherPages=new Set([2,3,4]);
+  for(const m of String(firstRaw||'').matchAll(/estoque-cert-page(?:=|%3D)(\d+)/gi)){
+    const n=Number(m[1]||0);
+    if(n>=2&&n<=8)certPages.add(n);
+  }
   for(const m of String(firstRaw||'').matchAll(/estoque-outros-page(?:=|%3D)(\d+)/gi)){
     const n=Number(m[1]||0);
-    if(n>=2&&n<=8)pages.add(n);
+    if(n>=2&&n<=8)otherPages.add(n);
   }
+
   const base=safeMypProductUrl(link);
   if(!base)return first;
 
-  const results=await Promise.all([...pages].sort((a,b)=>a-b).slice(0,7).map(async page=>{
+  const urls=[];
+  for(const page of [...certPages].sort((a,b)=>a-b).slice(0,7)){
+    urls.push(base+'?estoque-cert-page='+page);
+  }
+  for(const page of [...otherPages].sort((a,b)=>a-b).slice(0,7)){
+    urls.push(base+'?estoque-outros-page='+page);
+  }
+
+  const results=await Promise.all(urls.map(async url=>{
     try{
-      const raw=await fetchJina(base+'?estoque-outros-page='+page,9000);
+      const raw=await fetchJina(url,9000);
       const identity=pageIdentity(raw);
       if(!matchesWanted(identity,wanted))return null;
       return extractMarket(identity,finish,condition);
     }catch{return null}
   }));
+
   return mergeVariantMarkets([first,...results])||first;
 }
 
@@ -742,7 +757,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1473pages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1474sellerpages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -849,7 +864,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1473pages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1474sellerpages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
