@@ -450,7 +450,7 @@ function collectionProductCandidatesFromText(raw,wantedNumber,names=[]){
   return found;
 }
 async function collectionPageText(editionUrl,page){
-  const key='collection-page:v1470:'+editionUrl+':'+page;
+  const key='collection-page:v1485:'+editionUrl+':'+page;
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const join=editionUrl.includes('?')?'&':'?';
@@ -462,36 +462,48 @@ async function collectionPageText(editionUrl,page){
 
 async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliases=[]}){
   const meta=await resolveSetMeta(apiId,set,setId);
-  const editionUrl=await mypEditionUrl({apiId,setId,set});
-  if(!editionUrl)return[];
+  const discovered=await mypEditionUrl({apiId,setId,set}).catch(()=>'');
+  const derived=(meta?.names||[])
+    .map(label=>slugify(label))
+    .filter(slug=>slug&&slug.length>=4&&!/^\d+$/.test(slug))
+    .sort((a,b)=>b.length-a.length)
+    .map(slug=>ROOT+'/pokemon/'+slug);
+
+  const editionUrls=[...new Set([discovered,...derived].filter(Boolean))].slice(0,10);
+  if(!editionUrls.length)return[];
 
   const names=[name,...nameAliases].filter(Boolean);
-
-  // Primeiro use o filtro da própria edição. A página da coleção carrega
-  // produtos por relevância e usa "carregar mais"; page=N sozinho pode não
-  // alcançar cartas menos procuradas. Filtrar pelo número exato é determinístico.
   const scopedQueries=[number,...names.map(n=>[n,number].filter(Boolean).join(' '))]
-    .map(x=>String(x||'').trim()).filter(Boolean).slice(0,3);
-  for(const query of scopedQueries){
-    try{
-      const join=editionUrl.includes('?')?'&':'?';
-      const url=editionUrl+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
-      const body=await fetchJina(url,10000);
-      const urls=collectionProductCandidatesFromText(body,number,names);
-      if(urls.length)return urls.slice(0,6);
-    }catch{}
+    .map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
+
+  // Teste todas as URLs plausíveis da edição. O número exato é suficiente
+  // dentro da coleção; não exija nome/slug localizado para a primeira busca.
+  for(const editionUrl of editionUrls){
+    for(const query of scopedQueries){
+      try{
+        const join=editionUrl.includes('?')?'&':'?';
+        const url=editionUrl+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+        const body=await fetchJina(url,8500);
+        const byNumberOnly=query===number;
+        const urls=collectionProductCandidatesFromText(body,number,byNumberOnly?[]:names);
+        if(urls.length)return urls.slice(0,6);
+      }catch{}
+    }
   }
 
-  // Fallback para coleções que não aplicam o filtro no servidor.
+  // Mesmo sem filtro de busca, as cartas de número mais alto costumam estar
+  // nas primeiras páginas quando ordenadas por código decrescente.
   const maxPages=Math.max(1,Math.min(8,Math.ceil(Math.max(48,meta.total||240)/48)));
   const pages=Array.from({length:maxPages},(_,i)=>i+1);
-  for(let i=0;i<pages.length;i+=3){
-    const chunk=pages.slice(i,i+3);
-    const bodies=await Promise.all(chunk.map(page=>collectionPageText(editionUrl,page).catch(()=>'')));
-    for(const body of bodies){
-      if(!body)continue;
-      const urls=collectionProductCandidatesFromText(body,number,names);
-      if(urls.length)return urls.slice(0,6);
+  for(const editionUrl of editionUrls){
+    for(let i=0;i<pages.length;i+=3){
+      const chunk=pages.slice(i,i+3);
+      const bodies=await Promise.all(chunk.map(page=>collectionPageText(editionUrl,page).catch(()=>'')));
+      for(const body of bodies){
+        if(!body)continue;
+        const urls=collectionProductCandidatesFromText(body,number,[]);
+        if(urls.length)return urls.slice(0,6);
+      }
     }
   }
   return[];
