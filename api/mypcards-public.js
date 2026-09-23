@@ -701,34 +701,58 @@ module.exports=async function handler(req,res){
     try{
       const text=await fetchJina(directLink,8000);
       const identity=pageIdentity(text);
-      if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
-        return res.status(200).json({
-          ok:false,error:'wrong_product',source:'MYP Cards',provider:'Fast Reader',link:directLink,
-          identity:{
-            name:identity?.name||'',
-            number:identity?.number||'',
-            code:identity?.code||'',
-            edition:identity?.edition||''
-          },
-          message:'O link salvo não corresponde à carta consultada.'
-        });
+      const identityOk=matchesWanted(identity,{name,nameAliases,number,set,setId,lang});
+      if(identityOk){
+        const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
+        if(marketFitsFinish(market,finish)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
+            name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
+            finish,condition,link:directLink,
+            min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+            samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+            exactVariant:market.exactVariant!==false,
+            complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
       }
-      const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-      if(marketFitsFinish(market,finish)){
+
+      // O Reader da MYP às vezes devolve corpo vazio mesmo com a URL correta.
+      // Nesse caso, ou quando ele não encontra a variante, use Chromium
+      // DIRETAMENTE no link conhecido — sem nova busca textual.
+      const browserMarket=await findAndScrapeMypBrowser(directLink,{
+        name,nameAliases,number,set,setId,lang,finish,condition
+      }).catch(error=>({ok:false,error:'browser_error',message:error?.message||String(error)}));
+      if(browserMarket?.ok&&hasAnyMarket(browserMarket)){
         return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
-          name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
-          finish,condition,link:directLink,
-          min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
-          samples:market.samples??null,availableQuantity:market.availableQuantity??null,
-          exactVariant:market.exactVariant!==false,
-          complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+          ok:true,source:'MYP Cards',provider:'Chromium',mode:browserMarket.mode||'fast-browser-direct',
+          name:browserMarket.title||identity.name||name,
+          number:identity.number||number,
+          edition:browserMarket.edition||identity.edition||set,
+          finish,condition,
+          link:safeMypProductUrl(browserMarket.link)||directLink,
+          min:Number(browserMarket.min||0),avg:Number(browserMarket.avg||0),max:Number(browserMarket.max||0),
+          samples:browserMarket.samples??null,
+          availableQuantity:browserMarket.availableQuantity??null,
+          exactVariant:browserMarket.exactVariant!==false,
+          complete:!!(Number(browserMarket.min)>0&&Number(browserMarket.avg)>0&&Number(browserMarket.max)>0),
           checkedAt:new Date().toISOString()
         });
       }
+
       return res.status(200).json({
-        ok:false,error:'fast_no_price',source:'MYP Cards',provider:'Fast Reader',link:directLink,
-        message:'A leitura rápida não encontrou cotação utilizável; a fila prioritária continuará no servidor.'
+        ok:false,
+        error:identityOk?'fast_no_price':'wrong_product',
+        source:'MYP Cards',
+        provider:browserMarket?.provider||'Fast Reader + Chromium',
+        link:directLink,
+        identity:{name:identity?.name||'',number:identity?.number||'',code:identity?.code||'',edition:identity?.edition||''},
+        browserError:browserMarket?.error||'',
+        browserMessage:browserMarket?.message||'',
+        message:identityOk
+          ?'A página correta foi aberta, mas não encontramos a variante solicitada.'
+          :'O Reader não conseguiu validar a página e o Chromium também não confirmou a impressão.'
       });
     }catch(error){
       return res.status(200).json({
@@ -782,7 +806,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1479debug:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1480browser:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -889,7 +913,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1479debug:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1480browser:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
