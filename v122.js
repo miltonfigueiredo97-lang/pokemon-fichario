@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.77',title:'Escolha do escopo ao atualizar cotações',items:[
+      'Atualizar cotações agora abre um seletor antes de colocar cartas na fila.',
+      'Coleção inteira atualiza todas as cartas do fichário atual.',
+      'Apenas cartas visíveis respeita filtros e pesquisa ativos.',
+      'Apenas cartas sem cotação atualiza somente entradas sem nenhum preço brasileiro salvo.',
+      'Cada opção mostra quantas cartas serão atualizadas antes de iniciar.'
+    ]},
     {version:'V14.77',title:'Correção visual no detalhe da carta',items:[
       'Removido o texto literal \\n que aparecia entre Atualizar preço e Editar cotação manualmente.',
       'A Exeggutor 109/108 de Evoluções mantém a arte oficial bilíngue/japonesa da própria impressão; isso não representa troca de idioma do filtro.'

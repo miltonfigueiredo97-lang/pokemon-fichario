@@ -1038,3 +1038,49 @@ dialog.sheet-dialog:not([open]){
 @media(max-width:620px){
   .v1469-manual-price-grid{grid-template-columns:1fr}
 }
+
+/* V14.77 — seletor de escopo da atualização de cotações */
+.v1477-price-scope-dialog{
+  width:min(590px,calc(100vw - 28px));
+  max-width:590px;
+  margin:auto;padding:0;
+  border:1px solid #293239;border-radius:15px;
+  background:#0b1013;color:#f4f6f7;
+  box-shadow:0 28px 85px rgba(0,0,0,.7);
+}
+.v1477-price-scope-dialog::backdrop{background:rgba(0,0,0,.76);backdrop-filter:blur(5px)}
+.v1477-price-scope-shell{padding:0}
+.v1477-price-scope-head{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+  padding:19px 20px 16px;border-bottom:1px solid #20282d;
+}
+.v1477-price-scope-head .kicker{margin:0 0 4px;color:#4fe0bd;font-size:8px;font-weight:900;letter-spacing:.14em}
+.v1477-price-scope-head h2{margin:0;font-size:18px}
+.v1477-price-scope-head .muted{margin:5px 0 0;color:#85919a;font-size:9px}
+.v1477-price-scope-options{display:flex;flex-direction:column;gap:8px;padding:14px}
+.v1477-price-scope-options>button{
+  width:100%;display:grid;grid-template-columns:38px minmax(0,1fr) auto;
+  gap:11px;align-items:center;padding:12px;
+  border:1px solid #283238;border-radius:11px;background:#0e1518;
+  color:inherit;text-align:left;cursor:pointer;
+}
+.v1477-price-scope-options>button:hover{background:#121b1f;border-color:#42525b}
+.v1477-price-scope-options>button:disabled{opacity:.42;cursor:not-allowed}
+.v1477-price-scope-options>button>span:nth-child(2){display:flex;flex-direction:column;gap:3px;min-width:0}
+.v1477-price-scope-options strong{font-size:10px;color:#f4f6f7}
+.v1477-price-scope-options small{font-size:8px;line-height:1.4;color:#82909a}
+.v1477-price-scope-options b{
+  min-width:31px;height:25px;padding:0 7px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid #334047;border-radius:999px;background:#0a0f12;color:#aeb7bd;font-size:9px;
+}
+.v1477-price-scope-icon{
+  width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+  border-radius:9px;background:#111c20;border:1px solid #26343a;color:#4fe0bd;font-weight:900;
+}
+@media(max-width:600px){
+  .v1477-price-scope-dialog{width:calc(100vw - 16px)}
+  .v1477-price-scope-head{padding:16px 15px 13px}
+  .v1477-price-scope-options{padding:10px}
+  .v1477-price-scope-options>button{grid-template-columns:34px minmax(0,1fr) auto;padding:10px}
+  .v1477-price-scope-icon{width:34px;height:34px}
+}

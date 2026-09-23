@@ -2231,21 +2231,25 @@
 
   function visiblePriceTargetCards(){
     const physical=physicalCollection();
-    let cards=[];
-    if(isGeneral()){
-      let groups=viewScopedCards(groupedVirtualCards(physical));
-      if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
-        groups=groups.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
-      }
-      const ids=new Set(groups.flatMap(c=>Array.isArray(c._group_ids)?c._group_ids:[c.id]));
-      cards=physical.filter(c=>ids.has(c.id));
-    }else{
-      cards=viewScopedCards(physical);
-      if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
-        cards=cards.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
-      }
-    }
-    return uniquePriceCards(cards);
+    const visible=orderedViewCards();
+    const ids=new Set(
+      visible.flatMap(card=>Array.isArray(card?._group_ids)?card._group_ids:[card?.id]).filter(Boolean)
+    );
+    return uniquePriceCards(physical.filter(card=>ids.has(card.id)));
+  }
+
+  function fullPriceTargetCardsV1477(){
+    return uniquePriceCards(physicalCollection());
+  }
+
+  function unpricedPriceTargetCardsV1477(){
+    return uniquePriceCards(physicalCollection().filter(card=>!hasBrazilQuoteV1466(card)));
+  }
+
+  function priceScopeCardsV1477(scope){
+    if(scope==='all')return fullPriceTargetCardsV1477();
+    if(scope==='unpriced')return unpricedPriceTargetCardsV1477();
+    return visiblePriceTargetCards();
   }
 
   function setVisiblePriceButtonState({active=false,total=0,pending=0,label=''}={}){
@@ -2263,7 +2267,7 @@
     }else{
       b.disabled=false;
       b.classList.remove('v1433-price-running');
-      b.textContent='↻ Atualizar preços visíveis';
+      b.textContent='↻ Atualizar cotações';
     }
   }
 
@@ -2309,41 +2313,107 @@
     else setVisiblePriceButtonState({active:false});
   }
 
-  async function updateVisiblePricesV14(){
-    const cards=visiblePriceTargetCards();
-    if(!cards.length)return toast('Nenhuma carta visível com os filtros atuais.');
-    if(V14.bulkPriceWatch)return toast('Os preços visíveis já estão sendo atualizados.');
+  function ensurePriceScopeDialogV1477(){
+    let d=byId('v1477PriceScopeDialog');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v1477PriceScopeDialog';
+    d.className='v1477-price-scope-dialog';
+    d.innerHTML=`<div class="v1477-price-scope-shell">
+      <div class="v1477-price-scope-head">
+        <div><p class="kicker">ATUALIZAR COTAÇÕES</p><h2>O que você quer atualizar?</h2><p class="muted">Escolha exatamente quais cartas entram na fila.</p></div>
+        <button id="v1477PriceScopeClose" class="icon-only" type="button" aria-label="Fechar">×</button>
+      </div>
+      <div class="v1477-price-scope-options">
+        <button type="button" data-price-scope="all">
+          <span class="v1477-price-scope-icon">▦</span>
+          <span><strong>Coleção inteira</strong><small>Todas as cartas deste fichário, ignorando filtros e pesquisa.</small></span>
+          <b data-price-count="all">0</b>
+        </button>
+        <button type="button" data-price-scope="visible">
+          <span class="v1477-price-scope-icon">◉</span>
+          <span><strong>Apenas cartas visíveis no momento</strong><small>Respeita os filtros e a pesquisa que estão ativos agora.</small></span>
+          <b data-price-count="visible">0</b>
+        </button>
+        <button type="button" data-price-scope="unpriced">
+          <span class="v1477-price-scope-icon">!</span>
+          <span><strong>Apenas cartas sem cotação</strong><small>Somente cartas sem nenhum valor brasileiro salvo.</small></span>
+          <b data-price-count="unpriced">0</b>
+        </button>
+      </div>
+    </div>`;
+    document.body.appendChild(d);
+    byId('v1477PriceScopeClose').onclick=()=>d.close();
+    d.addEventListener('click',e=>{if(e.target===d)d.close()});
+    d.querySelectorAll('[data-price-scope]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const scope=btn.dataset.priceScope||'visible';
+        d.close();
+        updatePriceScopeV1477(scope);
+      });
+    });
+    return d;
+  }
+
+  function openPriceScopeDialogV1477(){
+    if(V14.bulkPriceWatch)return toast('Já existe uma atualização de preços em andamento.');
+    const d=ensurePriceScopeDialogV1477();
+    for(const scope of ['all','visible','unpriced']){
+      const count=priceScopeCardsV1477(scope).length;
+      const el=d.querySelector('[data-price-count="'+scope+'"]');
+      if(el)el.textContent=String(count);
+      const btn=d.querySelector('[data-price-scope="'+scope+'"]');
+      if(btn)btn.disabled=count===0;
+    }
+    if(!d.open)d.showModal();
+  }
+
+  async function updatePriceScopeV1477(scope='visible'){
+    const cards=priceScopeCardsV1477(scope);
+    const labels={
+      all:'coleção inteira',
+      visible:'cartas visíveis',
+      unpriced:'cartas sem cotação'
+    };
+    if(!cards.length)return toast('Nenhuma '+(labels[scope]||'carta')+' para atualizar.');
+    if(V14.bulkPriceWatch)return toast('Já existe uma atualização de preços em andamento.');
 
     const status=byId('v12PriceProgress');
-    setVisiblePriceButtonState({active:true,total:cards.length,pending:cards.length,label:'↻ PREPARANDO ATUALIZAÇÃO…'});
+    setVisiblePriceButtonState({
+      active:true,total:cards.length,pending:cards.length,
+      label:'↻ PREPARANDO '+cards.length+' CARTA'+(cards.length===1?'':'S')+'…'
+    });
     try{
-      await markCardsForPrice(cards,50);
-      queueBackgroundPrices(cards,{front:true});
+      const priority=scope==='unpriced'?200:scope==='visible'?100:50;
+      await markCardsForPrice(cards,priority);
+      queueBackgroundPrices(cards,{front:scope!=='all'});
       kickPriceWorkerNow();
-      if(status)status.textContent=cards.length+' carta(s) na fila. Você pode continuar usando o fichário.';
+      setTimeout(kickPriceWorkerNow,1200);
+      if(status)status.textContent=cards.length+' carta(s) de '+(labels[scope]||'seleção')+' foram colocadas na fila.';
       try{renderBinder();renderSummary()}catch{}
       watchVisiblePriceBatch(cards);
     }catch(error){
-      console.error('[Atualizar preços visíveis]',error);
+      console.error('[Atualizar cotações '+scope+']',error);
       setVisiblePriceButtonState({active:false});
-      toast('Não consegui iniciar a atualização filtrada.');
+      toast('Não consegui iniciar esta atualização.');
     }
   }
 
-  V14.updateVisiblePrices=updateVisiblePricesV14;
+  V14.updateVisiblePrices=()=>updatePriceScopeV1477('visible');
+  V14.updatePriceScope=updatePriceScopeV1477;
 
   function rewireFilteredPriceButton(){
     const old=byId('v12UpdatePrices');
     if(!old)return;
-    if(old.dataset.v1433==='1'){
+    if(old.dataset.v1477==='1'){
       resumeVisiblePriceWatch();
       return;
     }
     const b=old.cloneNode(true);
-    b.dataset.v1433='1';
-    b.textContent='↻ Atualizar preços visíveis';
+    b.dataset.v1477='1';
+    b.textContent='↻ Atualizar cotações';
     old.replaceWith(b);
-    b.addEventListener('click',updateVisiblePricesV14);
+    b.addEventListener('click',openPriceScopeDialogV1477);
     resumeVisiblePriceWatch();
   }
 
