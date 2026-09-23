@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH = 4;
+const BATCH = 16;
 const RETRY_LIMIT = 3;
 const STALE_MS = 2 * 60 * 1000;
 const TERMINAL = new Set(["wrong_product","product_not_found"]);
@@ -42,7 +42,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.81"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.82"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -224,14 +224,18 @@ async function fetchMarkets(card:any){
   }
 
   // A MYP nem sempre rotula Reverse/Foil nas ofertas da mesma impressão.
-  // Se já conhecemos a página correta e a variante exata não devolveu preço,
-  // consultamos automaticamente o mercado padrão DA MESMA PÁGINA.
+  // Com produto conhecido, tente o mercado padrão da MESMA página: primeiro
+  // Reader rápido; se falhar, faça a consulta completa antes de desistir.
   if(!hasMarketPrice(myp)&&hasMypLink&&String(card.finish||"Normal").toLowerCase()!=="normal"){
     const err=String(myp?.error||"");
-    if(["variant_not_found","no_price_data","browser_error","fast_no_price","timeout"].includes(err)){
+    if(["variant_not_found","no_price_data","browser_error","fast_no_price","timeout","fast_timeout","fast_unavailable"].includes(err)){
       const genericCard={...card,finish:"Normal"};
-      const generic=await fetchSource(MYP_API,genericCard,true,true)
+      let generic=await fetchSource(MYP_API,genericCard,true,true)
         .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_generic_error")}));
+      if(!hasMarketPrice(generic)){
+        generic=await fetchSource(MYP_API,genericCard,true,false)
+          .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_generic_error")}));
+      }
       if(hasMarketPrice(generic)){
         myp={
           ...generic,
@@ -312,7 +316,12 @@ Deno.serve(async(req:Request)=>{
           fetchCard={...card,myp_price_link:siblingLink};
         }else{
           learnedLink=await learnedMypLink(db,card).catch(()=> "");
-          if(learnedLink)fetchCard={...card,myp_price_link:learnedLink};
+          if(learnedLink){
+            await db.from("pokemon_cards")
+              .update({myp_price_link:learnedLink})
+              .eq("id",card.id);
+            fetchCard={...card,myp_price_link:learnedLink};
+          }
         }
       }
 
