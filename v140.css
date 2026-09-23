@@ -976,3 +976,65 @@ dialog.sheet-dialog:not([open]){
   .v1468-unpriced-thumb{width:46px;height:64px}
   .v1468-unpriced-open small{display:none}
 }
+
+
+/* V14.69 — cotação manual */
+.v1469-manual-price-button{
+  margin-top:7px!important;
+  width:100%;
+  border-color:#35414a!important;
+  background:#10161a!important;
+}
+.v1469-manual-price-button:hover{
+  border-color:#52616b!important;
+  background:#141c21!important;
+}
+.v1469-manual-price-dialog{
+  width:min(560px,calc(100vw - 24px));
+  max-width:560px;
+  margin:auto;
+  padding:0;
+  border:1px solid #2b353c;
+  border-radius:14px;
+  background:#0b1013;
+  color:#f2f5f6;
+  box-shadow:0 28px 90px rgba(0,0,0,.7);
+}
+.v1469-manual-price-dialog::backdrop{
+  background:rgba(0,0,0,.78);
+  backdrop-filter:blur(5px);
+}
+.v1469-manual-price-shell{
+  width:100%!important;
+  max-width:none!important;
+}
+.v1469-manual-price-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:9px;
+}
+.v1469-manual-price-dialog label{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  color:#8a959d;
+  font-size:8px;
+  font-weight:800;
+}
+.v1469-manual-price-dialog input{
+  width:100%;
+  min-height:38px;
+  border:1px solid #2a343a;
+  border-radius:9px;
+  background:#090e11;
+  color:#f4f6f7;
+  padding:8px 10px;
+  font-size:10px;
+}
+.v1469-manual-price-dialog input:focus{
+  outline:none;
+  border-color:#4e606b;
+}
+@media(max-width:620px){
+  .v1469-manual-price-grid{grid-template-columns:1fr}
+}
