@@ -46,14 +46,14 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1465api:'+String(apiId||'').trim();
+  const key='name-aliases:v1469:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/cards/'+encodeURIComponent(apiId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.64'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.69'}
         });
         return r.ok?await r.json():null;
       }catch{return null}
@@ -71,7 +71,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.64'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.69'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -160,30 +160,106 @@ function productUrlsFromText(raw,names=[]){
 }
 
 async function resolveSetMeta(apiId,setName,setId){
-  const key='set-meta:auto2:'+String(setId||apiId||setName||'');
+  const key='set-meta:v1469:'+String(setId||apiId||setName||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
+
   const names=[String(setName||'').trim()].filter(Boolean);
   let total=0;
+  let releaseDate='';
   if(setId){
-    try{
-      const r=await fetch('https://api.tcgdex.net/v2/en/sets/'+encodeURIComponent(setId),{
-        headers:{accept:'application/json','user-agent':'PokemonBinderBR/collection-index2'}
-      });
-      if(r.ok){
-        const d=await r.json();
-        const setLabel=String(d?.name||'').trim();
-        const serieLabel=String(d?.serie?.name||'').trim();
-        if(setLabel&&serieLabel)names.unshift(serieLabel+' '+setLabel);
-        if(setLabel)names.push(setLabel);
-        total=Number(d?.cardCount?.total||d?.cardCount?.official||0);
-      }
-    }catch{}
+    const rows=await Promise.all(['pt-br','en'].map(async locale=>{
+      try{
+        const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/sets/'+encodeURIComponent(setId),{
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.69'}
+        });
+        return r.ok?await r.json():null;
+      }catch{return null}
+    }));
+    for(const d of rows){
+      if(!d)continue;
+      const setLabel=String(d?.name||'').trim();
+      const serieLabel=String(d?.serie?.name||'').trim();
+      if(setLabel&&serieLabel)names.unshift(serieLabel+' '+setLabel);
+      if(setLabel)names.push(setLabel);
+      total=Math.max(total,Number(d?.cardCount?.total||d?.cardCount?.official||0));
+      if(!releaseDate&&d?.releaseDate)releaseDate=String(d.releaseDate);
+    }
   }
-  const value={total,slugs:[...new Set(names.map(slugify).filter(Boolean))]};
+
+  const aliases=[...new Set(names.map(normalize).filter(Boolean))];
+  const value={total,releaseDate,names:[...new Set(names.filter(Boolean))],aliases};
   CACHE.set(key,{value,expires:Date.now()+24*60*60*1000});
   return value;
 }
+
+function editionDirectoryCandidates(raw){
+  const source=decodeHtml(String(raw||''));
+  const out=[];
+  const seen=new Set();
+  const re=/(?:https?:\/\/(?:www\.)?mypcards\.com)?\/pokemon\/([a-z0-9][a-z0-9-]{2,})(?:[?\s"'<>)]|$)/gi;
+  const blocked=new Set(['produto','edicoes','selados','acessorios','promocoes','ultimos-anuncios','deck-lote-set','cartas-graduadas']);
+  for(const m of source.matchAll(re)){
+    const slug=String(m[1]||'').toLowerCase();
+    if(blocked.has(slug))continue;
+    let url=ROOT+'/pokemon/'+slug;
+    if(seen.has(url))continue;
+    seen.add(url);
+    const pos=m.index||0;
+    const context=stripTags(source.slice(Math.max(0,pos-320),Math.min(source.length,pos+520)));
+    out.push({url,slug,context});
+  }
+  return out;
+}
+
+function scoreEditionCandidate(candidate,meta,setName,setId){
+  const hay=normalize(candidate?.context||'');
+  const slug=normalize(candidate?.slug||'');
+  let score=0;
+  const aliases=[...(meta?.aliases||[]),normalize(setName)].filter(Boolean);
+  for(const alias of aliases){
+    if(hay===alias||slug===alias)score=Math.max(score,1200);
+    else if(hay.includes(alias)||slug.includes(alias))score=Math.max(score,900);
+    else{
+      const words=alias.split(/\s+/).filter(x=>x.length>2);
+      const shared=words.filter(x=>hay.includes(x)||slug.includes(x)).length;
+      score=Math.max(score,shared*120);
+    }
+  }
+  const sid=normalize(setId);
+  if(sid&&hay.includes(sid))score+=300;
+  if(meta?.releaseDate&&hay.includes(meta.releaseDate.slice(0,4)))score+=80;
+  return score;
+}
+
+async function mypEditionUrl({apiId,setId,set}){
+  const meta=await resolveSetMeta(apiId,set,setId);
+  const key='myp-edition:v1469:'+String(setId||set||'');
+  const cached=CACHE.get(key);
+  if(cached&&cached.expires>Date.now())return cached.value;
+
+  let best=null;
+  const batches=[[1,2,3],[4,5,6],[7,8,9]];
+  for(const pages of batches){
+    const results=await Promise.all(pages.map(async page=>{
+      try{
+        const url=ROOT+'/pokemon/edicoes?page='+page+'&per-page=48';
+        return await fetchJina(url,9000);
+      }catch{return''}
+    }));
+    for(const raw of results){
+      for(const candidate of editionDirectoryCandidates(raw)){
+        const score=scoreEditionCandidate(candidate,meta,set,setId);
+        if(!best||score>best.score)best={...candidate,score};
+      }
+    }
+    if(best?.score>=800)break;
+  }
+  const value=best?.score>=360?best.url:'';
+  CACHE.set(key,{value,expires:Date.now()+24*60*60*1000});
+  return value;
+}
+
 function textHasCollectorNumber(text,wantedNumber){
   const wanted=numberParts(wantedNumber);
   if(!wanted.n)return false;
@@ -224,35 +300,33 @@ function collectionProductCandidatesFromText(raw,wantedNumber,names=[]){
   }
   return found;
 }
-async function collectionPageText(slug,page){
-  const key='collection-page:auto2:'+slug+':'+page;
+async function collectionPageText(editionUrl,page){
+  const key='collection-page:v1469:'+editionUrl+':'+page;
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
-  const url=ROOT+'/pokemon/'+slug+'?page='+page+'&sort=-codigoproduto';
-  // A listagem da coleção é pública e o Reader evita gastar o orçamento
-  // esperando o desafio Cloudflare antes de cair em fallback.
-  const value=await fetchJina(url,12000);
+  const join=editionUrl.includes('?')?'&':'?';
+  const url=editionUrl+join+'page='+page+'&per-page=48&sort=-codigoproduto';
+  const value=await fetchJina(url,10000);
   CACHE.set(key,{value,expires:Date.now()+30*60*1000});
   return value;
 }
+
 async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliases=[]}){
   const meta=await resolveSetMeta(apiId,set,setId);
-  const np=numberParts(number);
-  const collector=/^\d+$/.test(np.n)?Number(np.n):0;
-  let estimated=1;
-  if(meta.total&&collector)estimated=Math.max(1,Math.floor(Math.max(0,meta.total-collector)/30)+1);
-  const pages=[estimated];
-  if(estimated>1)pages.push(estimated-1);
-  pages.push(estimated+1);
-  const names=[name,...nameAliases].filter(Boolean);
+  const editionUrl=await mypEditionUrl({apiId,setId,set});
+  if(!editionUrl)return[];
 
-  for(const slug of meta.slugs.slice(0,3)){
-    for(const page of [...new Set(pages)].slice(0,3)){
-      try{
-        const body=await collectionPageText(slug,page);
-        const urls=collectionProductCandidatesFromText(body,number,names);
-        if(urls.length)return urls.slice(0,6);
-      }catch{}
+  const names=[name,...nameAliases].filter(Boolean);
+  const maxPages=Math.max(1,Math.min(8,Math.ceil(Math.max(48,meta.total||240)/48)));
+  const pages=Array.from({length:maxPages},(_,i)=>i+1);
+
+  for(let i=0;i<pages.length;i+=3){
+    const chunk=pages.slice(i,i+3);
+    const bodies=await Promise.all(chunk.map(page=>collectionPageText(editionUrl,page).catch(()=>'')));
+    for(const body of bodies){
+      if(!body)continue;
+      const urls=collectionProductCandidatesFromText(body,number,names);
+      if(urls.length)return urls.slice(0,6);
     }
   }
   return[];
@@ -290,7 +364,7 @@ async function familySeedCandidates(wanted){
 
 async function sitemapCandidates(name){
   const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
-  const key='sitemap:v1465api:'+wantedCompact,cached=CACHE.get(key);
+  const key='sitemap:v1469:'+wantedCompact,cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const matches=[];
   let root;
