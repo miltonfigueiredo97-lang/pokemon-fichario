@@ -1037,6 +1037,29 @@
           id:'mep',label:'Promos 30th · produtos 2026',all:true,jumbo:true,
           only:['94','95','96','97','98','99','100','101','102','103','104','105','106','107','108','109']
         }
+      ],
+      syntheticEntries:[
+        {
+          apiId:'30th-rgb-r',name:'Mew',number:'R/RGB',printedTotal:'',setId:'30th',setName:'30th Celebration',
+          seriesName:'30º Aniversário',releaseDate:'2026',rarity:'RGB',type:'Pokémon',category:'Pokémon',hp:60,imageUrl:'',
+          variantKey:'rgb-red',variantLabel:'RGB Mew · Red · extra não listado',finish:'Especial',variantOrder:6,
+          variantType:'special',variantFoil:'rgb-red',variantSubtype:'',variantStamps:[],variantSize:'standard',
+          source:'Anniversary extra',languageCode:'en',language:'Inglês',anniversaryExtra:true,anniversaryUnlisted:true
+        },
+        {
+          apiId:'30th-rgb-g',name:'Mew',number:'G/RGB',printedTotal:'',setId:'30th',setName:'30th Celebration',
+          seriesName:'30º Aniversário',releaseDate:'2026',rarity:'RGB',type:'Pokémon',category:'Pokémon',hp:60,imageUrl:'',
+          variantKey:'rgb-green',variantLabel:'RGB Mew · Green · extra não listado',finish:'Especial',variantOrder:6,
+          variantType:'special',variantFoil:'rgb-green',variantSubtype:'',variantStamps:[],variantSize:'standard',
+          source:'Anniversary extra',languageCode:'en',language:'Inglês',anniversaryExtra:true,anniversaryUnlisted:true
+        },
+        {
+          apiId:'30th-rgb-b',name:'Mew',number:'B/RGB',printedTotal:'',setId:'30th',setName:'30th Celebration',
+          seriesName:'30º Aniversário',releaseDate:'2026',rarity:'RGB',type:'Pokémon',category:'Pokémon',hp:60,imageUrl:'',
+          variantKey:'rgb-blue',variantLabel:'RGB Mew · Blue · extra não listado',finish:'Especial',variantOrder:6,
+          variantType:'special',variantFoil:'rgb-blue',variantSubtype:'',variantStamps:[],variantSize:'standard',
+          source:'Anniversary extra',languageCode:'en',language:'Inglês',anniversaryExtra:true,anniversaryUnlisted:true
+        }
       ]
     }
   ];
@@ -1269,6 +1292,12 @@
             seen.add(key);
             combined.push(entry);
           }
+        }
+        for(const entry of complete.syntheticEntries||[]){
+          const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+          if(seen.has(key))continue;
+          seen.add(key);
+          combined.push({...entry});
         }
         j={
           ok:true,
