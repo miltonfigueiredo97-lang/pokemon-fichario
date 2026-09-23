@@ -982,6 +982,9 @@ module.exports=async function handler(req,res){
         finish:market?.finish??finish,
         condition:market?.condition??condition,
         diagnostics:market?.diagnostics??[],
+        paginationDiagnostics:market?.paginationDiagnostics??[],
+        realPagination:market?.realPagination??[],
+        relatedError:market?.relatedError??null,
         message:market?.message||'A página conhecida não retornou a variante solicitada.'
       });
     }catch(error){
