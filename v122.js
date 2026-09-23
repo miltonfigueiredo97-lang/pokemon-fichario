@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.74';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.75';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.75',title:'Fila de cotações acelerada',items:[
+      'O worker processa até 16 cartas por rodada em paralelo, em vez de 6.',
+      'Timeout rápido caiu para 15 segundos e o pesado para 38 segundos.',
+      'Retries agora voltam em 30–60 segundos, sem pausas de 2–4 minutos.',
+      'A varredura de recuperação roda a cada 15 minutos, em vez de a cada 2 horas.',
+      'Cartas com link MYP conhecido evitam buscas pesadas desnecessárias.'
+    ]},
     {version:'V14.74',title:'Status de cotação sincronizado com a fila',items:[
       'O popup Sem cotação salva agora mostra NA FILA ou ATUALIZANDO como estado atual.',
       'Erros antigos aparecem apenas como última tentativa e não substituem o estado da fila.',
