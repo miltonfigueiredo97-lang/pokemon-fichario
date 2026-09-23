@@ -2,7 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='24';
+const MASTER_ALGO_VERSION='25';
 const SPECIAL_MASTER_ORIGINAL_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
@@ -249,7 +249,15 @@ module.exports=async function handler(req,res){
   res.setHeader('Cache-Control','s-maxage=3600, stale-while-revalidate=86400');
   const lang=apiLang(req.query.lang),setId=String(req.query.set||'').trim();
   if(!setId)return res.status(400).json({ok:false,error:'set_required'});
-  const cacheKey=MASTER_ALGO_VERSION+'|'+lang+'|'+setId;
+  const includeAllPhysical=['1','true','yes','all'].includes(String(req.query.all||'').toLowerCase());
+  const includeJumbo=['1','true','yes'].includes(String(req.query.jumbo||'').toLowerCase());
+  const onlyRaw=String(req.query.only||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const onlyKey=v=>{
+    const raw=String(v||'').trim().toUpperCase();
+    return /^\d+$/.test(raw)?String(Number(raw)):raw;
+  };
+  const onlySet=new Set(onlyRaw.map(onlyKey));
+  const cacheKey=MASTER_ALGO_VERSION+'|'+lang+'|'+setId+'|all='+(includeAllPhysical?'1':'0')+'|jumbo='+(includeJumbo?'1':'0')+'|only='+[...onlySet].sort().join(',');
   const cached=CACHE.get(cacheKey);
   if(cached&&Date.now()-cached.at<3600000)return res.status(200).json(cached.value);
   try{
@@ -292,6 +300,16 @@ module.exports=async function handler(req,res){
       });
     }
 
+    if(onlySet.size){
+      list=list.filter(item=>{
+        const explicit=String(item?.localId||'').trim();
+        const id=String(item?.id||'');
+        const prefix=String(set.id||setId)+'-';
+        const suffix=id.startsWith(prefix)?id.slice(prefix.length):id.split('-').pop();
+        return [explicit,suffix,id].some(v=>onlySet.has(onlyKey(v)));
+      });
+    }
+
     const details=await pool(list,18,async item=>{
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
       if(preferred)return {...preferred,__variantLang:lang};
@@ -317,7 +335,9 @@ module.exports=async function handler(req,res){
       const rawVariants=rawByCard[i];
       const anniversaryClassic=['cel25cc','30th-c'].includes(String(set.id||setId));
       let variants;
-      if(anniversaryClassic){
+      if(includeAllPhysical){
+        variants=rawVariants.filter(v=>includeJumbo||slug(v.size)!=='jumbo');
+      }else if(anniversaryClassic){
         const standard=rawVariants.filter(v=>slug(v.size)!=='jumbo').sort((a,b)=>a.order-b.order);
         const chosen=standard.find(v=>v.type==='holo')||standard.find(v=>v.type==='normal')||standard[0];
         variants=chosen?[chosen]:[];
@@ -356,6 +376,7 @@ module.exports=async function handler(req,res){
           variantFoil:variant.foil||'',
           variantSubtype:variant.subtype||'',
           variantStamps:variant.stamp||[],
+          variantSize:variant.size||'standard',
           source:'TCGdex',
           languageCode:lang==='pt'?'pt-br':lang,
           language:lang==='pt'?'Português':lang==='ja'?'Japonês':'Inglês'
@@ -383,6 +404,9 @@ module.exports=async function handler(req,res){
     if(String(req.query.debug||'')==='1'){
       value.debug={
         expectedCount,
+        includeAllPhysical,
+        includeJumbo,
+        only:[...onlySet],
         listLength:list.length,
         detailsLength:details.length,
         rawNonEmpty:rawByCard.filter(x=>x.length).length,
