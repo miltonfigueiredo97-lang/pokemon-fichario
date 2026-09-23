@@ -45,7 +45,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.86"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.87"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.86"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.87"},
             signal:controller.signal
           });
           if(r.ok){
@@ -133,7 +133,20 @@ async function mypCardSlug(card:any){
     }
   }
   if(!name)name=String(card?.name||"");
-  const slug=mypSlug(name)||"card";
+
+  const combined=String([name,card?.name].filter(Boolean).join(" "))
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase();
+  let slug="";
+  if((lang==="pt-br"||lang==="pt")
+    &&/\b(?:energy|energia)\b/.test(combined)
+    &&/\b(?:psychic|psiquic[ao])\b/.test(combined)){
+    // A MYP usa o título localizado "Energia Psíquica" para esta família,
+    // mesmo quando APIs externas retornam "Basic Psychic Energy".
+    slug="energia-psiquica";
+  }
+  if(!slug)slug=mypSlug(name)||"card";
+
   englishSlugCache.set(key,{slug,expires:Date.now()+24*60*60_000});
   return slug;
 }
@@ -324,10 +337,15 @@ Deno.serve(async(req:Request)=>{
             .eq("id",card.id);
           fetchCard={...card,myp_price_link:siblingLink};
         }else{
-          // Sem uma variante irmã com URL MYP já validada, NÃO fabrique URL
-          // a partir de sequência de IDs + slug. A API conhece coleção/número
-          // e faz a descoberta canônica sem depender do nome localizado.
-          learnedLink="";
+          learnedLink=await learnedMypLink(db,card).catch(()=> "");
+          if(learnedLink){
+            // A sequência só é aceita quando várias páginas validadas concordam.
+            // A API ainda valida a página real antes de aceitar qualquer preço.
+            await db.from("pokemon_cards")
+              .update({myp_price_link:learnedLink})
+              .eq("id",card.id);
+            fetchCard={...card,myp_price_link:learnedLink};
+          }
         }
       }
 
