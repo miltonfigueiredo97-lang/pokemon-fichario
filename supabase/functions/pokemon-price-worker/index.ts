@@ -45,7 +45,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.88"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.89"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.88"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.89"},
             signal:controller.signal
           });
           if(r.ok){
@@ -216,6 +216,14 @@ async function learnedMypLink(db:any,card:any){
   return "https://mypcards.com/pokemon/produto/"+String(productId)+"/"+slug;
 }
 
+function requiresExactMewPtBrVariant(card:any){
+  const setId=String(card?.set_id||"").trim().toLowerCase();
+  const lang=String(card?.language_code||"").trim().toLowerCase();
+  const finish=String(card?.finish||"Normal").trim().toLowerCase();
+  return ["sv03.5","sv3.5"].includes(setId)
+    && ["pt-br","pt"].includes(lang)
+    && finish!=="normal";
+}
 function hasMarketPrice(m:any){return !!(m&&(num(m.min)||num(m.avg)||num(m.max)))}
 function choosePrimary(liga:any,myp:any){
   if(hasMarketPrice(liga)&&num(liga.avg)>0)return{market:liga,source:"Liga Pokémon"};
@@ -257,7 +265,7 @@ async function fetchMarkets(card:any){
   // A MYP nem sempre rotula Reverse/Foil nas ofertas da mesma impressão.
   // Com produto conhecido, tente o mercado padrão da MESMA página: primeiro
   // Reader rápido; se falhar, faça a consulta completa antes de desistir.
-  if(!hasMarketPrice(myp)&&hasMypLink&&String(card.finish||"Normal").toLowerCase()!=="normal"){
+  if(!hasMarketPrice(myp)&&hasMypLink&&String(card.finish||"Normal").toLowerCase()!=="normal"&&!requiresExactMewPtBrVariant(card)){
     const err=String(myp?.error||"");
     if(["variant_not_found","no_price_data","browser_error","fast_no_price","timeout","fast_timeout","fast_unavailable"].includes(err)){
       const genericCard={...card,finish:"Normal"};
