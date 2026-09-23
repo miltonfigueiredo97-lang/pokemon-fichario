@@ -146,6 +146,55 @@ function sameMypProduct(a,b){
   const aa=mypProductId(a),bb=mypProductId(b);
   return !!(aa&&bb&&aa===bb);
 }
+function productUrlByIdFromText(raw,productId){
+  const id=Number(productId||0);
+  if(!id)return'';
+  const source=decodeHtml(String(raw||''));
+  const re=new RegExp('(?:https?:\\/\\/(?:www\\.)?mypcards\\.com)?\\/pokemon\\/produto\\/'+id+'\\/[A-Za-z0-9%_\\-]+','i');
+  const m=source.match(re);
+  if(!m)return'';
+  let url=String(m[0]||'');
+  if(url.startsWith('/'))url=ROOT+url;
+  try{
+    const u=new URL(url);
+    return u.protocol+'//'+u.host+u.pathname;
+  }catch{return''}
+}
+async function canonicalizeKnownProductLink({link,apiId,setId,set,number,name,nameAliases=[]}){
+  const safe=safeMypProductUrl(link);
+  const id=mypProductId(safe);
+  if(!safe||!id)return safe;
+
+  // 1) A própria busca exata da edição pode revelar o slug canônico do mesmo ID.
+  try{
+    const editionUrl=await mypEditionUrl({apiId,setId,set});
+    if(editionUrl){
+      const join=editionUrl.includes('?')?'&':'?';
+      const queries=[number,...[name,...nameAliases].filter(Boolean).map(n=>[n,number].filter(Boolean).join(' '))]
+        .map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
+      for(const query of queries){
+        try{
+          const body=await fetchJina(editionUrl+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query),8000);
+          const canonical=productUrlByIdFromText(body,id);
+          if(canonical)return canonical;
+        }catch{}
+      }
+    }
+  }catch{}
+
+  // 2) Busca global pelo número, sem confiar no slug/nome localizado.
+  try{
+    const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
+    for(const query of [[number,setCode].filter(Boolean).join(' '),number].filter(Boolean)){
+      const searchUrl=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+      const body=await fetchJina(searchUrl,8000);
+      const canonical=productUrlByIdFromText(body,id);
+      if(canonical)return canonical;
+    }
+  }catch{}
+
+  return safe;
+}
 function aliasCompactKeys(names){
   return [...new Set((names||[]).map(name=>slugify(name).replace(/-/g,'')).filter(Boolean))];
 }
@@ -176,7 +225,7 @@ function productUrlsFromText(raw,names=[]){
 }
 
 async function resolveSetMeta(apiId,setName,setId){
-  const key='set-meta:v1470:'+String(setId||apiId||setName||'');
+  const key='set-meta:v1482:'+String(setId||apiId||setName||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
 
@@ -234,8 +283,9 @@ function scoreEditionCandidate(candidate,meta,setName,setId){
   let score=0;
   const aliases=[...(meta?.aliases||[]),normalize(setName)].filter(Boolean);
   for(const alias of aliases){
-    if(hay===alias||slug===alias)score=Math.max(score,1200);
-    else if(hay.includes(alias)||slug.includes(alias))score=Math.max(score,900);
+    const aliasIsGeneric=/^\d+$/.test(alias)||alias.length<4;
+    if(hay===alias||slug===alias)score=Math.max(score,aliasIsGeneric?260:1200);
+    else if(hay.includes(alias)||slug.includes(alias))score=Math.max(score,aliasIsGeneric?180:900);
     else{
       const words=alias.split(/\s+/).filter(x=>x.length>2);
       const shared=words.filter(x=>hay.includes(x)||slug.includes(x)).length;
@@ -245,12 +295,14 @@ function scoreEditionCandidate(candidate,meta,setName,setId){
   const sid=normalize(setId);
   if(sid&&hay.includes(sid))score+=300;
   if(meta?.releaseDate&&hay.includes(meta.releaseDate.slice(0,4)))score+=80;
+  if(/^\d+$/.test(String(candidate?.slug||'')))score-=220;
+  else if(String(candidate?.slug||'').includes('-'))score+=120;
   return score;
 }
 
 async function mypEditionUrl({apiId,setId,set}){
   const meta=await resolveSetMeta(apiId,set,setId);
-  const key='myp-edition:v1470:'+String(setId||set||'');
+  const key='myp-edition:v1482:'+String(setId||set||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
 
@@ -711,8 +763,11 @@ module.exports=async function handler(req,res){
   if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  const directLink=safeMypProductUrl(link);
+  let directLink=safeMypProductUrl(link);
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
+  if(directLink){
+    directLink=await canonicalizeKnownProductLink({link:directLink,apiId,setId,set,number,name,nameAliases});
+  }
   const browserSeedLink=directLink;
 
   if(String(req.query.actorOnly||'')==='1'){
