@@ -687,6 +687,27 @@ module.exports=async function handler(req,res){
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
   const browserSeedLink=directLink;
 
+  if(String(req.query.actorOnly||'')==='1'){
+    if(!process.env.APIFY_API_TOKEN){
+      return res.status(200).json({ok:false,error:'apify_not_configured'});
+    }
+    try{
+      const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
+      return res.status(200).json({
+        ok:hasAnyMarket(found),
+        source:'MYP Cards',
+        provider:'Apify actor only',
+        name,number,set,setId,finish,condition,
+        ...found
+      });
+    }catch(error){
+      return res.status(200).json({
+        ok:false,error:error?.name==='AbortError'?'timeout':String(error?.code||error?.message||'apify_error'),
+        provider:'Apify actor only'
+      });
+    }
+  }
+
   // Atualização manual de uma única carta: nunca prende a interface por
   // Chromium/Apify. Se já sabemos a página da MYP, tentamos uma leitura direta
   // via Reader por poucos segundos. Se não der, a carta permanece na fila
