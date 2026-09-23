@@ -46,17 +46,21 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1470:'+String(apiId||'').trim();
+  const key='name-aliases:v1475:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),3500);
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/cards/'+encodeURIComponent(apiId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.70'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.75'},
+          signal:controller.signal
         });
         return r.ok?await r.json():null;
       }catch{return null}
+      finally{clearTimeout(timer)}
     }));
     for(const d of rows)if(d?.name)aliases.push(String(d.name).trim());
   }
@@ -664,8 +668,8 @@ module.exports=async function handler(req,res){
   if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  const nameAliases=await resolveNameAliases(name,apiId);
   const directLink=safeMypProductUrl(link);
+  const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
   const browserSeedLink=directLink;
 
   // Atualização manual de uma única carta: nunca prende a interface por
@@ -757,7 +761,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1474sellerpages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1475fast:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -864,7 +868,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1474sellerpages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1475fast:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
