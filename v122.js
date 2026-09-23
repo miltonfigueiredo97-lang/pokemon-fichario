@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.73';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.74';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.74',title:'Status de cotação sincronizado com a fila',items:[
+      'O popup Sem cotação salva agora mostra NA FILA ou ATUALIZANDO como estado atual.',
+      'Erros antigos aparecem apenas como última tentativa e não substituem o estado da fila.',
+      'O worker salva o link MYP aprendido pela variante irmã mesmo se a leitura do preço falhar.',
+      'O autorreparo periódico continua reenfileirando automaticamente cartas ainda sem cotação.'
+    ]},
     {version:'V14.73',title:'Autorreparo contínuo de cotações',items:[
       'Cartas sem cotação não ficam mais abandonadas após o limite de tentativas.',
       'Uma varredura automática reenfileira periodicamente cartas sem preço para novas tentativas.',
