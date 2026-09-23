@@ -479,13 +479,8 @@ module.exports=async function handler(req,res){
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
   const nameAliases=await resolveNameAliases(name,apiId);
-  let directLink=safeMypProductUrl(link);
-  let browserSeedLink=directLink;
-  if(!browserSeedLink&&!fast){
-    const seeds=await familySeedCandidates({name,nameAliases,number,set,setId,apiId}).catch(()=>[]);
-    browserSeedLink=seeds[0]||'';
-    if(browserSeedLink)directLink=browserSeedLink;
-  }
+  const directLink=safeMypProductUrl(link);
+  const browserSeedLink=directLink;
 
   // Atualização manual de uma única carta: nunca prende a interface por
   // Chromium/Apify. Se já sabemos a página da MYP, tentamos uma leitura direta
@@ -574,7 +569,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1466api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1467api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -639,7 +634,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1466api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1467api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
