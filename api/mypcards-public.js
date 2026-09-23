@@ -367,18 +367,26 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
-  const queries=[...new Set(names.flatMap(n=>[
-    [n,number,setCode].filter(Boolean).join(' '),
-    [n,number].filter(Boolean).join(' '),
-    [n,setCode].filter(Boolean).join(' '),
-    n
-  ]))].slice(0,6);
+  // Número + coleção primeiro. A MYP pode abreviar/localizar o nome do produto
+  // (ex.: Venomoth aparece como "Ven"), mas o número da impressão continua estável.
+  const queries=[...new Set([
+    [number,setCode].filter(Boolean).join(' '),
+    number,
+    ...names.flatMap(n=>[
+      [n,number,setCode].filter(Boolean).join(' '),
+      [n,number].filter(Boolean).join(' '),
+      [n,setCode].filter(Boolean).join(' '),
+      n
+    ])
+  ].map(x=>String(x||'').trim()).filter(Boolean))].slice(0,8);
   const urls=[];
   for(const query of queries){
     try{
       const searchUrl=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
       const body=await fetchText(searchUrl,9000);
-      urls.push(...productUrlsFromText(body,names));
+      // Para buscas por número, não filtre o candidato pelo slug/nome.
+      const byNumber=query===number||query===[number,setCode].filter(Boolean).join(' ');
+      urls.push(...productUrlsFromText(body,byNumber?[]:names));
       if(urls.length>=8)break;
     }catch{}
   }
