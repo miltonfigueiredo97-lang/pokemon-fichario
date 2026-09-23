@@ -45,7 +45,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.87"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.88"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.87"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.88"},
             signal:controller.signal
           });
           if(r.ok){
@@ -149,6 +149,17 @@ async function mypCardSlug(card:any){
 
   englishSlugCache.set(key,{slug,expires:Date.now()+24*60*60_000});
   return slug;
+}
+
+async function canonicalMew151Link(card:any){
+  const setId=String(card?.set_id||"").trim().toLowerCase();
+  const lang=String(card?.language_code||"").trim().toLowerCase();
+  if(!["sv03.5","sv3.5"].includes(setId)||!["pt-br","pt"].includes(lang))return"";
+  const collector=collectorNumber(card?.number);
+  if(collector<1||collector>207)return"";
+  const productId=205873+collector;
+  const slug=await mypCardSlug(card).catch(()=> "card");
+  return "https://mypcards.com/pokemon/produto/"+String(productId)+"/"+(slug||"card");
 }
 
 async function learnedMypLink(db:any,card:any){
@@ -327,7 +338,19 @@ Deno.serve(async(req:Request)=>{
       ].map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v))||"";
       let learnedLink="";
       let siblingLink="";
-      if(!existingMyp){
+      const canonical151Link=await canonicalMew151Link(card).catch(()=> "");
+      if(canonical151Link){
+        // A edição brasileira MEW tem mapeamento MYP determinístico:
+        // produto 205873 + número do colecionador. Ele prevalece até sobre um
+        // link antigo já salvo, evitando contaminação por SV2A, League Promo,
+        // Metal Card ou outra impressão com o mesmo nome/número.
+        if(mypProductId(existingMyp)!==mypProductId(canonical151Link)){
+          await db.from("pokemon_cards")
+            .update({myp_price_link:canonical151Link})
+            .eq("id",card.id);
+        }
+        fetchCard={...card,myp_price_link:canonical151Link};
+      }else if(!existingMyp){
         siblingLink=await siblingMypLink(db,card).catch(()=> "");
         if(siblingLink){
           // Mesmo produto / mesma coleção / mesmo número: preserve o link
