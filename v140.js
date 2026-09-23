@@ -1183,6 +1183,9 @@
     });
     entries=transformAnniversaryComponent(entries,spec);
     entries=ensureAnniversaryJumbos(entries,spec);
+    if(spec.required&&!entries.length){
+      throw new Error((spec.label||spec.id)+' retornou 0 cartas no idioma selecionado. O Master Set foi bloqueado para não criar uma coleção incompleta.');
+    }
     return {...data,entries,__spec:spec};
   }
 
@@ -1326,7 +1329,8 @@
           components:parts.map(x=>({
             id:x.set?.id||x.__spec?.id,
             name:x.__spec?.label||x.set?.name||x.__spec?.id,
-            entries:Array.isArray(x.entries)?x.entries.length:0
+            entries:Array.isArray(x.entries)?x.entries.length:0,
+            uniqueCards:new Set((x.entries||[]).map(e=>e.apiId)).size
           })),
           anniversaryWarnings:warnings
         };
@@ -1344,7 +1348,10 @@
       V14.masterPreview={...j,owned:new Set(),lang,displaySetName:complete?.label||selectedLabel||j.set.name};
       byId('v14MasterTitle').textContent=V14.masterPreview.displaySetName;
       const componentText=complete?(complete.summaryLabels||[]).join(' + '):'';
-      byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,componentText,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
+      const componentBreakdown=complete&&Array.isArray(j.components)
+        ?j.components.filter(c=>c.entries>0).map(c=>c.name+': '+c.entries).join(' · ')
+        :'';
+      byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,componentText,componentBreakdown,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
       const notice=byId('v14PromoNotice');
       if(notice){
         if(complete){
