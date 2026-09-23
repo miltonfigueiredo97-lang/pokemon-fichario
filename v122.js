@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.58';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.59';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.59',title:'Fila automática de preços corrigida',items:[
+      'A MYP não usa mais Outras Edições da página para decidir o idioma e a coleção da carta atual.',
+      'MEW PT-BR deixa de ser rejeitada só porque a página também cita SV2A/Japonês em outras impressões.',
+      'ATUALIZANDO agora aparece somente quando o worker realmente está processando a carta; fila passa a aparecer como NA FILA.',
+      'Caches antigos de wrong_product foram invalidados para a fila reaprender com a lógica corrigida.'
+    ]},
     {version:'V14.58',title:'Amigos dentro do Resumo',items:[
       'Amigos agora aparece no mesmo bloco lateral de Preços, Planilhas e backup, Exportar e imprimir e Configurações.',
       'Ao expandir Amigos, Buscar usuários é a primeira seção exibida, seguida de pedidos e lista de amigos.',
