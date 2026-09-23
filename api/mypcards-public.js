@@ -160,12 +160,65 @@ function productUrlByIdFromText(raw,productId){
     return u.protocol+'//'+u.host+u.pathname;
   }catch{return''}
 }
+async function sitemapProductById(productId){
+  const id=Number(productId||0);
+  if(!id)return'';
+  const key='sitemap-product-id:v1484:'+id;
+  const cached=CACHE.get(key);
+  if(cached&&cached.expires>Date.now())return cached.value;
+
+  const needle='/pokemon/produto/'+id+'/';
+  let root='';
+  try{root=await fetchText(ROOT+'/sitemap.xml',9000)}catch{return''}
+
+  const pick=text=>{
+    const urls=xmlLocs(text);
+    return urls.find(url=>String(url).includes(needle))||'';
+  };
+  let found=pick(root);
+  if(found){
+    found=safeMypProductUrl(found);
+    if(found)CACHE.set(key,{value:found,expires:Date.now()+24*60*60*1000});
+    return found;
+  }
+
+  const childMaps=xmlLocs(root).filter(url=>/\.xml(?:\?|$)/i.test(url));
+  const ordered=[
+    ...childMaps.filter(url=>/pokemon|produto|product|card/i.test(url)),
+    ...childMaps.filter(url=>!/pokemon|produto|product|card/i.test(url))
+  ];
+  for(let i=0;i<ordered.length;i+=6){
+    const chunk=ordered.slice(i,i+6);
+    const bodies=await Promise.all(chunk.map(async url=>{
+      try{return await fetchText(url,9000)}catch{return''}
+    }));
+    for(const body of bodies){
+      if(!body||!body.includes(String(id)))continue;
+      found=pick(body);
+      if(found){
+        found=safeMypProductUrl(found);
+        if(found){
+          CACHE.set(key,{value:found,expires:Date.now()+24*60*60*1000});
+          return found;
+        }
+      }
+    }
+  }
+  return'';
+}
+
 async function canonicalizeKnownProductLink({link,apiId,setId,set,number,name,nameAliases=[]}){
   const safe=safeMypProductUrl(link);
   const id=mypProductId(safe);
   if(!safe||!id)return safe;
 
-  // 1) A própria busca exata da edição pode revelar o slug canônico do mesmo ID.
+  // 1) O sitemap identifica o produto pelo ID, sem depender de nome/idioma.
+  try{
+    const sitemapUrl=await sitemapProductById(id);
+    if(sitemapUrl)return sitemapUrl;
+  }catch{}
+
+  // 2) A própria busca exata da edição pode revelar o slug canônico do mesmo ID.
   try{
     const editionUrl=await mypEditionUrl({apiId,setId,set});
     if(editionUrl){
@@ -182,7 +235,7 @@ async function canonicalizeKnownProductLink({link,apiId,setId,set,number,name,na
     }
   }catch{}
 
-  // 2) Busca global pelo número, sem confiar no slug/nome localizado.
+  // 3) Busca global pelo número, sem confiar no slug/nome localizado.
   try{
     const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
     for(const query of [[number,setCode].filter(Boolean).join(' '),number].filter(Boolean)){
