@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.64';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.66';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.66',title:'Painel de auditoria das cartas sem cotação',items:[
+      'Novo bloco Sem cotação no Resumo, logo abaixo de Preços.',
+      'O bloco mostra a quantidade exata de cartas sem qualquer cotação brasileira salva no fichário atual.',
+      'Ao abrir, exibe a lista carta por carta com coleção, número, acabamento e motivo da última falha.',
+      'Clicar em uma entrada abre diretamente a carta para conferência individual.',
+      'O contador é atualizado automaticamente quando as cotações mudam.'
+    ]},
     {version:'V14.64',title:'Busca MYP rápida com alias inglês prioritário',items:[
       'Aliases diferentes do nome salvo são pesquisados primeiro, permitindo localizar páginas inglesas de cartas PT-BR.',
       'A busca começa pelo nome simples e só depois adiciona número/coleção, evitando consultas excessivamente restritas.',

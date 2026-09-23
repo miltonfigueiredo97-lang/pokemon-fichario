@@ -1573,6 +1573,7 @@
     if(byId('v14BinderViewScope'))byId('v14BinderViewScope').value=binderViewScope();
     if(byId('totalValueLabel'))byId('totalValueLabel').textContent='Valor '+priceModeLabel(currentPriceMode())+' · '+scopeLabel;
     if(byId('totalValue'))byId('totalValue').textContent=money(value);
+    renderUnpricedAuditV1466();
   }
 
   function setStatusFilterV14(status){
@@ -3162,11 +3163,143 @@
   }
   window.openPokemonFriends=openFriendsSummaryV14;
 
+  function hasBrazilQuoteV1466(card){
+    return [
+      card?.price_min,card?.price_avg,card?.price_max,
+      card?.myp_price_min,card?.myp_price_avg,card?.myp_price_max,
+      card?.liga_price_min,card?.liga_price_avg,card?.liga_price_max
+    ].some(v=>Number(v||0)>0);
+  }
+
+  function unpricedCardsV1466(){
+    let cards;
+    if(isGeneral())cards=[...V14.allCards];
+    else if(isFavorites())cards=V14.allCards.filter(c=>!!c.is_favorite);
+    else cards=V14.allCards.filter(c=>String(c.binder_id||'')===String(V14.activeBinderId||''));
+    return cards
+      .filter(c=>!hasBrazilQuoteV1466(c))
+      .sort((a,b)=>{
+        const set=String(a.set_name||'').localeCompare(String(b.set_name||''),'pt-BR');
+        if(set)return set;
+        const an=numberValue(a.number),bn=numberValue(b.number);
+        if(an!==bn)return an-bn;
+        return String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
+      });
+  }
+
+  function priceProblemTextV1466(card){
+    if(card?.price_processing_at)return 'Processando agora';
+    const raw=String(card?.price_last_error||'').trim();
+    const parts=raw.split('|').map(x=>x.trim()).filter(Boolean);
+    const friendly=parts.map(part=>{
+      const pair=part.split(':');
+      const source=pair.length>1?pair.shift():'';
+      const code=pair.join(':')||part;
+      const label=({
+        timeout:'tempo esgotado',
+        not_found:'não encontrada',
+        product_not_found:'produto não encontrado',
+        wrong_product:'produto/link incorreto',
+        variant_not_found:'acabamento/condição não encontrado',
+        no_price_data:'sem ofertas válidas',
+        price_connector_unavailable:'conector indisponível',
+        cloudflare_blocked:'bloqueio Cloudflare',
+        browser_error:'erro no navegador',
+        upstream_error:'erro na consulta',
+        fast_timeout:'tempo esgotado',
+        fast_unavailable:'consulta indisponível'
+      })[code]||code.replace(/_/g,' ');
+      return (source?source.toUpperCase()+': ':'')+label;
+    });
+    if(friendly.length)return friendly.join(' · ');
+    if(card?.price_pending)return 'Na fila para nova tentativa';
+    if(Number(card?.price_attempts||0)>0)return 'Tentativas concluídas sem cotação';
+    return 'Ainda sem cotação automática';
+  }
+
+  function renderUnpricedAuditV1466(){
+    const details=byId('v1411Group_unpriced');
+    if(!details)return;
+    const cards=unpricedCardsV1466();
+    const badge=details.querySelector('[data-v1466-unpriced-count]');
+    const hint=details.querySelector('[data-v1466-unpriced-hint]');
+    if(badge)badge.textContent=String(cards.length);
+    if(hint)hint.textContent=cards.length===1?'1 carta para conferir':cards.length+' cartas para conferir';
+
+    const body=details.querySelector('.v1411-action-body');
+    if(!body)return;
+    body.classList.add('v1466-unpriced-body');
+    body.innerHTML='';
+
+    const intro=document.createElement('div');
+    intro.className='v1466-unpriced-intro';
+    const title=document.createElement('strong');
+    title.textContent=cards.length
+      ? cards.length+' carta'+(cards.length===1?'':'s')+' sem cotação'
+      : 'Nenhuma carta sem cotação';
+    const copy=document.createElement('small');
+    copy.textContent=cards.length
+      ? 'Clique em uma carta para abrir e conferir o problema individualmente.'
+      : 'Todas as cartas deste fichário possuem ao menos uma cotação brasileira salva.';
+    intro.append(title,copy);
+    body.appendChild(intro);
+
+    if(!cards.length)return;
+
+    const list=document.createElement('div');
+    list.className='v1466-unpriced-list';
+    for(const card of cards){
+      const row=document.createElement('button');
+      row.type='button';
+      row.className='v1466-unpriced-row';
+
+      const thumb=document.createElement('span');
+      thumb.className='v1466-unpriced-thumb';
+      const image=cardImage(card);
+      if(image){
+        const img=document.createElement('img');
+        img.src=image;
+        img.alt='';
+        img.loading='lazy';
+        thumb.appendChild(img);
+      }else thumb.textContent='?';
+
+      const meta=document.createElement('span');
+      meta.className='v1466-unpriced-meta';
+      const name=document.createElement('strong');
+      name.textContent=card.name||'Carta sem nome';
+      const identity=document.createElement('small');
+      const binder=binderForCard(card);
+      const setName=card.set_name||card.setName||'Coleção';
+      const number=card.number?'#'+card.number:'Sem número';
+      const finish=card.finish||'Normal';
+      const binderText=isGeneral()&&binder?.name?' · '+binder.name:'';
+      identity.textContent=setName+' · '+number+' · '+finish+binderText;
+      const problem=document.createElement('em');
+      problem.textContent=priceProblemTextV1466(card);
+      meta.append(name,identity,problem);
+
+      const arrow=document.createElement('span');
+      arrow.className='v1466-unpriced-arrow';
+      arrow.textContent='›';
+
+      row.append(thumb,meta,arrow);
+      row.onclick=()=>{
+        const panel=byId('summaryPanel');
+        if(panel)panel.classList.remove('mobile-open');
+        openExistingCard(card,true);
+      };
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+  }
+
   function organizeSummaryActionsV14(){
     const root=document.querySelector('#summaryPanel .action-grid');
     if(!root)return;
     const defs=[
       {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
+      {id:'unpriced',icon:'!',title:'Sem cotação',hint:'Cartas para conferir',items:[]},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
       {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'CSV e impressão',items:['btnExport','btnPrint']},
       {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
@@ -3180,7 +3313,7 @@
         details.id='v1411Group_'+def.id;
         details.className='v1411-action-group';
         const summary=document.createElement('summary');
-        summary.innerHTML='<span class="v1411-action-icon">'+def.icon+'</span><span class="v1411-action-copy"><strong>'+def.title+'</strong><small>'+def.hint+'</small></span><span class="v1411-action-chevron">⌄</span>';
+        summary.innerHTML='<span class="v1411-action-icon">'+def.icon+'</span><span class="v1411-action-copy"><strong>'+def.title+'</strong><small'+(def.id==='unpriced'?' data-v1466-unpriced-hint':'')+'>'+def.hint+'</small></span>'+(def.id==='unpriced'?'<span class="v1466-unpriced-count" data-v1466-unpriced-count>0</span>':'')+'<span class="v1411-action-chevron">⌄</span>';
         const body=document.createElement('div');
         body.className='v1411-action-body';
         details.append(summary,body);
@@ -3188,12 +3321,14 @@
           if(!details.open)return;
           root.querySelectorAll('.v1411-action-group[open]').forEach(other=>{if(other!==details)other.open=false});
           if(def.id==='friends')refreshFriendsSummaryV14();
+          if(def.id==='unpriced')renderUnpricedAuditV1466();
         });
         if(def.id==='friends'&&byId('v1411Group_settings'))root.insertBefore(details,byId('v1411Group_settings'));
         else root.appendChild(details);
       }
       const body=details.querySelector('.v1411-action-body');
       if(def.id==='friends')mountFriendsSummaryV14(body);
+      if(def.id==='unpriced')renderUnpricedAuditV1466();
       for(const id of def.items){
         const el=byId(id);
         if(el&&el.parentElement!==body)body.appendChild(el);
