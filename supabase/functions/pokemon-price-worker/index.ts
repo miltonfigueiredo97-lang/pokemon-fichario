@@ -33,13 +33,16 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   if(base===MYP_API&&fast)q.set("fast","1");
   if(base===MYP_API&&allowSavedLink){
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
-    if(link&&/mypcards\.com/i.test(link))q.set("link",link);
+    if(link&&/mypcards\.com/i.test(link)){
+      q.set("link",link);
+      if(!fast)q.set("directBrowser","1");
+    }
   }
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.79"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.80"},
       signal:controller.signal
     });
     const body=await rr.text();
