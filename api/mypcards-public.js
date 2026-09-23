@@ -151,21 +151,24 @@ function productUrlsFromText(raw,names=[]){
   return matching.length?matching:unique;
 }
 
-async function resolveSetMeta(apiId,setName){
-  const key='set-meta:auto:'+String(apiId||setName||'');
+async function resolveSetMeta(apiId,setName,setId){
+  const key='set-meta:auto2:'+String(setId||apiId||setName||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const names=[String(setName||'').trim()].filter(Boolean);
   let total=0;
-  if(apiId){
+  if(setId){
     try{
-      const r=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-        headers:{accept:'application/json','user-agent':'PokemonBinderBR/collection-index'}
+      const r=await fetch('https://api.tcgdex.net/v2/en/sets/'+encodeURIComponent(setId),{
+        headers:{accept:'application/json','user-agent':'PokemonBinderBR/collection-index2'}
       });
       if(r.ok){
         const d=await r.json();
-        if(d?.set?.name)names.unshift(String(d.set.name).trim());
-        total=Number(d?.set?.cardCount?.total||d?.set?.cardCount?.official||0);
+        const setLabel=String(d?.name||'').trim();
+        const serieLabel=String(d?.serie?.name||'').trim();
+        if(setLabel&&serieLabel)names.unshift(serieLabel+' '+setLabel);
+        if(setLabel)names.push(setLabel);
+        total=Number(d?.cardCount?.total||d?.cardCount?.official||0);
       }
     }catch{}
   }
@@ -224,8 +227,8 @@ async function collectionPageText(slug,page){
   CACHE.set(key,{value,expires:Date.now()+30*60*1000});
   return value;
 }
-async function collectionIndexCandidates({apiId,set,number,name,nameAliases=[]}){
-  const meta=await resolveSetMeta(apiId,set);
+async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliases=[]}){
+  const meta=await resolveSetMeta(apiId,set,setId);
   const np=numberParts(number);
   const collector=/^\d+$/.test(np.n)?Number(np.n):0;
   let estimated=1;
