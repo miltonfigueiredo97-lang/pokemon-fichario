@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.63',title:'MYP encontra páginas em inglês com ofertas PT-BR',items:[
+      'A busca de produto MYP não restringe mais o idioma da página.',
+      'Aliases PT-BR/EN são usados automaticamente para localizar a mesma carta.',
+      'Ofertas continuam filtradas por idioma PT-BR depois que a página real é aberta.',
+      'Apify serve como descobridor de URL; preço só é aceito após validar a página pública da MYP.'
+    ]},
     {version:'V14.64',title:'151 abre a página MYP correta sem busca lenta',items:[
       'Na coleção 151, o produto MYP é resolvido automaticamente pelo número da carta, sem cadastro manual carta por carta.',
       '194/165 resolve automaticamente para o produto 206067, como no exemplo da Transferência do Bill.',

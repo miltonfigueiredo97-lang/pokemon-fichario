@@ -46,7 +46,7 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1462:'+String(apiId||'').trim();
+  const key='name-aliases:v1463:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
@@ -193,7 +193,7 @@ async function familySeedCandidates(wanted){
 
 async function sitemapCandidates(name){
   const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
-  const key='sitemap:v1462:'+wantedCompact,cached=CACHE.get(key);
+  const key='sitemap:v1463:'+wantedCompact,cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const matches=[];
   let root;
@@ -503,8 +503,10 @@ module.exports=async function handler(req,res){
   let apifyFound=null,apifyError='';
   if(apifyConfigured){
     try{
-      const found=await queryMyp({name,number,set,setId,lang,finish,condition});
-      if(hasAnyMarket(found))apifyFound=found;
+      const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
+      // O Actor é um DESCOBRIDOR de produto. Mesmo sem mercado utilizável,
+      // preserve uma URL candidata para validar na página pública real.
+      if(hasAnyMarket(found)||safeMypProductUrl(found?.link))apifyFound=found;
       // Nunca devolvemos preço do Actor sem validar a página da MYP.
       // Em 151, MEW e SV2A compartilham nome+número e o Actor pode devolver
       // a impressão japonesa mesmo quando a consulta é PT-BR.
@@ -537,7 +539,9 @@ module.exports=async function handler(req,res){
       CACHE.set(cacheKey,{value:out,expires:Date.now()+3*60*1000});
       return res.status(200).json(out);
     }
-    const market=mergeMarket(found.market,apifyFound);
+    // Preço final vem da página pública validada. O Actor serve apenas para
+    // descobrir a URL quando a busca textual/slug da MYP não encontra a carta.
+    const market=found.market;
     if(!hasAnyMarket(market)){
       const out={ok:false,error:'no_price_data',source:'MYP Cards',provider:apifyFound?'Reader + Apify':'Reader',connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:'A MYP respondeu sem cotação utilizável para esta carta/variante.'};
       CACHE.set(cacheKey,{value:out,expires:Date.now()+3*60*1000});
