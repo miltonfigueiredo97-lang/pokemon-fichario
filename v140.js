@@ -2257,17 +2257,135 @@
     resumeVisiblePriceWatch();
   }
 
+  function manualMoneyV1469(value){
+    const raw=String(value||'').trim().replace(/R\$/gi,'').replace(/\s/g,'');
+    if(!raw)return 0;
+    let normalized=raw;
+    if(raw.includes(','))normalized=raw.replace(/\./g,'').replace(',','.');
+    const n=Number(normalized);
+    return Number.isFinite(n)&&n>=0?n:0;
+  }
+
+  function ensureManualPriceDialogV1469(){
+    let d=byId('v1469ManualPriceDialog');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v1469ManualPriceDialog';
+    d.className='v1469-manual-price-dialog';
+    d.innerHTML=`<div class="dialog-shell narrow v1469-manual-price-shell">
+      <div class="dialog-head">
+        <div><p class="kicker">COTAÇÃO MANUAL</p><h2 id="v1469ManualPriceTitle">Editar cotação</h2><p class="muted compact-copy">Use somente quando quiser substituir manualmente a cotação automática desta carta.</p></div>
+        <button id="v1469ManualPriceClose" class="icon-only" type="button">×</button>
+      </div>
+      <div class="v1469-manual-price-grid">
+        <label>Mínimo (R$)<input id="v1469ManualMin" inputmode="decimal" placeholder="0,00"></label>
+        <label>Médio (R$)<input id="v1469ManualAvg" inputmode="decimal" placeholder="0,00"></label>
+        <label>Máximo (R$)<input id="v1469ManualMax" inputmode="decimal" placeholder="0,00"></label>
+      </div>
+      <label>Link MYP Cards<input id="v1469ManualLink" type="url" placeholder="https://mypcards.com/pokemon/produto/..."></label>
+      <div class="dialog-actions">
+        <button id="v1469ManualCancel" class="btn btn-secondary" type="button">Cancelar</button>
+        <button id="v1469ManualSave" class="btn btn-primary" type="button">Salvar cotação manual</button>
+      </div>
+    </div>`;
+    document.body.appendChild(d);
+    byId('v1469ManualPriceClose').onclick=()=>d.close();
+    byId('v1469ManualCancel').onclick=()=>d.close();
+    byId('v1469ManualSave').onclick=saveManualPriceV1469;
+    return d;
+  }
+
+  function ensureManualPriceButtonV1469(){
+    const auto=byId('btnUpdateCardPrice');
+    if(!auto||byId('btnManualCardPrice'))return;
+    const b=document.createElement('button');
+    b.id='btnManualCardPrice';
+    b.type='button';
+    b.className='btn btn-secondary v1469-manual-price-button hidden';
+    b.textContent='✎ Editar cotação manualmente';
+    b.onclick=openManualPriceV1469;
+    auto.insertAdjacentElement('afterend',b);
+  }
+
+  function openManualPriceV1469(){
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    if(!card)return toast('Abra uma carta já salva para editar a cotação.');
+    const d=ensureManualPriceDialogV1469();
+    byId('v1469ManualPriceTitle').textContent='Cotação manual · '+(card.name||'Carta');
+    const current={
+      min:Number(card.myp_price_min||card.price_min||0),
+      avg:Number(card.myp_price_avg||card.price_avg||0),
+      max:Number(card.myp_price_max||card.price_max||0)
+    };
+    byId('v1469ManualMin').value=current.min?String(current.min).replace('.',','):'';
+    byId('v1469ManualAvg').value=current.avg?String(current.avg).replace('.',','):'';
+    byId('v1469ManualMax').value=current.max?String(current.max).replace('.',','):'';
+    byId('v1469ManualLink').value=card.myp_price_link||(/mypcards\.com/i.test(String(card.price_link||''))?card.price_link:'')||'';
+    if(!d.open)d.showModal();
+  }
+
+  async function saveManualPriceV1469(){
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    if(!card)return;
+    const min=manualMoneyV1469(byId('v1469ManualMin')?.value);
+    const avg=manualMoneyV1469(byId('v1469ManualAvg')?.value);
+    const max=manualMoneyV1469(byId('v1469ManualMax')?.value);
+    const link=String(byId('v1469ManualLink')?.value||'').trim();
+    if(!(min||avg||max))return toast('Informe pelo menos um valor para a cotação manual.');
+    if(link&&!/^https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
+      return toast('O link informado não é uma página de produto da MYP Cards.');
+    }
+
+    const b=byId('v1469ManualSave');
+    busy(b,true,'Salvando…');
+    const now=new Date().toISOString();
+    const finalLink=link||card.myp_price_link||null;
+    const patch={
+      myp_price_min:min,myp_price_avg:avg,myp_price_max:max,myp_price_link:finalLink,myp_price_checked_at:now,
+      price_min:min,price_avg:avg,price_max:max,price_source:'MYP Cards · manual',price_link:finalLink,
+      price_br_source:'MYP Cards · manual',price_br_link:finalLink,price_checked_at:now,
+      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_attempts:0,price_last_error:null
+    };
+    try{
+      const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
+      if(error)throw error;
+      if(V14.singlePriceWatch?.cardId===card.id)V14.singlePriceWatch.cancelled=true;
+      applyLocalPricePatch(card.id,patch);
+      selectedMarket={source:'MYP Cards · manual',min,avg,max,link:finalLink,checkedAt:now};
+      setPrices(min,avg,max);
+      if(byId('marketStatus'))byId('marketStatus').textContent='Cotação manual · salvo agora';
+      if(finalLink&&byId('mypcardsLink')){
+        byId('mypcardsLink').href=finalLink;
+        byId('mypcardsLink').classList.remove('hidden');
+      }
+      ensureManualPriceDialogV1469().close();
+      renderUnpricedAuditV1466();
+      if(byId('v1468UnpricedDialog')?.open)renderUnpricedPopupV1468();
+      try{renderBinder();renderSummary()}catch{}
+      toast('Cotação manual salva.');
+    }catch(error){
+      console.error('[Cotação manual]',error);
+      toast('Não consegui salvar a cotação manual.');
+    }finally{
+      busy(b,false);
+    }
+  }
+
   function syncSingleCardPriceButton(){
     const b=byId('btnUpdateCardPrice');if(!b)return;
+    ensureManualPriceButtonV1469();
     const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
     const visible=!!card;
     const watching=!!(V14.singlePriceWatch&&V14.singlePriceWatch.cardId===editingCardId);
     b.classList.toggle('hidden',!visible);
     b.disabled=!visible||watching;
+    const manual=byId('btnManualCardPrice');
+    if(manual){
+      manual.classList.toggle('hidden',!visible);
+      manual.disabled=!visible;
+    }
     if(watching)b.textContent=V14.singlePriceWatch.label||'Atualizando preço…';
     else if(visible&&card.price_pending&&Number(card.price_priority||0)>=1000){
-      // If the editor was reopened while a manual refresh is still running,
-      // resume watching the database instead of requiring a page refresh.
       setTimeout(()=>resumeSinglePriceWatch(card),0);
     }
   }
@@ -3566,9 +3684,26 @@
     return d;
   }
 
-  function openUnpricedPopupV1468(){
-    const d=renderUnpricedPopupV1468();
+  async function openUnpricedPopupV1468(){
+    const d=ensureUnpricedDialogV1468();
+    byId('v1468UnpricedStats').textContent='Sincronizando cotações…';
     if(!d.open)d.showModal();
+    try{
+      const ids=V14.allCards.map(c=>c.id).filter(Boolean);
+      if(ids.length&&currentUser?.id){
+        for(let i=0;i<ids.length;i+=180){
+          const {data,error}=await db.from('pokemon_cards')
+            .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error')
+            .eq('user_id',currentUser.id).in('id',ids.slice(i,i+180));
+          if(error)throw error;
+          for(const row of data||[])applyLocalPricePatch(row.id,row);
+        }
+      }
+    }catch(error){
+      console.warn('[Sem cotação · sincronização]',error);
+    }
+    renderUnpricedAuditV1466();
+    renderUnpricedPopupV1468();
     setTimeout(()=>byId('v1468UnpricedSearch')?.focus(),80);
   }
 
@@ -3698,6 +3833,8 @@
     const b=byId('btnAddSelected');if(b)b.onclick=addSelectedFast;
     const save=byId('btnSaveCard');if(save)save.onclick=saveSelectedCardV14;
     const one=byId('btnUpdateCardPrice');if(one)one.onclick=updateEditingCardPriceNow;
+    ensureManualPriceButtonV1469();
+    const manual=byId('btnManualCardPrice');if(manual)manual.onclick=openManualPriceV1469;
     wireRemoveCardAction();
     wireSpreadNavigationV14();
     const friends=byId('v14Friends');
