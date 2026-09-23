@@ -181,7 +181,9 @@ async function fetchMarkets(card:any){
     fetchSource(MYP_API,card,true).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")})),
     fetchSource(LIGA_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
   ]);
-  if(["wrong_product","product_not_found"].includes(String(myp?.error||""))&&String(card.myp_price_link||card.price_br_link||card.price_link||"").trim()){
+  const hasMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
+    .map((v:any)=>String(v||"").trim()).some((v:string)=>/mypcards\.com/i.test(v));
+  if(["wrong_product","product_not_found"].includes(String(myp?.error||""))&&hasMypLink){
     myp=await fetchSource(MYP_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
   }
   return{myp,liga};
@@ -230,7 +232,9 @@ Deno.serve(async(req:Request)=>{
       // consistente, aprenda o padrão automaticamente e use-o como candidato.
       // A API ainda valida a página real antes de aceitar qualquer preço.
       let fetchCard=card;
-      const existingMyp=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
+      const existingMyp=[
+        card.myp_price_link,card.price_br_link,card.price_link
+      ].map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v))||"";
       let learnedLink="";
       if(!existingMyp){
         learnedLink=await learnedMypLink(db,card).catch(()=> "");
