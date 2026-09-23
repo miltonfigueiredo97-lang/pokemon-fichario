@@ -419,10 +419,13 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1459b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1459c:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
-    const candidateLink=safeMypProductUrl(apifyFound?.link)||link;
+    // Preserve the deterministic/canonical product identity through the
+    // final fallback. Dropping back to raw text search here reintroduced
+    // ambiguity for localized names and uncommon cards.
+    const candidateLink=safeMypProductUrl(apifyFound?.link)||directLink||safeMypProductUrl(link);
     const found=await resolvePage({name,nameAliases,number,set,setId,link:candidateLink,lang,finish,condition});
     if(!found){
       const out={
