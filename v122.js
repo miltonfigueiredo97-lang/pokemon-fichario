@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.75';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.76';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.76',title:'Completa 20 Anos restaurada e imagens corrigidas',items:[
+      'Gerações em PT-BR não é mais descartada quando o TCGdex usa o endpoint EN apenas para completar metadados ou imagem.',
+      'O idioma físico continua PT-BR quando a coleção localizada existe; inglês não entra como carta física no filtro Português.',
+      'Imagens ausentes no Master Set agora usam o card EN da mesma impressão como fonte visual e ainda possuem fallback seguro no preview.',
+      'Master Sets comemorativos são bloqueados se um componente obrigatório retornar 0 cartas, evitando criar uma coleção pela metade.',
+      'O preview mostra a contagem por componente para deixar claro quantas entradas vieram de Gerações, Evoluções e cada grupo extra.'
+    ]},
     {version:'V14.75',title:'Fila de cotações acelerada',items:[
       'O worker processa até 16 cartas por rodada em paralelo, em vez de 6.',
       'Timeout rápido caiu para 15 segundos e o pesado para 38 segundos.',
