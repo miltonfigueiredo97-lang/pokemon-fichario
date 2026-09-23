@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.66';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.67';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.67',title:'Master Sets completos de 20, 25 e 30 anos',items:[
+      'No seletor de Master Set, as gerações comemorativas agora oferecem Completa 20 Anos, Completa 25 Anos e Completa 30 Anos.',
+      'Completa 20 Anos reúne Gerações + Evoluções; Completa 25 Anos reúne Celebrações + Classic Collection; Completa 30 Anos reúne Celebração de 30 Anos + Coleção Clássica.',
+      'Cada carta continua vinculada à coleção original, preservando número, imagem, variante e cotação.',
+      'Gerações, Evoluções, Celebrações e as Classic Collections continuam disponíveis separadamente.'
+    ]},
     {version:'V14.66',title:'Painel de auditoria das cartas sem cotação',items:[
       'Novo bloco Sem cotação no Resumo, logo abaixo de Preços.',
       'O bloco mostra a quantidade exata de cartas sem qualquer cotação brasileira salva no fichário atual.',
