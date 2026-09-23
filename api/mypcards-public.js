@@ -569,7 +569,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1467api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1468diag:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -598,6 +598,17 @@ module.exports=async function handler(req,res){
         };
         CACHE.set(browserKey,{value:out,expires:Date.now()+10*60*1000});
         return res.status(200).json(out);
+      }
+      if(market?.error==='collection_not_found'){
+        return res.status(200).json({
+          ok:false,
+          error:'collection_not_found',
+          source:'MYP Cards',
+          provider:'Chromium Collection',
+          stage:market.stage||'collection',
+          elapsedMs:market.elapsedMs||null,
+          message:market.message||'A coleção da MYP não localizou a carta.'
+        });
       }
       if(['wrong_product','product_not_found'].includes(market?.error)){
         // Não encerre aqui. A busca visual da MYP pode falhar mesmo com a
