@@ -552,6 +552,25 @@ function extractMarket(identity,finish,condition){
 }
 
 
+function sameProductFallbackMarket(identity,finish,condition){
+  const strict=extractMarket(identity,finish,condition);
+  if(hasAnyMarket(strict))return strict;
+
+  // A MYP nem sempre rotula explicitamente Reverse/Foil/Poké Ball/Master Ball
+  // nas linhas de estoque. Quando a página da carta já foi validada por
+  // coleção + número + código, use o mercado agregado DA MESMA IMPRESSÃO como
+  // fallback em vez de tratar a carta como sem cotação.
+  const generic=extractMarket(identity,'Normal',condition);
+  if(!hasAnyMarket(generic))return strict;
+
+  return {
+    ...generic,
+    exactVariant:false,
+    variantFallback:true,
+    requestedFinish:finish
+  };
+}
+
 function marketFitsFinish(market,finish){
   if(!hasAnyMarket(market))return false;
   const kind=finishKind(finish);
@@ -638,13 +657,14 @@ async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang
       const exact=matchesWanted(identity,wanted);
 
       if(exact){
-        const market=await marketAcrossSellerPages(url,raw,identity,wanted,finish,condition);
+        let market=await marketAcrossSellerPages(url,raw,identity,wanted,finish,condition);
+        if(!marketFitsFinish(market,finish))market=sameProductFallbackMarket(identity,finish,condition);
         const wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code);
         let score=1000+marketIdentityLocaleScore(identity,{setId,lang})+(market.samples||0);
         if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
         const candidate={url,identity,market,score};
         if(!best||candidate.score>best.score)best=candidate;
-        if(marketFitsFinish(market,finish))break;
+        if(hasAnyMarket(market))break;
       }
 
       // Mesmo quando o número não bate, uma página do mesmo personagem/carta
@@ -724,15 +744,17 @@ module.exports=async function handler(req,res){
       const identity=pageIdentity(text);
       const identityOk=matchesWanted(identity,{name,nameAliases,number,set,setId,lang});
       if(identityOk){
-        const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-        if(marketFitsFinish(market,finish)){
+        let market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
+        if(!marketFitsFinish(market,finish))market=sameProductFallbackMarket(identity,finish,condition);
+        if(hasAnyMarket(market)){
           return res.status(200).json({
             ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
             name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
             finish,condition,link:directLink,
             min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
             samples:market.samples??null,availableQuantity:market.availableQuantity??null,
-            exactVariant:market.exactVariant!==false,
+            exactVariant:market.exactVariant===true,
+            variantFallback:market.variantFallback===true,
             complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
             checkedAt:new Date().toISOString()
           });
@@ -772,7 +794,8 @@ module.exports=async function handler(req,res){
           link:safeMypProductUrl(market.link)||directLink,
           min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
           samples:market.samples??null,availableQuantity:market.availableQuantity??null,
-          exactVariant:market.exactVariant!==false,
+          exactVariant:market.exactVariant===true,
+            variantFallback:market.variantFallback===true,
           complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
           checkedAt:new Date().toISOString()
         });
@@ -835,8 +858,9 @@ module.exports=async function handler(req,res){
       const text=await fetchJina(directLink,8000);
       const identity=pageIdentity(text);
       if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
-        const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-        if(marketFitsFinish(market,finish)){
+        let market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
+        if(!marketFitsFinish(market,finish))market=sameProductFallbackMarket(identity,finish,condition);
+        if(hasAnyMarket(market)){
           return res.status(200).json({
             ok:true,
             source:'MYP Cards',
@@ -853,7 +877,8 @@ module.exports=async function handler(req,res){
             max:Number(market.max||0),
             samples:market.samples??null,
             availableQuantity:market.availableQuantity??null,
-            exactVariant:market.exactVariant!==false,
+            exactVariant:market.exactVariant===true,
+            variantFallback:market.variantFallback===true,
             complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
             checkedAt:new Date().toISOString()
           });
@@ -1027,7 +1052,7 @@ module.exports=async function handler(req,res){
     // Preço final vem da página pública validada. O Actor serve apenas para
     // descobrir a URL quando a busca textual/slug da MYP não encontra a carta.
     const market=found.market;
-    if(!marketFitsFinish(market,finish)){
+    if(!hasAnyMarket(market)){
       const out={ok:false,error:'no_price_data',source:'MYP Cards',provider:apifyFound?'Reader + Apify':'Reader',connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:'A MYP respondeu sem cotação utilizável para esta carta/variante.'};
       CACHE.set(cacheKey,{value:out,expires:Date.now()+3*60*1000});
       return res.status(200).json(out);
