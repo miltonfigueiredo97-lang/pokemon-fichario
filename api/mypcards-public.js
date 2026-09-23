@@ -718,41 +718,16 @@ module.exports=async function handler(req,res){
         }
       }
 
-      // O Reader da MYP às vezes devolve corpo vazio mesmo com a URL correta.
-      // Nesse caso, ou quando ele não encontra a variante, use Chromium
-      // DIRETAMENTE no link conhecido — sem nova busca textual.
-      const browserMarket=await findAndScrapeMypBrowser(directLink,{
-        name,nameAliases,number,set,setId,lang,finish,condition
-      }).catch(error=>({ok:false,error:'browser_error',message:error?.message||String(error)}));
-      if(browserMarket?.ok&&hasAnyMarket(browserMarket)){
-        return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Chromium',mode:browserMarket.mode||'fast-browser-direct',
-          name:browserMarket.title||identity.name||name,
-          number:identity.number||number,
-          edition:browserMarket.edition||identity.edition||set,
-          finish,condition,
-          link:safeMypProductUrl(browserMarket.link)||directLink,
-          min:Number(browserMarket.min||0),avg:Number(browserMarket.avg||0),max:Number(browserMarket.max||0),
-          samples:browserMarket.samples??null,
-          availableQuantity:browserMarket.availableQuantity??null,
-          exactVariant:browserMarket.exactVariant!==false,
-          complete:!!(Number(browserMarket.min)>0&&Number(browserMarket.avg)>0&&Number(browserMarket.max)>0),
-          checkedAt:new Date().toISOString()
-        });
-      }
-
       return res.status(200).json({
         ok:false,
         error:identityOk?'fast_no_price':'wrong_product',
         source:'MYP Cards',
-        provider:browserMarket?.provider||'Fast Reader + Chromium',
+        provider:'Fast Reader',
         link:directLink,
         identity:{name:identity?.name||'',number:identity?.number||'',code:identity?.code||'',edition:identity?.edition||''},
-        browserError:browserMarket?.error||'',
-        browserMessage:browserMarket?.message||'',
         message:identityOk
-          ?'A página correta foi aberta, mas não encontramos a variante solicitada.'
-          :'O Reader não conseguiu validar a página e o Chromium também não confirmou a impressão.'
+          ?'A página correta foi aberta, mas a variante ainda não apareceu no Reader rápido.'
+          :'O Reader rápido não confirmou a impressão; a fila fará a tentativa completa.'
       });
     }catch(error){
       return res.status(200).json({
