@@ -116,14 +116,6 @@ async function learnedMypLink(db:any,card:any){
       .not("myp_price_link","is",null)
       .limit(160);
 
-    if(String(card?.number||"")==="194/165"){
-      console.log("PRICE_LEARN_QUERY",JSON.stringify({
-        setId,lang,error:error?String(error.message||error):null,
-        rows:Array.isArray(data)?data.length:null,
-        sample:Array.isArray(data)?data.slice(0,5):null
-      }));
-    }
-
     if(error||!Array.isArray(data)){
       learnedSetLinkCache.set(key,null);
       return"";
@@ -142,12 +134,6 @@ async function learnedMypLink(db:any,card:any){
     let bestOffset=0,bestCount=0;
     for(const [offset,count] of counts){
       if(count>bestCount){bestOffset=offset;bestCount=count}
-    }
-    if(String(card?.number||"")==="194/165"){
-      console.log("PRICE_LEARN_RESULT",JSON.stringify({
-        usable,bestOffset,bestCount,ratio:usable?bestCount/usable:0,
-        top:[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5)
-      }));
     }
 
     // Só aprende uma sequência quando várias páginas já validadas concordam.
@@ -243,13 +229,6 @@ Deno.serve(async(req:Request)=>{
 
       const markets=await fetchMarkets(fetchCard);
       const myp=markets.myp,liga=markets.liga;
-      if(String(card.set_id||"")==="sv03.5"&&String(card.number||"")==="194/165"){
-        console.log("PRICE_DEBUG",JSON.stringify({
-          card:card.name,number:card.number,learnedLink,
-          myp:{ok:myp?.ok,error:myp?.error,provider:myp?.provider,mode:myp?.mode,link:myp?.link,min:myp?.min,avg:myp?.avg,max:myp?.max,message:myp?.message},
-          liga:{ok:liga?.ok,error:liga?.error}
-        }));
-      }
       const picked=choosePrimary(liga,myp);
       const market=picked.market;
 
