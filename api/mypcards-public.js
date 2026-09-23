@@ -46,14 +46,14 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1461:'+String(apiId||'').trim();
+  const key='name-aliases:v1462:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/cards/'+encodeURIComponent(apiId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.61'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.62'}
         });
         return r.ok?await r.json():null;
       }catch{return null}
@@ -71,7 +71,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.61'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.62'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -122,7 +122,37 @@ async function fetchText(url,timeout=9000){
   }finally{clearTimeout(timer)}
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
-async function sitemapCandidates(name){const key=`sitemap:${slugify(name)}`,cached=CACHE.get(key);if(cached&&cached.expires>Date.now())return cached.value;const wantedSlug=slugify(name),matches=[];let root;try{root=await fetchText(`${ROOT}/sitemap.xml`,12000)}catch(error){if(error?.code==='cloudflare_blocked')throw error;return[]}const first=xmlLocs(root);const accept=url=>{if(!/\/pokemon\/produto\/\d+\//i.test(url))return;const slug=url.split('/').filter(Boolean).pop()||'';if(!wantedSlug||slug===wantedSlug||slug.includes(wantedSlug)||wantedSlug.includes(slug))matches.push(url)};first.forEach(accept);if(!matches.length){const childMaps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));const preferred=[...childMaps.filter(x=>/pokemon|produto|product|card/i.test(x)),...childMaps.filter(x=>!/pokemon|produto|product|card/i.test(x))].slice(0,18);for(const mapUrl of preferred){try{const xml=await fetchText(mapUrl,12000);xmlLocs(xml).forEach(accept);if(matches.length>=18)break}catch{}}}const unique=[...new Set(matches)].slice(0,18);CACHE.set(key,{value:unique,expires:Date.now()+6*60*60*1000});return unique}
+async function sitemapCandidates(name){
+  const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
+  const key='sitemap:v1462:'+wantedCompact,cached=CACHE.get(key);
+  if(cached&&cached.expires>Date.now())return cached.value;
+  const matches=[];
+  let root;
+  try{root=await fetchText(`${ROOT}/sitemap.xml`,12000)}
+  catch(error){if(error?.code==='cloudflare_blocked')throw error;return[]}
+  const first=xmlLocs(root);
+  const accept=url=>{
+    if(!/\/pokemon\/produto\/\d+\//i.test(url))return;
+    const slug=(url.split('/').filter(Boolean).pop()||'').toLowerCase();
+    const compact=slug.replace(/[^a-z0-9]/g,'');
+    if(!wantedCompact||compact===wantedCompact||compact.includes(wantedCompact)||wantedCompact.includes(compact))matches.push(url);
+  };
+  first.forEach(accept);
+  if(!matches.length){
+    const childMaps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));
+    const preferred=[...childMaps.filter(x=>/pokemon|produto|product|card/i.test(x)),...childMaps.filter(x=>!/pokemon|produto|product|card/i.test(x))].slice(0,18);
+    for(const mapUrl of preferred){
+      try{
+        const xml=await fetchText(mapUrl,12000);
+        xmlLocs(xml).forEach(accept);
+        if(matches.length>=18)break;
+      }catch{}
+    }
+  }
+  const unique=[...new Set(matches)].slice(0,18);
+  CACHE.set(key,{value:unique,expires:Date.now()+6*60*60*1000});
+  return unique;
+}
 
 function normalizeCollectorToken(value){const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');if(!raw)return'';const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);if(!m)return raw.toLowerCase();return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase()}
 function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const m=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));if(m)return{n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2]),full:normalizeCollectorToken(m[1])+'/'+normalizeCollectorToken(m[2])};const x=text.match(new RegExp(token,'i'));return x?{n:normalizeCollectorToken(x[0]),d:'',full:normalizeCollectorToken(x[0])}:{n:'',d:'',full:''}}
@@ -336,7 +366,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1461:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1462:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -367,19 +397,10 @@ module.exports=async function handler(req,res){
         return res.status(200).json(out);
       }
       if(['wrong_product','product_not_found'].includes(market?.error)){
-        const out={
-          ok:false,
-          error:market.error,
-          source:'MYP Cards',
-          provider:'Chromium',
-          mode:directLink?'browser-page':'browser-search-page',
-          link:safeMypProductUrl(market?.link)||directLink||'',
-          message:market?.message||(market.error==='wrong_product'
-            ?'O link salvo não corresponde à carta consultada.'
-            :'A busca da MYP não encontrou a impressão correta.')
-        };
-        CACHE.set(browserKey,{value:out,expires:Date.now()+3*60*1000});
-        return res.status(200).json(out);
+        // Não encerre aqui. A busca visual da MYP pode falhar mesmo com a
+        // página existente; o sitemap/Reader abaixo é um segundo índice
+        // independente e pode descobrir a mesma carta automaticamente.
+        console.warn('MYP Chromium não localizou a impressão; tentando sitemap/Reader:',market.error);
       }
       if(market?.error==='variant_not_found'){
         // O Reader/Apify ainda pode enxergar anúncios que o DOM do Chromium
@@ -408,7 +429,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1461b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1462b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the

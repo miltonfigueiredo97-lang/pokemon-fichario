@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.61';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.62';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,11 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.62',title:'Busca MYP com fallback real por sitemap',items:[
+      'Falha na busca visual da MYP não encerra mais a cotação; o sistema tenta automaticamente o índice/sitemap.',
+      'Slugs equivalentes como bill-s-transfer e bills-transfer agora são reconhecidos como a mesma carta.',
+      'A filtragem PT-BR por oferta e a navegação por outras edições da V14.61 continuam ativas.'
+    ]},
     {version:'V14.61',title:'MYP procura idioma e versões da mesma carta automaticamente',items:[
       'As bandeiras das ofertas da MYP agora são usadas para separar PT-BR, EN, JP e outros idiomas.',
       'Se a página encontrada não tiver a oferta correta, o scraper percorre automaticamente outras edições/versões da mesma carta.',
