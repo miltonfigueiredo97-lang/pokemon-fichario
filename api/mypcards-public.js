@@ -594,7 +594,7 @@ async function marketAcrossSellerPages(link,firstRaw,firstIdentity,wanted,finish
 
   const results=await Promise.all(urls.map(async url=>{
     try{
-      const raw=await fetchJina(url,9000);
+      const raw=await fetchText(url,9000);
       const identity=pageIdentity(raw);
       if(!matchesWanted(identity,wanted))return null;
       return extractMarket(identity,finish,condition);
@@ -761,7 +761,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1475fast:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1476query:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -868,7 +868,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1475fast:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1476query:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
