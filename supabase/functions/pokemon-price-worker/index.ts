@@ -59,6 +59,47 @@ function mypProductId(value:unknown){
 }
 const learnedSetLinkCache=new Map<string,{offset:number,anchors:number,expires:number}|null>();
 
+const englishSlugCache=new Map<string,{slug:string,expires:number}>();
+function mypSlug(value:unknown){
+  return String(value||"")
+    .replace(/['’]/g,"")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase()
+    .replace(/♀/g,"-female-").replace(/♂/g,"-male-")
+    .replace(/[^a-z0-9]+/g,"-")
+    .replace(/^-+|-+$/g,"")
+    .replace(/-+/g,"-");
+}
+async function englishCardSlug(card:any){
+  const apiId=String(card?.api_id||"").trim();
+  const key=apiId||String(card?.name||"");
+  const cached=englishSlugCache.get(key);
+  if(cached&&cached.expires>Date.now())return cached.slug;
+
+  let name="";
+  if(apiId){
+    try{
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),6000);
+      try{
+        const r=await fetch("https://api.tcgdex.net/v2/en/cards/"+encodeURIComponent(apiId),{
+          headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.70"},
+          signal:controller.signal
+        });
+        if(r.ok){
+          const data=await r.json();
+          name=String(data?.name||"").trim();
+        }
+      }finally{clearTimeout(timer)}
+    }catch{}
+  }
+  if(!name)name=String(card?.name||"");
+  const slug=mypSlug(name)||"card";
+  englishSlugCache.set(key,{slug,expires:Date.now()+24*60*60_000});
+  return slug;
+}
+
+
 async function learnedMypLink(db:any,card:any){
   const collector=collectorNumber(card?.number);
   const setId=String(card?.set_id||"").trim();
@@ -109,7 +150,8 @@ async function learnedMypLink(db:any,card:any){
   if(!learned)return"";
   const productId=learned.offset+collector;
   if(productId<=0)return"";
-  return "https://mypcards.com/pokemon/produto/"+String(productId)+"/card";
+  const slug=await englishCardSlug(card);
+  return "https://mypcards.com/pokemon/produto/"+String(productId)+"/"+slug;
 }
 
 function hasMarketPrice(m:any){return !!(m&&(num(m.min)||num(m.avg)||num(m.max)))}
