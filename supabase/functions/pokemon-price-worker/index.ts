@@ -38,7 +38,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true){
   const timer=setTimeout(()=>controller.abort(),58000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.60"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.70"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -48,6 +48,70 @@ async function fetchSource(base:string, card:any, allowSavedLink=true){
     return data;
   }finally{clearTimeout(timer)}
 }
+
+function collectorNumber(value:unknown){
+  const m=String(value||"").match(/([0-9]{1,4})/);
+  return m?Number(m[1]):0;
+}
+function mypProductId(value:unknown){
+  const m=String(value||"").match(/mypcards\.com\/pokemon\/produto\/([0-9]+)\//i);
+  return m?Number(m[1]):0;
+}
+const learnedSetLinkCache=new Map<string,{offset:number,anchors:number,expires:number}|null>();
+
+async function learnedMypLink(db:any,card:any){
+  const collector=collectorNumber(card?.number);
+  const setId=String(card?.set_id||"").trim();
+  const lang=String(card?.language_code||"").trim();
+  if(!collector||!setId)return"";
+
+  const key=setId+"|"+lang;
+  let learned=learnedSetLinkCache.get(key);
+  if(learned===undefined||((learned as any)?.expires||0)<Date.now()){
+    const {data,error}=await db.from("pokemon_cards")
+      .select("number,myp_price_link")
+      .eq("set_id",setId)
+      .eq("language_code",lang)
+      .not("myp_price_link","is",null)
+      .limit(160);
+
+    if(error||!Array.isArray(data)){
+      learnedSetLinkCache.set(key,null);
+      return"";
+    }
+
+    const counts=new Map<number,number>();
+    let usable=0;
+    for(const row of data){
+      const n=collectorNumber(row?.number);
+      const id=mypProductId(row?.myp_price_link);
+      if(!n||!id)continue;
+      usable++;
+      const offset=id-n;
+      counts.set(offset,(counts.get(offset)||0)+1);
+    }
+    let bestOffset=0,bestCount=0;
+    for(const [offset,count] of counts){
+      if(count>bestCount){bestOffset=offset;bestCount=count}
+    }
+
+    // Só aprende uma sequência quando várias páginas já validadas concordam.
+    // Isso evita extrapolar coleções cujo ID da MYP não seja sequencial.
+    if(bestCount>=5&&bestCount>=Math.ceil(usable*.72)){
+      learned={offset:bestOffset,anchors:bestCount,expires:Date.now()+30*60_000};
+      learnedSetLinkCache.set(key,learned);
+    }else{
+      learnedSetLinkCache.set(key,null);
+      return"";
+    }
+  }
+
+  if(!learned)return"";
+  const productId=learned.offset+collector;
+  if(productId<=0)return"";
+  return "https://mypcards.com/pokemon/produto/"+String(productId)+"/card";
+}
+
 function hasMarketPrice(m:any){return !!(m&&(num(m.min)||num(m.avg)||num(m.max)))}
 function choosePrimary(liga:any,myp:any){
   if(hasMarketPrice(liga)&&num(liga.avg)>0)return{market:liga,source:"Liga Pokémon"};
@@ -106,7 +170,17 @@ Deno.serve(async(req:Request)=>{
     claimed++;
 
     try{
-      const markets=await fetchMarkets(card);
+      // Se a coleção já possui várias páginas MYP validadas com uma sequência
+      // consistente, aprenda o padrão automaticamente e use-o como candidato.
+      // A API ainda valida a página real antes de aceitar qualquer preço.
+      let fetchCard=card;
+      const existingMyp=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
+      if(!existingMyp){
+        const learnedLink=await learnedMypLink(db,card).catch(()=> "");
+        if(learnedLink)fetchCard={...card,myp_price_link:learnedLink};
+      }
+
+      const markets=await fetchMarkets(fetchCard);
       const myp=markets.myp,liga=markets.liga;
       const picked=choosePrimary(liga,myp);
       const market=picked.market;
