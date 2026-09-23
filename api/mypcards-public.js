@@ -780,6 +780,13 @@ module.exports=async function handler(req,res){
       return res.status(200).json({
         ok:false,error:market?.error||'variant_not_found',source:'MYP Cards',
         provider:'Chromium direct',link:directLink,
+        rows:market?.rows??null,
+        language:market?.language??null,
+        availableLanguages:market?.availableLanguages??[],
+        defaultFinish:market?.defaultFinish??null,
+        finish:market?.finish??finish,
+        condition:market?.condition??condition,
+        diagnostics:market?.diagnostics??[],
         message:market?.message||'A página conhecida não retornou a variante solicitada.'
       });
     }catch(error){
