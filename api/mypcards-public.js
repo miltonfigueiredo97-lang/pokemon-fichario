@@ -46,7 +46,7 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1464:'+String(apiId||'').trim();
+  const key='name-aliases:v1465api:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
@@ -122,20 +122,6 @@ async function fetchText(url,timeout=9000){
   }finally{clearTimeout(timer)}
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
-function canonicalSetProductUrl({setId,number}={}){
-  const sid=normalize(setId);
-  const np=numberParts(number);
-  const collector=/^\d+$/.test(np.n)?Number(np.n):0;
-  if(!collector)return'';
-
-  // Escarlate e Violeta: 151 (MEW) usa uma sequência contígua na MYP:
-  // 001/165 = 205874, portanto productId = 205873 + collector.
-  // Isso é uma regra da coleção, não uma tabela manual por carta.
-  if((sid==='sv03 5'||sid==='sv3 5')&&collector>=1&&collector<=207){
-    return ROOT+'/pokemon/produto/'+String(205873+collector)+'/card';
-  }
-  return'';
-}
 function aliasCompactKeys(names){
   return [...new Set((names||[]).map(name=>slugify(name).replace(/-/g,'')).filter(Boolean))];
 }
@@ -164,6 +150,101 @@ function productUrlsFromText(raw,names=[]){
   });
   return matching.length?matching:unique;
 }
+
+async function resolveSetMeta(apiId,setName){
+  const key='set-meta:auto:'+String(apiId||setName||'');
+  const cached=CACHE.get(key);
+  if(cached&&cached.expires>Date.now())return cached.value;
+  const names=[String(setName||'').trim()].filter(Boolean);
+  let total=0;
+  if(apiId){
+    try{
+      const r=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
+        headers:{accept:'application/json','user-agent':'PokemonBinderBR/collection-index'}
+      });
+      if(r.ok){
+        const d=await r.json();
+        if(d?.set?.name)names.unshift(String(d.set.name).trim());
+        total=Number(d?.set?.cardCount?.total||d?.set?.cardCount?.official||0);
+      }
+    }catch{}
+  }
+  const value={total,slugs:[...new Set(names.map(slugify).filter(Boolean))]};
+  CACHE.set(key,{value,expires:Date.now()+24*60*60*1000});
+  return value;
+}
+function textHasCollectorNumber(text,wantedNumber){
+  const wanted=numberParts(wantedNumber);
+  if(!wanted.n)return false;
+  const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';
+  const re=new RegExp('('+token+')\\s*\\/\\s*('+token+')','gi');
+  for(const m of String(text||'').matchAll(re)){
+    const found={n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2])};
+    if(found.n===wanted.n&&(!wanted.d||found.d===wanted.d))return true;
+  }
+  return false;
+}
+function collectionProductCandidatesFromText(raw,wantedNumber,names=[]){
+  const source=decodeHtml(String(raw||''));
+  const keys=aliasCompactKeys(names);
+  const found=[];
+  const seen=new Set();
+  const re=/(?:https?:\/\/(?:www\.)?mypcards\.com)?\/pokemon\/produto\/\d+\/[A-Za-z0-9%_\-]+/gi;
+  for(const m of source.matchAll(re)){
+    let url=String(m[0]||'');
+    if(url.startsWith('/'))url=ROOT+url;
+    try{
+      const parsed=new URL(url);
+      url=parsed.protocol+'//'+parsed.host+parsed.pathname;
+    }catch{continue}
+    if(seen.has(url))continue;
+    const pos=m.index||0;
+    const context=stripTags(source.slice(Math.max(0,pos-1600),Math.min(source.length,pos+1600)));
+    if(!textHasCollectorNumber(context,wantedNumber))continue;
+    if(keys.length){
+      const slug=(url.split('/').filter(Boolean).pop()||'').replace(/[^a-z0-9]/gi,'').toLowerCase();
+      const nameMatch=keys.some(key=>slug===key||slug.includes(key)||key.includes(slug));
+      if(!nameMatch){
+        const ctx=normalize(context);
+        if(!names.map(normalize).some(n=>n&&ctx.includes(n)))continue;
+      }
+    }
+    seen.add(url);found.push(url);
+  }
+  return found;
+}
+async function collectionPageText(slug,page){
+  const key='collection-page:auto:'+slug+':'+page;
+  const cached=CACHE.get(key);
+  if(cached&&cached.expires>Date.now())return cached.value;
+  const url=ROOT+'/pokemon/'+slug+'?page='+page+'&sort=-codigoproduto';
+  const value=await fetchText(url,12000);
+  CACHE.set(key,{value,expires:Date.now()+30*60*1000});
+  return value;
+}
+async function collectionIndexCandidates({apiId,set,number,name,nameAliases=[]}){
+  const meta=await resolveSetMeta(apiId,set);
+  const np=numberParts(number);
+  const collector=/^\d+$/.test(np.n)?Number(np.n):0;
+  let estimated=1;
+  if(meta.total&&collector)estimated=Math.max(1,Math.floor(Math.max(0,meta.total-collector)/30)+1);
+  const pages=[estimated];
+  if(estimated>1)pages.push(estimated-1);
+  pages.push(estimated+1);
+  const names=[name,...nameAliases].filter(Boolean);
+
+  for(const slug of meta.slugs.slice(0,3)){
+    for(const page of [...new Set(pages)].slice(0,3)){
+      try{
+        const body=await collectionPageText(slug,page);
+        const urls=collectionProductCandidatesFromText(body,number,names);
+        if(urls.length)return urls.slice(0,6);
+      }catch{}
+    }
+  }
+  return[];
+}
+
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
@@ -186,14 +267,17 @@ async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
 }
 async function familySeedCandidates(wanted){
   const names=[...new Set([wanted?.name,...(wanted?.nameAliases||[])].filter(Boolean))];
-  const groups=await Promise.all(names.map(n=>sitemapCandidates(n).catch(()=>[])));
+  const indexed=await collectionIndexCandidates(wanted).catch(()=>[]);
+  if(indexed.length)return indexed.slice(0,8);
   const search=await readerSearchCandidates(wanted).catch(()=>[]);
-  return [...new Set([...search,...groups.flat()])].slice(0,14);
+  if(search.length)return search.slice(0,10);
+  const groups=await Promise.all(names.map(n=>sitemapCandidates(n).catch(()=>[])));
+  return [...new Set(groups.flat())].slice(0,12);
 }
 
 async function sitemapCandidates(name){
   const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
-  const key='sitemap:v1464:'+wantedCompact,cached=CACHE.get(key);
+  const key='sitemap:v1465api:'+wantedCompact,cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const matches=[];
   let root;
@@ -328,11 +412,11 @@ function extractMarket(identity,finish,condition){
   return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
 }
 
-async function resolvePage({name,nameAliases=[],number,set,setId,link,lang,finish,condition}){
+async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang,finish,condition}){
   const direct=safeMypProductUrl(link);
   const wanted={name,nameAliases,number,set,setId,lang};
   const familyNames=[name,...nameAliases].filter(Boolean);
-  const queue=direct?[direct]:await familySeedCandidates({name,nameAliases,number,set,setId});
+  const queue=direct?[direct]:await familySeedCandidates({name,nameAliases,number,set,setId,apiId});
   const seen=new Set();
   let best=null;
   let inspected=0;
@@ -368,7 +452,7 @@ async function resolvePage({name,nameAliases=[],number,set,setId,link,lang,finis
   }
 
   if(!best&&direct){
-    return resolvePage({name,nameAliases,number,set,setId,link:'',lang,finish,condition});
+    return resolvePage({name,nameAliases,number,set,setId,apiId,link:'',lang,finish,condition});
   }
   return best;
 }
@@ -392,13 +476,13 @@ module.exports=async function handler(req,res){
   if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  const canonicalLink=canonicalSetProductUrl({setId,number});
-  const directLink=canonicalLink||safeMypProductUrl(link);
   const nameAliases=await resolveNameAliases(name,apiId);
+  let directLink=safeMypProductUrl(link);
   let browserSeedLink=directLink;
   if(!browserSeedLink&&!fast){
-    const seeds=await familySeedCandidates({name,nameAliases,number,set,setId}).catch(()=>[]);
+    const seeds=await familySeedCandidates({name,nameAliases,number,set,setId,apiId}).catch(()=>[]);
     browserSeedLink=seeds[0]||'';
+    if(browserSeedLink)directLink=browserSeedLink;
   }
 
   // Atualização manual de uma única carta: nunca prende a interface por
@@ -451,7 +535,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1464:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1465api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -516,14 +600,14 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1464b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1465api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
     // final fallback. Dropping back to raw text search here reintroduced
     // ambiguity for localized names and uncommon cards.
     const candidateLink=safeMypProductUrl(apifyFound?.link)||directLink||safeMypProductUrl(link);
-    const found=await resolvePage({name,nameAliases,number,set,setId,link:candidateLink,lang,finish,condition});
+    const found=await resolvePage({name,nameAliases,number,set,setId,apiId,link:candidateLink,lang,finish,condition});
     if(!found){
       const out={
         ok:false,
