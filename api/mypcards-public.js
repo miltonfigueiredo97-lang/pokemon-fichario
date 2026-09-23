@@ -714,6 +714,13 @@ function extractMarket(identity,finish,condition){
 }
 
 
+function requiresExactMewPtBrVariant({setId,lang,finish}={}){
+  const rawSet=String(setId||'').trim().toLowerCase();
+  const rawLang=String(lang||'').trim().toLowerCase();
+  return ['sv03.5','sv3.5'].includes(rawSet)
+    && ['pt-br','pt'].includes(rawLang)
+    && finishKind(finish)!=='normal';
+}
 function sameProductFallbackMarket(identity,finish,condition){
   const strict=extractMarket(identity,finish,condition);
   if(hasAnyMarket(strict))return strict;
@@ -820,7 +827,7 @@ async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang
 
       if(exact){
         let market=await marketAcrossSellerPages(url,raw,identity,wanted,finish,condition);
-        if(!marketFitsFinish(market,finish))market=sameProductFallbackMarket(identity,finish,condition);
+        if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish}))market=sameProductFallbackMarket(identity,finish,condition);
         const wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code);
         let score=1000+marketIdentityLocaleScore(identity,{setId,lang})+(market.samples||0);
         if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
@@ -910,7 +917,7 @@ module.exports=async function handler(req,res){
       const identityOk=matchesWanted(identity,{name,nameAliases,number,set,setId,lang});
       if(identityOk){
         let market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-        if(!marketFitsFinish(market,finish))market=sameProductFallbackMarket(identity,finish,condition);
+        if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish}))market=sameProductFallbackMarket(identity,finish,condition);
         if(hasAnyMarket(market)){
           return res.status(200).json({
             ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
@@ -1063,7 +1070,7 @@ module.exports=async function handler(req,res){
       const identity=pageIdentity(text);
       if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
         let market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-        if(!marketFitsFinish(market,finish))market=sameProductFallbackMarket(identity,finish,condition);
+        if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish}))market=sameProductFallbackMarket(identity,finish,condition);
         if(hasAnyMarket(market)){
           return res.status(200).json({
             ok:true,
