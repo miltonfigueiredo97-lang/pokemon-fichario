@@ -378,8 +378,8 @@ module.exports=async function handler(req,res){
           variantStamps:variant.stamp||[],
           variantSize:variant.size||'standard',
           source:'TCGdex',
-          languageCode:lang==='pt'?'pt-br':lang,
-          language:lang==='pt'?'Português':lang==='ja'?'Japonês':'Inglês'
+          languageCode:(card.__variantLang||sourceLang||lang)==='pt'?'pt-br':(card.__variantLang||sourceLang||lang),
+          language:(card.__variantLang||sourceLang||lang)==='pt'?'Português':(card.__variantLang||sourceLang||lang)==='ja'?'Japonês':'Inglês'
         });
       }
     }
