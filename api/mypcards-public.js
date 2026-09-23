@@ -192,14 +192,19 @@ function extractMarket(identity,finish,condition){
   const other=sellerText.search(/Outras Edições/i);
   if(other>=0)sellerText=sellerText.slice(0,other);
   const lines=sellerText.split(/\n+/).map(x=>x.trim()).filter(Boolean);
-  const priceLines=lines.filter(x=>x.includes('R$'));
+  // O Reader pode desmontar uma linha da tabela em vários blocos:
+  // vendedor -> acabamento -> condição -> quantidade -> preço.
+  const offerRows=[];
+  let rowBuffer=[];
+  for(const line of lines){
+    rowBuffer.push(line);
+    if(line.includes('R$')){
+      offerRows.push(rowBuffer.join(' | '));
+      rowBuffer=[];
+    }
+  }
 
-  // A página do produto já identifica a carta. O campo de acabamento dos
-  // anúncios é preenchido de forma inconsistente pelos vendedores; exigir
-  // esse texto em todos os anúncios fazia uma única oferta representar todo
-  // o mercado. Usamos acabamento exato quando há amostra suficiente e,
-  // caso contrário, a condição da carta dentro da mesma página do produto.
-  const byCondition=priceLines.filter(x=>lineMatchesCondition(x,condition));
+  const byCondition=offerRows.filter(x=>lineMatchesCondition(x,condition));
   const exact=byCondition.filter(x=>lineMatchesFinish(x,finish));
   let selected=[];
   let exactVariant=false;
@@ -213,7 +218,12 @@ function extractMarket(identity,finish,condition){
     selected=safeDefault;
   }
 
-  const usable=selected.flatMap(moneyMatches)
+  // Uma oferta promocional pode carregar preço antigo e preço atual.
+  // O último valor da própria oferta é o vigente e conta como uma amostra.
+  const usable=selected.map(row=>{
+      const values=moneyMatches(row);
+      return values.length?values[values.length-1]:0;
+    })
     .filter(v=>Number.isFinite(v)&&v>0&&v<1000000)
     .sort((a,b)=>a-b);
   const quantities=selected.flatMap(x=>[...x.matchAll(/(\d+)\s*un\./gi)].map(m=>Number(m[1]))).filter(Number.isFinite);
@@ -441,7 +451,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1460:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1460b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
