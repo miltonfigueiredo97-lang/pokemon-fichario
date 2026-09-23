@@ -738,12 +738,41 @@ module.exports=async function handler(req,res){
     }
   }
 
+  // Na fila, uma carta com URL MYP conhecida não precisa refazer descoberta.
+  // Tente primeiro o scraper especializado com consulta exata
+  // (nome + número + coleção). Ele já valida idioma, condição e acabamento.
+  const apifyConfigured=!!process.env.APIFY_API_TOKEN;
+  let apifyFound=null,apifyError='';
+  if(directLink&&apifyConfigured){
+    try{
+      const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
+      if(hasAnyMarket(found)||safeMypProductUrl(found?.link))apifyFound=found;
+      if(apifyFound&&hasAnyMarket(apifyFound)&&apifyFound.exactVariant===true){
+        const actorLink=safeMypProductUrl(apifyFound.link);
+        if(actorLink&&sameMypProduct(actorLink,directLink)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'Apify exact market',mode:'actor-known-product',
+            name,number,edition:set,finish,condition,link:actorLink,
+            min:Number(apifyFound.min||0),avg:Number(apifyFound.avg||0),max:Number(apifyFound.max||0),
+            samples:apifyFound.samples??null,availableQuantity:apifyFound.availableQuantity??null,
+            exactVariant:true,
+            complete:!!(Number(apifyFound.min)>0&&Number(apifyFound.avg)>0&&Number(apifyFound.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+      }
+    }catch(error){
+      apifyError=error?.code||error?.message||'apify_error';
+      console.warn('MYP Apify exato falhou; tentando Reader:',apifyError);
+    }
+  }
+
   // Quando o índice da coleção já encontrou uma página, tente o Reader
   // imediatamente antes de abrir Chromium. Isso mantém o worker abaixo do
   // limite de execução e ainda valida nome/número/coleção/idioma/variante.
   if(directLink&&!fast){
     try{
-      const text=await fetchJina(directLink,12000);
+      const text=await fetchJina(directLink,8000);
       const identity=pageIdentity(text);
       if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
         const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
@@ -781,7 +810,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1478actor:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1479actorfirst:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -847,19 +876,12 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const apifyConfigured=!!process.env.APIFY_API_TOKEN;
-  let apifyFound=null,apifyError='';
-  if(apifyConfigured){
+  if(!apifyFound&&apifyConfigured){
     try{
       const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
-      // O Actor é um DESCOBRIDOR de produto. Mesmo sem mercado utilizável,
-      // preserve uma URL candidata para validar na página pública real.
       if(hasAnyMarket(found)||safeMypProductUrl(found?.link))apifyFound=found;
-      // Nunca devolvemos preço do Actor sem validar a página da MYP.
-      // Em 151, MEW e SV2A compartilham nome+número e o Actor pode devolver
-      // a impressão japonesa mesmo quando a consulta é PT-BR.
     }catch(error){
-      apifyError=error?.code||error?.message||'apify_error';
+      apifyError=apifyError||error?.code||error?.message||'apify_error';
       console.warn('MYP Apify falhou; usando fallback Reader:',apifyError);
     }
   }
@@ -919,7 +941,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1478actor:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1479actorfirst:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
