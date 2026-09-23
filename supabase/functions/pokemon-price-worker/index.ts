@@ -204,10 +204,12 @@ async function fetchMarkets(card:any){
     // uma carta que já foi identificada por outra variante do mesmo número.
     myp=await fetchSource(MYP_API,card,true,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_error")}));
+    console.log("[MYP_FAST]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
 
     if(!hasMarketPrice(myp)){
       myp=await fetchSource(MYP_API,card,true,false)
         .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+      console.log("[MYP_FULL]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
     }
   }else{
     myp=await fetchSource(MYP_API,card,false,false)
