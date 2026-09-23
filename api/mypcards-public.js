@@ -532,6 +532,59 @@ function extractMarket(identity,finish,condition){
   return{min:0,avg:0,max:0,availableQuantity,samples:0,exactVariant:false};
 }
 
+
+function marketFitsFinish(market,finish){
+  if(!hasAnyMarket(market))return false;
+  const kind=finishKind(finish);
+  if(kind==='normal')return true;
+  return market?.exactVariant===true;
+}
+function mergeVariantMarkets(markets){
+  const usable=(markets||[]).filter(m=>m&&m.exactVariant&&hasAnyMarket(m));
+  if(!usable.length)return null;
+  let min=Infinity,max=0,total=0,samples=0,qty=0,hasQty=false;
+  for(const m of usable){
+    const count=Math.max(1,Number(m.samples||0));
+    const pageAvg=Number(m.avg||0)||Number(m.min||0)||Number(m.max||0);
+    const pageMin=Number(m.min||0)||pageAvg;
+    const pageMax=Number(m.max||0)||pageAvg;
+    if(pageMin>0)min=Math.min(min,pageMin);
+    if(pageMax>0)max=Math.max(max,pageMax);
+    if(pageAvg>0){total+=pageAvg*count;samples+=count}
+    if(Number(m.availableQuantity||0)>0){qty+=Number(m.availableQuantity);hasQty=true}
+  }
+  if(!Number.isFinite(min))min=0;
+  return{
+    min,avg:samples?total/samples:0,max,
+    availableQuantity:hasQty?qty:null,
+    samples:samples||null,
+    exactVariant:true
+  };
+}
+async function marketAcrossSellerPages(link,firstRaw,firstIdentity,wanted,finish,condition){
+  const first=extractMarket(firstIdentity,finish,condition);
+  if(marketFitsFinish(first,finish))return first;
+  if(finishKind(finish)==='normal')return first;
+
+  const pages=new Set([2,3,4,5]);
+  for(const m of String(firstRaw||'').matchAll(/estoque-outros-page(?:=|%3D)(\d+)/gi)){
+    const n=Number(m[1]||0);
+    if(n>=2&&n<=8)pages.add(n);
+  }
+  const base=safeMypProductUrl(link);
+  if(!base)return first;
+
+  const results=await Promise.all([...pages].sort((a,b)=>a-b).slice(0,7).map(async page=>{
+    try{
+      const raw=await fetchJina(base+'?estoque-outros-page='+page,9000);
+      const identity=pageIdentity(raw);
+      if(!matchesWanted(identity,wanted))return null;
+      return extractMarket(identity,finish,condition);
+    }catch{return null}
+  }));
+  return mergeVariantMarkets([first,...results])||first;
+}
+
 async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang,finish,condition}){
   const direct=safeMypProductUrl(link);
   const wanted={name,nameAliases,number,set,setId,lang};
@@ -551,13 +604,13 @@ async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang
       const exact=matchesWanted(identity,wanted);
 
       if(exact){
-        const market=extractMarket(identity,finish,condition);
+        const market=await marketAcrossSellerPages(url,raw,identity,wanted,finish,condition);
         const wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code);
         let score=1000+marketIdentityLocaleScore(identity,{setId,lang})+(market.samples||0);
         if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
         const candidate={url,identity,market,score};
         if(!best||candidate.score>best.score)best=candidate;
-        if(hasAnyMarket(market))break;
+        if(marketFitsFinish(market,finish))break;
       }
 
       // Mesmo quando o número não bate, uma página do mesmo personagem/carta
@@ -620,8 +673,8 @@ module.exports=async function handler(req,res){
           message:'O link salvo não corresponde à carta consultada.'
         });
       }
-      const market=extractMarket(identity,finish,condition);
-      if(hasAnyMarket(market)){
+      const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
+      if(marketFitsFinish(market,finish)){
         return res.status(200).json({
           ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
           name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
@@ -654,8 +707,8 @@ module.exports=async function handler(req,res){
       const text=await fetchJina(directLink,12000);
       const identity=pageIdentity(text);
       if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
-        const market=extractMarket(identity,finish,condition);
-        if(hasAnyMarket(market)){
+        const market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
+        if(marketFitsFinish(market,finish)){
           return res.status(200).json({
             ok:true,
             source:'MYP Cards',
@@ -689,7 +742,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1472actor:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1473pages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -796,7 +849,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1472actor:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1473pages:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
@@ -822,7 +875,7 @@ module.exports=async function handler(req,res){
     // Preço final vem da página pública validada. O Actor serve apenas para
     // descobrir a URL quando a busca textual/slug da MYP não encontra a carta.
     const market=found.market;
-    if(!hasAnyMarket(market)){
+    if(!marketFitsFinish(market,finish)){
       const out={ok:false,error:'no_price_data',source:'MYP Cards',provider:apifyFound?'Reader + Apify':'Reader',connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:'A MYP respondeu sem cotação utilizável para esta carta/variante.'};
       CACHE.set(cacheKey,{value:out,expires:Date.now()+3*60*1000});
       return res.status(200).json(out);
