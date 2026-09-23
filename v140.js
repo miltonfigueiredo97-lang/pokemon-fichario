@@ -1164,15 +1164,24 @@
   }
 
   async function fetchAnniversaryComponent(masterLang,spec){
-    const lang=spec.lang||masterLang;
-    const p=new URLSearchParams({v:'25',lang,set:spec.id});
+    // A component marked with a language is physically restricted to that
+    // language. Never inject it into another language just to fill the checklist.
+    if(spec.lang&&spec.lang!==masterLang){
+      return {ok:true,set:{id:spec.id,name:spec.label||spec.id,languageCode:spec.lang},entries:[],__spec:spec,__excludedByLanguage:true};
+    }
+    const lang=masterLang;
+    const p=new URLSearchParams({v:'26',lang,set:spec.id,strictLang:'1'});
     if(spec.all)p.set('all','1');
     if(spec.jumbo)p.set('jumbo','1');
     if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
     const r=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
     const data=await r.json();
     if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+(spec.label||spec.id)));
-    let entries=transformAnniversaryComponent(data.entries,spec);
+    let entries=(Array.isArray(data.entries)?data.entries:[]).filter(e=>{
+      const code=String(e?.languageCode||'').toLowerCase();
+      return masterLang==='pt'?code==='pt-br':code===masterLang;
+    });
+    entries=transformAnniversaryComponent(entries,spec);
     entries=ensureAnniversaryJumbos(entries,spec);
     return {...data,entries,__spec:spec};
   }
@@ -1294,6 +1303,9 @@
           }
         }
         for(const entry of complete.syntheticEntries||[]){
+          const code=String(entry?.languageCode||'').toLowerCase();
+          const matchesLanguage=lang==='pt'?code==='pt-br':code===lang;
+          if(!matchesLanguage)continue;
           const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
           if(seen.has(key))continue;
           seen.add(key);
@@ -1319,7 +1331,7 @@
           anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch('/api/master-set?v=25&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetch('/api/master-set?v=26&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
@@ -1339,7 +1351,7 @@
           const warnings=Array.isArray(j.anniversaryWarnings)&&j.anniversaryWarnings.length
             ?' Atenção: '+j.anniversaryWarnings.length+' grupo(s) extra(s) não puderam ser carregados agora.'
             :'';
-          notice.textContent=complete.label+' reúne set principal, subsets, promos, distribuições especiais e extras físicos do aniversário em um único checklist. Jumbos e cards Metal entram como entradas próprias; cada carta mantém o set/idioma de origem para número, imagem e cotação.'+warnings;
+          notice.textContent=complete.label+' reúne set principal, subsets, promos, distribuições especiais e extras físicos disponíveis no idioma selecionado. O filtro de idioma é estrito: cartas que só existem em outro idioma não entram. Jumbos e cards Metal entram como entradas próprias.'+warnings;
         }else if(j.set.isPromoSet){
           notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
         }else{
