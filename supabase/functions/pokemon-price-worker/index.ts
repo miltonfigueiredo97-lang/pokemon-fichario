@@ -42,7 +42,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.83"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.84"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -101,35 +101,39 @@ function mypSlug(value:unknown){
     .replace(/^-+|-+$/g,"")
     .replace(/-+/g,"-");
 }
-async function englishCardSlug(card:any){
+async function mypCardSlug(card:any){
   const apiId=String(card?.api_id||"").trim();
-  const key=apiId||String(card?.name||"");
+  const lang=String(card?.language_code||"").toLowerCase();
+  const key=(lang||"default")+"|"+(apiId||String(card?.name||""));
   const cached=englishSlugCache.get(key);
   if(cached&&cached.expires>Date.now())return cached.slug;
 
   let name="";
   if(apiId){
-    try{
-      const controller=new AbortController();
-      const timer=setTimeout(()=>controller.abort(),6000);
+    const locales=(lang==="pt-br"||lang==="pt")?["pt-br","en"]:["en","pt-br"];
+    for(const locale of locales){
       try{
-        const r=await fetch("https://api.tcgdex.net/v2/en/cards/"+encodeURIComponent(apiId),{
-          headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.74"},
-          signal:controller.signal
-        });
-        if(r.ok){
-          const data=await r.json();
-          name=String(data?.name||"").trim();
-        }
-      }finally{clearTimeout(timer)}
-    }catch{}
+        const controller=new AbortController();
+        const timer=setTimeout(()=>controller.abort(),4500);
+        try{
+          const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.84"},
+            signal:controller.signal
+          });
+          if(r.ok){
+            const data=await r.json();
+            const candidate=String(data?.name||"").trim();
+            if(candidate){name=candidate;break}
+          }
+        }finally{clearTimeout(timer)}
+      }catch{}
+    }
   }
   if(!name)name=String(card?.name||"");
   const slug=mypSlug(name)||"card";
   englishSlugCache.set(key,{slug,expires:Date.now()+24*60*60_000});
   return slug;
 }
-
 
 async function learnedMypLink(db:any,card:any){
   const collector=collectorNumber(card?.number);
@@ -181,7 +185,7 @@ async function learnedMypLink(db:any,card:any){
   if(!learned)return"";
   const productId=learned.offset+collector;
   if(productId<=0)return"";
-  const slug=await englishCardSlug(card);
+  const slug=await mypCardSlug(card);
   return "https://mypcards.com/pokemon/produto/"+String(productId)+"/"+slug;
 }
 
