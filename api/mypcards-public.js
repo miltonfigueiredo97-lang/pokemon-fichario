@@ -589,7 +589,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1470reader:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1471diag:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -644,7 +644,15 @@ module.exports=async function handler(req,res){
             });
           }
           return res.status(200).json({
-            ok:false,error:'reader_identity_mismatch',source:'MYP Cards',provider:'Collection + Reader',
+            ok:false,
+            error:'reader_identity_mismatch::'+[
+              'name='+String(identity.name||'').slice(0,80),
+              'number='+String(identity.number||'').slice(0,40),
+              'edition='+String(identity.edition||'').slice(0,100),
+              'code='+String(identity.code||'').slice(0,100),
+              'head='+String(identity.text||'').replace(/\s+/g,' ').slice(0,220)
+            ].join('|'),
+            source:'MYP Cards',provider:'Collection + Reader',
             link:discoveredLink,message:'Produto localizado automaticamente, mas a identidade retornada pelo Reader não conferiu.'
           });
         }catch(error){
