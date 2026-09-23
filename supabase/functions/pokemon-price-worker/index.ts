@@ -3,9 +3,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH = 6;
+const BATCH = 16;
 const RETRY_LIMIT = 3;
-const STALE_MS = 5 * 60 * 1000;
+const STALE_MS = 2 * 60 * 1000;
 const TERMINAL = new Set(["no_price_data","wrong_product","product_not_found","variant_not_found"]);
 
 const CORS={
@@ -36,10 +36,10 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
     if(link&&/mypcards\.com/i.test(link))q.set("link",link);
   }
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),fast?30000:58000);
+  const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.74"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.75"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -207,9 +207,13 @@ async function fetchMarkets(card:any){
     console.log("[MYP_FAST]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode,identity:myp?.identity}));
 
     if(!hasMarketPrice(myp)){
-      myp=await fetchSource(MYP_API,card,true,false)
-        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
-      console.log("[MYP_FULL]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
+      const fastError=String(myp?.error||"");
+      const needsHeavyFallback=["fast_timeout","fast_unavailable","wrong_product","product_not_found"].includes(fastError);
+      if(needsHeavyFallback){
+        myp=await fetchSource(MYP_API,card,true,false)
+          .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+        console.log("[MYP_FULL]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
+      }
     }
   }else{
     myp=await fetchSource(MYP_API,card,false,false)
@@ -362,8 +366,10 @@ Deno.serve(async(req:Request)=>{
         return {state:"retry_limit"};
       }
 
-      const delayMinutes=Math.min(30,Math.pow(2,Math.min(attempts,4)));
-      const retryAt=new Date(Date.now()+delayMinutes*60_000).toISOString();
+      // Fila rápida: 30 s na primeira falha, 60 s na segunda.
+      // O cron roda a cada minuto, então isso evita buracos de 2–4 minutos.
+      const delaySeconds=attempts<=1?30:60;
+      const retryAt=new Date(Date.now()+delaySeconds*1000).toISOString();
       const {error}=await db.from("pokemon_cards").update({
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
         price_last_error:errorDetail||errorCode||"temporary_error"
@@ -381,7 +387,7 @@ Deno.serve(async(req:Request)=>{
         terminal++;
         return {state:"retry_limit"};
       }
-      const retryAt=new Date(Date.now()+Math.min(30,Math.pow(2,Math.min(attempts,4)))*60_000).toISOString();
+      const retryAt=new Date(Date.now()+(attempts<=1?30:60)*1000).toISOString();
       await db.from("pokemon_cards").update({
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
         price_last_error:message
