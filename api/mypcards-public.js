@@ -738,6 +738,38 @@ module.exports=async function handler(req,res){
     }
   }
 
+  const directBrowser=String(req.query.directBrowser||'')==='1';
+  if(directBrowser&&directLink){
+    try{
+      const market=await findAndScrapeMypBrowser(directLink,{
+        name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true
+      });
+      if(market?.ok&&hasAnyMarket(market)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Chromium direct',mode:market.mode||'browser-direct-known',
+          name,number,edition:market.edition||set,finish,condition,
+          link:safeMypProductUrl(market.link)||directLink,
+          min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+          samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+          exactVariant:market.exactVariant!==false,
+          complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+          checkedAt:new Date().toISOString()
+        });
+      }
+      return res.status(200).json({
+        ok:false,error:market?.error||'variant_not_found',source:'MYP Cards',
+        provider:'Chromium direct',link:directLink,
+        message:market?.message||'A página conhecida não retornou a variante solicitada.'
+      });
+    }catch(error){
+      return res.status(200).json({
+        ok:false,error:error?.name==='TimeoutError'?'timeout':'browser_error',
+        source:'MYP Cards',provider:'Chromium direct',link:directLink,
+        message:error?.message||String(error)
+      });
+    }
+  }
+
   // Na fila, uma carta com URL MYP conhecida não precisa refazer descoberta.
   // Tente primeiro o scraper especializado com consulta exata
   // (nome + número + coleção). Ele já valida idioma, condição e acabamento.
@@ -810,7 +842,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1479actorfirst:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1480direct:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -941,7 +973,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1479actorfirst:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1480direct:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
