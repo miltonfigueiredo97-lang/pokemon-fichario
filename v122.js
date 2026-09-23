@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.63';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.64';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.64',title:'151 abre a página MYP correta sem busca lenta',items:[
+      'Na coleção 151, o produto MYP é resolvido automaticamente pelo número da carta, sem cadastro manual carta por carta.',
+      '194/165 resolve automaticamente para o produto 206067, como no exemplo da Transferência do Bill.',
+      'Depois de abrir a página, as ofertas são filtradas por idioma PT-BR, condição e acabamento.',
+      'Para outras coleções, continuam valendo a busca automática e a navegação por Outras Edições.'
+    ]},
     {version:'V14.63',title:'Outras Edições usadas como ponte automática',items:[
       'O sistema pode encontrar uma página da mesma carta com outro número e usá-la como porta de entrada para Outras Edições.',
       'Exemplo: uma página base da Transferência do Bill pode levar automaticamente à impressão 194/165 MEW.',

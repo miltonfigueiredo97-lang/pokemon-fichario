@@ -53,7 +53,7 @@ async function resolveNameAliases(name,apiId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/cards/'+encodeURIComponent(apiId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.63'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.64'}
         });
         return r.ok?await r.json():null;
       }catch{return null}
@@ -71,7 +71,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.63'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.64'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -122,6 +122,20 @@ async function fetchText(url,timeout=9000){
   }finally{clearTimeout(timer)}
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
+function canonicalSetProductUrl({setId,number}={}){
+  const sid=normalize(setId);
+  const np=numberParts(number);
+  const collector=/^\d+$/.test(np.n)?Number(np.n):0;
+  if(!collector)return'';
+
+  // Escarlate e Violeta: 151 (MEW) usa uma sequência contígua na MYP:
+  // 001/165 = 205874, portanto productId = 205873 + collector.
+  // Isso é uma regra da coleção, não uma tabela manual por carta.
+  if((sid==='sv03 5'||sid==='sv3 5')&&collector>=1&&collector<=207){
+    return ROOT+'/pokemon/produto/'+String(205873+collector)+'/card';
+  }
+  return'';
+}
 function aliasCompactKeys(names){
   return [...new Set((names||[]).map(name=>slugify(name).replace(/-/g,'')).filter(Boolean))];
 }
@@ -378,7 +392,8 @@ module.exports=async function handler(req,res){
   if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
-  const directLink=safeMypProductUrl(link);
+  const canonicalLink=canonicalSetProductUrl({setId,number});
+  const directLink=canonicalLink||safeMypProductUrl(link);
   const nameAliases=await resolveNameAliases(name,apiId);
   let browserSeedLink=directLink;
   if(!browserSeedLink&&!fast){
@@ -436,7 +451,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1463:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1464:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -499,7 +514,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1463b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1464b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
