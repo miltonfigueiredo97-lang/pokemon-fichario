@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.64',title:'Busca MYP rápida com alias inglês prioritário',items:[
+      'Aliases diferentes do nome salvo são pesquisados primeiro, permitindo localizar páginas inglesas de cartas PT-BR.',
+      'A busca começa pelo nome simples e só depois adiciona número/coleção, evitando consultas excessivamente restritas.',
+      'O número de consultas e os timeouts foram limitados para a descoberta caber no worker automático.',
+      'Candidatos são validados no mesmo navegador antes de abrir processos adicionais.'
+    ]},
     {version:'V14.63',title:'MYP encontra páginas em inglês com ofertas PT-BR',items:[
       'A busca de produto MYP não restringe mais o idioma da página.',
       'Aliases PT-BR/EN são usados automaticamente para localizar a mesma carta.',

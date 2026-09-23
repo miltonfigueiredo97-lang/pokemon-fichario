@@ -46,7 +46,7 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1463:'+String(apiId||'').trim();
+  const key='name-aliases:v1464:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
@@ -193,7 +193,7 @@ async function familySeedCandidates(wanted){
 
 async function sitemapCandidates(name){
   const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
-  const key='sitemap:v1463:'+wantedCompact,cached=CACHE.get(key);
+  const key='sitemap:v1464:'+wantedCompact,cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const matches=[];
   let root;
