@@ -1170,7 +1170,7 @@
       return {ok:true,set:{id:spec.id,name:spec.label||spec.id,languageCode:spec.lang},entries:[],__spec:spec,__excludedByLanguage:true};
     }
     const lang=masterLang;
-    const p=new URLSearchParams({v:'26',lang,set:spec.id,strictLang:'1'});
+    const p=new URLSearchParams({v:'27',lang,set:spec.id,strictLang:'1'});
     if(spec.all)p.set('all','1');
     if(spec.jumbo)p.set('jumbo','1');
     if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
@@ -1331,7 +1331,7 @@
           anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch('/api/master-set?v=26&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetch('/api/master-set?v=27&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
@@ -1437,7 +1437,7 @@
     g.innerHTML=p.entries.map((e,i)=>{
       const owned=p.owned.has(i),img=masterImage(e);
       return '<button type="button" class="v14-master-card '+(owned?'owned':'')+'" data-master-index="'+i+'">'+
-        (img?'<img src="'+esc(img)+'" loading="lazy" alt="'+esc(e.name)+'">':'<div class="v14-no-img" data-master-fallback="'+i+'">'+esc(e.name)+'</div>')+
+        (img?'<img src="'+esc(img)+'" loading="lazy" alt="'+esc(e.name)+'" data-master-img="'+i+'">':'<div class="v14-no-img" data-master-fallback="'+i+'">'+esc(e.name)+'</div>')+
         '<strong>'+esc(e.name)+'</strong><small>#'+esc(e.number)+' · '+esc(e.variantLabel)+'</small><span>'+(owned?'TENHO':'NÃO TENHO')+'</span>'+
       '</button>';
     }).join('');
@@ -1452,22 +1452,64 @@
     hydrateMasterPreviewImages();
   }
 
+  async function masterImageFallbackV1473(entry){
+    if(!entry)return'';
+    if(entry.imageUrl)return masterImage(entry);
+    if(entry.languageCode==='ja')return japaneseImageFallback({...entry,languageCode:'ja'});
+    V14.masterImageFallbackCache=V14.masterImageFallbackCache||new Map();
+    const key=[entry.apiId,entry.setId,entry.number,entry.name].join('|');
+    if(V14.masterImageFallbackCache.has(key))return V14.masterImageFallbackCache.get(key);
+    try{
+      const p=new URLSearchParams({
+        name:entry.name||'',
+        number:entry.number||'',
+        set:entry.setId||entry.setName||'',
+        rarity:entry.rarity||'',
+        hp:String(entry.hp||'')
+      });
+      const r=await fetch('/api/card-image-fallback?'+p.toString(),{cache:'force-cache'});
+      const j=await r.json();
+      const url=j?.ok?j.url:'';
+      V14.masterImageFallbackCache.set(key,url);
+      return url;
+    }catch{
+      V14.masterImageFallbackCache.set(key,'');
+      return'';
+    }
+  }
+
   function hydrateMasterPreviewImages(){
-    const p=V14.masterPreview;if(!p||p.set.languageCode!=='ja')return;
+    const p=V14.masterPreview;if(!p)return;
+    const root=byId('v14MasterGrid');
     const nodes=[...document.querySelectorAll('[data-master-fallback]')];
     const io=new IntersectionObserver(entries=>{
       for(const ent of entries){
         if(!ent.isIntersecting)continue;
         io.unobserve(ent.target);
         const i=+ent.target.dataset.masterFallback,e=p.entries[i];
-        japaneseImageFallback({...e,languageCode:'ja'}).then(url=>{
+        masterImageFallbackV1473(e).then(url=>{
           if(!url||!ent.target.isConnected)return;
-          const img=document.createElement('img');img.src=url;img.loading='lazy';img.alt=e.name||'Carta';
+          const img=document.createElement('img');
+          img.src=url;img.loading='lazy';img.alt=e.name||'Carta';img.dataset.masterImg=String(i);
           ent.target.replaceWith(img);e.imageUrl=url;
         }).catch(()=>{});
       }
-    },{root:byId('v14MasterGrid'),rootMargin:'250px'});
+    },{root,rootMargin:'250px'});
     nodes.forEach(n=>io.observe(n));
+
+    root?.querySelectorAll('img[data-master-img]').forEach(img=>{
+      img.addEventListener('error',()=>{
+        if(img.dataset.fallbackTried==='1')return;
+        img.dataset.fallbackTried='1';
+        const i=+img.dataset.masterImg,e=p.entries[i];
+        if(!e)return;
+        e.imageUrl='';
+        masterImageFallbackV1473(e).then(url=>{
+          if(!url||!img.isConnected)return;
+          img.src=url;e.imageUrl=url;
+        }).catch(()=>{});
+      },{once:false});
+    });
   }
 
   async function liveMasterBinderName(base,setId){
