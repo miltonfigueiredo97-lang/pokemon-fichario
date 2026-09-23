@@ -47,7 +47,7 @@ async function resolveNameAliases(name,apiId){
   if(apiId){
     try{
       const r=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-        headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.52'}
+        headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.59'}
       });
       if(r.ok){
         const d=await r.json();
@@ -66,7 +66,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.52'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.59'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -122,7 +122,10 @@ function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0
 function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'(?:\\s*\\/\\s*'+token+')?)\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
 function marketIdentityLocaleScore(identity,wanted={}){
   const lang=String(wanted?.lang||'').toLowerCase();
-  const hay=normalize([identity?.edition,identity?.code,identity?.text].filter(Boolean).join(' '));
+  // identity.text também contém "Outras Edições". Usar o corpo inteiro
+  // confundia uma página MEW válida com SV2A/Japonês listado mais abaixo.
+  // A identidade da impressão vem apenas de Edição/Código da página atual.
+  const hay=normalize([identity?.edition,identity?.code].filter(Boolean).join(' '));
   const tokens=new Set(hay.split(/\s+/).filter(Boolean));
   const japanese=tokens.has('japones')||tokens.has('japanese')||tokens.has('sv2a');
   let score=0;
@@ -336,7 +339,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1456:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1459:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -408,7 +411,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1456:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1459:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const candidateLink=safeMypProductUrl(apifyFound?.link)||link;
