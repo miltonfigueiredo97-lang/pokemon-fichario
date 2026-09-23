@@ -225,7 +225,7 @@ function productUrlsFromText(raw,names=[]){
 }
 
 async function resolveSetMeta(apiId,setName,setId){
-  const key='set-meta:v1482:'+String(setId||apiId||setName||'');
+  const key='set-meta:v1483:'+String(setId||apiId||setName||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
 
@@ -302,9 +302,37 @@ function scoreEditionCandidate(candidate,meta,setName,setId){
 
 async function mypEditionUrl({apiId,setId,set}){
   const meta=await resolveSetMeta(apiId,set,setId);
-  const key='myp-edition:v1482:'+String(setId||set||'');
+  const key='myp-edition:v1483:'+String(setId||set||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
+
+  // Primeiro derive a URL diretamente dos nomes oficiais/localizados do set.
+  // Isso evita escolher atalhos genéricos como /pokemon/151 quando a página
+  // real é /pokemon/scarlet-violet-151 ou equivalente localizado.
+  const derived=[...new Set((meta?.names||[])
+    .map(name=>slugify(name))
+    .filter(slug=>slug&&slug.length>=4&&!/^\d+$/.test(slug))
+  )].sort((a,b)=>b.length-a.length);
+
+  for(const slug of derived.slice(0,8)){
+    const candidate=ROOT+'/pokemon/'+slug;
+    try{
+      const raw=await fetchJina(candidate+'?page=1&sort=-codigoproduto',6500);
+      const plain=normalize(stripTags(raw));
+      if(!plain||/404|pagina nao encontrada|page not found/.test(plain.slice(0,500)))continue;
+
+      // Exija evidência de que é uma listagem de edição/produtos Pokémon.
+      const hasProducts=/itens encontrados|ver ofertas|adicionar a pasta|codigo produto|alta procura/.test(plain);
+      const setTokens=(meta?.aliases||[])
+        .flatMap(alias=>String(alias||'').split(/\s+/))
+        .filter(token=>token.length>=3&&!/^\d+$/.test(token));
+      const tokenHits=setTokens.filter(token=>plain.includes(token)).length;
+      if(hasProducts&&(tokenHits>0||!setTokens.length)){
+        CACHE.set(key,{value:candidate,expires:Date.now()+24*60*60*1000});
+        return candidate;
+      }
+    }catch{}
+  }
 
   let best=null;
   const batches=[[1,2,3],[4,5,6],[7,8,9]];
