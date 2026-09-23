@@ -954,6 +954,42 @@
     loadCatalogGenerationOptionsV1450(false);
   }
 
+  const ANNIVERSARY_COMPLETE_MASTER_SETS=[
+    {
+      id:'anniv20-complete',
+      label:'Completa 20 Anos',
+      componentIds:['g1','xy12'],
+      componentLabels:['Gerações','Evoluções'],
+      series:'20º Aniversário',
+      releaseDate:'2016'
+    },
+    {
+      id:'anniv25-complete',
+      label:'Completa 25 Anos',
+      componentIds:['cel25','cel25cc'],
+      componentLabels:['Celebrações','Classic Collection'],
+      series:'25º Aniversário',
+      releaseDate:'2021'
+    },
+    {
+      id:'anniv30-complete',
+      label:'Completa 30 Anos',
+      componentIds:['30th','30th-c'],
+      componentLabels:['Celebração de 30 Anos','Coleção Clássica'],
+      series:'30º Aniversário',
+      releaseDate:'2026'
+    }
+  ];
+
+  function completeAnniversaryForCatalog(list){
+    const ids=new Set((list||[]).map(x=>String(x?.id||'')));
+    return ANNIVERSARY_COMPLETE_MASTER_SETS.filter(x=>x.componentIds.every(id=>ids.has(id)));
+  }
+
+  function completeAnniversaryById(id){
+    return ANNIVERSARY_COMPLETE_MASTER_SETS.find(x=>x.id===String(id||''))||null;
+  }
+
   async function fetchSeries(lang){
     const key='series|'+lang;
     if(V14.seriesCache.has(key))return V14.seriesCache.get(key);
@@ -1022,12 +1058,18 @@
       if(epoch!==V14.masterEpoch)return;
       if(!catalog?.ok)throw new Error(catalog?.message||'Falha ao carregar as coleções');
       const list=Array.isArray(catalog.sets)?catalog.sets:[];
-      sets.innerHTML='<option value="">Selecione a coleção</option>'+list.map(s=>
+      const completeAnniversaries=completeAnniversaryForCatalog(list);
+      const completeOptions=completeAnniversaries.map(s=>
+        '<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.componentLabels.join(' + '))+'</option>'
+      ).join('');
+      sets.innerHTML='<option value="">Selecione a coleção</option>'+completeOptions+list.map(s=>
         '<option value="'+esc(s.id)+'">'+esc(s.displayName||s.name||s.id)+(s.isPromo?' · PROMOS':'')+'</option>'
       ).join('');
       sets.disabled=false;
       const promoCount=list.filter(s=>s.isPromo).length;
-      byId('v14SetStatus').textContent=list.length+' coleções em ordem de lançamento'+(promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
+      byId('v14SetStatus').textContent=list.length+' coleções em ordem de lançamento'+
+        (completeAnniversaries.length?' · '+completeAnniversaries.length+' opção completa de aniversário':'')+
+        (promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
     }catch(e){
       console.error(e);sets.innerHTML='<option value="">Erro ao carregar coleções</option>';
       byId('v14SetStatus').textContent='Não consegui carregar as coleções desta geração.';
@@ -1039,18 +1081,54 @@
     byId('v14SetStatus').textContent='Carregando cartas e variantes do Master Set…';
     byId('v14MasterStep').classList.add('hidden');
     try{
-      const r=await fetch('/api/master-set?v=24&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
-      const j=await r.json();
-      if(epoch!==V14.masterEpoch)return;
+      const complete=completeAnniversaryById(setId);
+      let j;
+      if(complete){
+        const parts=await Promise.all(complete.componentIds.map(async componentId=>{
+          const r=await fetch('/api/master-set?v=24&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(componentId),{cache:'no-store'});
+          const data=await r.json();
+          if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+componentId));
+          return data;
+        }));
+        if(epoch!==V14.masterEpoch)return;
+        j={
+          ok:true,
+          set:{
+            id:complete.id,
+            name:complete.label,
+            series:complete.series,
+            releaseDate:complete.releaseDate,
+            languageCode:lang==='pt'?'pt-br':lang,
+            isPromoSet:false,
+            isCompositeAnniversary:true
+          },
+          entries:parts.flatMap(x=>Array.isArray(x.entries)?x.entries:[]),
+          components:parts.map((x,i)=>({
+            id:x.set?.id||complete.componentIds[i],
+            name:x.set?.name||complete.componentLabels[i],
+            entries:Array.isArray(x.entries)?x.entries.length:0
+          }))
+        };
+      }else{
+        const r=await fetch('/api/master-set?v=24&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        j=await r.json();
+        if(epoch!==V14.masterEpoch)return;
+        if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
+      }
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
       const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
-        .replace(/\s*·\s*PROMOS\s*$/i,'').trim();
-      V14.masterPreview={...j,owned:new Set(),lang,displaySetName:selectedLabel||j.set.name};
+        .replace(/\s*·\s*PROMOS\s*$/i,'')
+        .replace(/\s*·\s*(?:Gerações|Celebrações|Celebração de 30 Anos)\s*\+.*$/i,'')
+        .trim();
+      V14.masterPreview={...j,owned:new Set(),lang,displaySetName:complete?.label||selectedLabel||j.set.name};
       byId('v14MasterTitle').textContent=V14.masterPreview.displaySetName;
-      byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
+      const componentText=complete?complete.componentLabels.join(' + '):'';
+      byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,componentText,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
       const notice=byId('v14PromoNotice');
       if(notice){
-        if(j.set.isPromoSet){
+        if(complete){
+          notice.textContent=complete.label+' reúne '+complete.componentLabels.join(' + ')+' em um único fichário. Cada carta mantém a coleção original para número, imagem, variante e cotação.';
+        }else if(j.set.isPromoSet){
           notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
         }else{
           notice.textContent='Promos não são misturadas automaticamente com esta coleção. Para cadastrá-las, escolha a coleção de PROMOS da mesma geração ou adicione depois pela busca, manualmente ou pelo scanner.';
@@ -1059,7 +1137,7 @@
       }
       renderMasterGrid();
       renderMasterQueue();
-      byId('v14SetStatus').textContent='Master Set pronto para conferência.';
+      byId('v14SetStatus').textContent=complete?'Coleção completa de aniversário pronta para conferência.':'Master Set pronto para conferência.';
       byId('v14MasterStep').classList.remove('hidden');
     }catch(e){console.error(e);byId('v14SetStatus').textContent='Erro ao montar a coleção: '+(e.message||e)}
   }
