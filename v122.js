@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.68';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.69';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.69',title:'Busca MYP por edição + cotação manual',items:[
+      'O backend localiza primeiro a edição correta no índice oficial de edições da MYP e depois encontra a carta pelo número dentro da coleção.',
+      'Isso evita misturar impressões com o mesmo nome/número em outras edições e reduz buscas por nome que davam timeout.',
+      'Sem cotação sincroniza os preços diretamente com o Supabase ao abrir, removendo cartas que já foram atualizadas no servidor.',
+      'A tela da carta ganhou Editar cotação manualmente, com mínimo, médio, máximo e link MYP.',
+      'Uma cotação manual encerra a pendência daquela carta, mas pode ser substituída depois por uma nova atualização automática.'
+    ]},
     {version:'V14.68',title:'Sem cotação agora abre em popup amplo',items:[
       'O bloco Sem cotação no Resumo virou apenas um atalho com contador e não expande mais a lista na lateral.',
       'Ao clicar, abre um popup grande com todas as cartas sem cotação.',
