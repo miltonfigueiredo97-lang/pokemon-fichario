@@ -2,7 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='25';
+const MASTER_ALGO_VERSION='26';
 const SPECIAL_MASTER_ORIGINAL_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
@@ -251,13 +251,14 @@ module.exports=async function handler(req,res){
   if(!setId)return res.status(400).json({ok:false,error:'set_required'});
   const includeAllPhysical=['1','true','yes','all'].includes(String(req.query.all||'').toLowerCase());
   const includeJumbo=['1','true','yes'].includes(String(req.query.jumbo||'').toLowerCase());
+  const strictLang=['1','true','yes'].includes(String(req.query.strictLang||'').toLowerCase());
   const onlyRaw=String(req.query.only||'').split(',').map(x=>x.trim()).filter(Boolean);
   const onlyKey=v=>{
     const raw=String(v||'').trim().toUpperCase();
     return /^\d+$/.test(raw)?String(Number(raw)):raw;
   };
   const onlySet=new Set(onlyRaw.map(onlyKey));
-  const cacheKey=MASTER_ALGO_VERSION+'|'+lang+'|'+setId+'|all='+(includeAllPhysical?'1':'0')+'|jumbo='+(includeJumbo?'1':'0')+'|only='+[...onlySet].sort().join(',');
+  const cacheKey=MASTER_ALGO_VERSION+'|'+lang+'|'+setId+'|all='+(includeAllPhysical?'1':'0')+'|jumbo='+(includeJumbo?'1':'0')+'|strict='+(strictLang?'1':'0')+'|only='+[...onlySet].sort().join(',');
   const cached=CACHE.get(cacheKey);
   if(cached&&Date.now()-cached.at<3600000)return res.status(200).json(cached.value);
   try{
@@ -332,6 +333,8 @@ module.exports=async function handler(req,res){
     for(let i=0;i<details.length;i++){
       const card=details[i];
       if(!card||card.__error)continue;
+      const resolvedLang=String(card.__variantLang||sourceLang||lang).toLowerCase();
+      if(strictLang&&resolvedLang!==lang)continue;
       const rawVariants=rawByCard[i];
       const anniversaryClassic=['cel25cc','30th-c'].includes(String(set.id||setId));
       let variants;
@@ -406,6 +409,7 @@ module.exports=async function handler(req,res){
         expectedCount,
         includeAllPhysical,
         includeJumbo,
+        strictLang,
         only:[...onlySet],
         listLength:list.length,
         detailsLength:details.length,
