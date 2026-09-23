@@ -146,6 +146,15 @@ function sameMypProduct(a,b){
   const aa=mypProductId(a),bb=mypProductId(b);
   return !!(aa&&bb&&aa===bb);
 }
+function isCanonicalMewPtBrProductLink(link,{setId,lang,number}={}){
+  const rawSet=String(setId||'').trim().toLowerCase();
+  const rawLang=String(lang||'').trim().toLowerCase();
+  if(!['sv03.5','sv3.5'].includes(rawSet)||!['pt-br','pt'].includes(rawLang))return false;
+  const np=numberParts(number);
+  const collector=/^\d+$/.test(np.n)?Number(np.n):0;
+  if(collector<1||collector>207)return false;
+  return Number(mypProductId(link)||0)===205873+collector;
+}
 function productUrlByIdFromText(raw,productId){
   const id=Number(productId||0);
   if(!id)return'';
@@ -858,7 +867,7 @@ module.exports=async function handler(req,res){
 
   let directLink=safeMypProductUrl(link);
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
-  if(directLink){
+  if(directLink&&!isCanonicalMewPtBrProductLink(directLink,{setId,lang,number})){
     directLink=await canonicalizeKnownProductLink({link:directLink,apiId,setId,set,number,name,nameAliases});
   }
   const browserSeedLink=directLink;
