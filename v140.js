@@ -3608,7 +3608,6 @@
   }
 
   function priceProblemTextV1466(card){
-    if(card?.price_processing_at)return 'Processando agora';
     const raw=String(card?.price_last_error||'').trim();
     const parts=raw.split('|').map(x=>x.trim()).filter(Boolean);
     const friendly=parts.map(part=>{
@@ -3631,10 +3630,15 @@
       })[code]||code.replace(/_/g,' ');
       return (source?source.toUpperCase()+': ':'')+label;
     });
-    if(friendly.length)return friendly.join(' · ');
-    if(card?.price_pending)return 'Na fila para nova tentativa';
-    if(Number(card?.price_attempts||0)>0)return 'Tentativas concluídas sem cotação';
-    return 'Ainda sem cotação automática';
+    const history=friendly.length?' · última tentativa: '+friendly.join(' · '):'';
+    if(card?.price_processing_at)return 'ATUALIZANDO'+history;
+    if(card?.price_pending){
+      const hasMyp=/mypcards\.com/i.test(String(card?.myp_price_link||card?.price_br_link||card?.price_link||''));
+      return 'NA FILA · '+(hasMyp?'link MYP localizado':'procurando link MYP')+history;
+    }
+    if(friendly.length)return 'FORA DA FILA · '+friendly.join(' · ');
+    if(Number(card?.price_attempts||0)>0)return 'FORA DA FILA · tentativas concluídas sem cotação salva';
+    return 'Sem cotação salva no app';
   }
 
   function ensureUnpricedDialogV1468(){
@@ -3645,7 +3649,7 @@
     d.className='v1468-unpriced-dialog';
     d.innerHTML=`<div class="v1468-unpriced-shell">
       <header class="v1468-unpriced-head">
-        <div><p class="kicker">AUDITORIA DE PREÇOS</p><div class="v1468-unpriced-title"><h2>Cartas sem cotação</h2><span id="v1468UnpricedTotal">0</span></div><p id="v1468UnpricedSubtitle" class="muted"></p></div>
+        <div><p class="kicker">AUDITORIA DE PREÇOS</p><div class="v1468-unpriced-title"><h2>Cartas sem cotação salva</h2><span id="v1468UnpricedTotal">0</span></div><p id="v1468UnpricedSubtitle" class="muted"></p></div>
         <button id="v1468UnpricedClose" class="icon-only" type="button" aria-label="Fechar">×</button>
       </header>
       <div class="v1468-unpriced-tools">
@@ -3671,7 +3675,7 @@
   }
 
   function unpricedProblemKindV1468(card){
-    if(card?.price_processing_at||(card?.price_pending&&!card?.price_last_error))return 'queued';
+    if(card?.price_processing_at||card?.price_pending)return 'queued';
     const raw=String(card?.price_last_error||'').toLowerCase();
     if(raw.includes('timeout'))return 'timeout';
     if(raw.includes('variant_not_found'))return 'variant';
@@ -3692,7 +3696,7 @@
 
     byId('v1468UnpricedTotal').textContent=String(all.length);
     byId('v1468UnpricedSubtitle').textContent=all.length
-      ? all.length+' carta'+(all.length===1?'':'s')+' sem cotação no fichário atual.'
+      ? all.length+' carta'+(all.length===1?'':'s')+' sem cotação salva no app neste fichário.'
       : 'Todas as cartas deste fichário possuem cotação.';
     byId('v1468UnpricedStats').textContent=cards.length===all.length?cards.length+' exibidas':cards.length+' de '+all.length+' exibidas';
 
@@ -3763,7 +3767,7 @@
     if(!root)return;
     const defs=[
       {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
-      {id:'unpriced',icon:'!',title:'Sem cotação',hint:'Cartas para conferir',items:[]},
+      {id:'unpriced',icon:'!',title:'Sem cotação salva',hint:'Cartas para conferir',items:[]},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
       {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'CSV e impressão',items:['btnExport','btnPrint']},
       {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
