@@ -3,8 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH = 4;
-const RETRY_LIMIT = 12;
+const BATCH = 6;
+const RETRY_LIMIT = 5;
 const STALE_MS = 5 * 60 * 1000;
 const TERMINAL = new Set(["no_price_data"]);
 
@@ -38,7 +38,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true){
   const timer=setTimeout(()=>controller.abort(),58000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.50"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.59"},
       signal:controller.signal
     });
     const body=await rr.text();
