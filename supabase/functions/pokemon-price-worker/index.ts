@@ -39,7 +39,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?30000:58000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.73"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.74"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -111,7 +111,7 @@ async function englishCardSlug(card:any){
       const timer=setTimeout(()=>controller.abort(),6000);
       try{
         const r=await fetch("https://api.tcgdex.net/v2/en/cards/"+encodeURIComponent(apiId),{
-          headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.73"},
+          headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.74"},
           signal:controller.signal
         });
         if(r.ok){
@@ -275,6 +275,11 @@ Deno.serve(async(req:Request)=>{
       if(!existingMyp){
         siblingLink=await siblingMypLink(db,card).catch(()=> "");
         if(siblingLink){
+          // Mesmo produto / mesma coleção / mesmo número: preserve o link
+          // aprendido pela variante irmã, ainda que a leitura de preço falhe.
+          await db.from("pokemon_cards")
+            .update({myp_price_link:siblingLink})
+            .eq("id",card.id);
           fetchCard={...card,myp_price_link:siblingLink};
         }else{
           learnedLink=await learnedMypLink(db,card).catch(()=> "");
