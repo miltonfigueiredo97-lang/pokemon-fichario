@@ -112,18 +112,30 @@ async function fetchJina(target,timeout=22000){
   const e=new Error('Jina reader unavailable');e.code='jina_unavailable';throw e;
 }
 async function fetchText(url,timeout=9000){
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
+  const started=Date.now();
+  const directBudget=Math.max(1800,Math.min(4000,Math.floor(timeout*.45)));
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),directBudget);
   try{
-    const response=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/12.7; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
+    const response=await fetch(url,{headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language':'pt-BR,pt;q=.9,en;q=.6','User-Agent':'Mozilla/5.0 (compatible; PokemonBinderBR/14.76; +https://pokemon-fichario.vercel.app)'},redirect:'follow',signal:controller.signal});
     const html=await response.text();
     if(response.ok&&!/just a moment|cf-chl|cloudflare/i.test(html))return html;
-    if(response.status===403||/just a moment|cf-chl|cloudflare/i.test(html)){
-      try{return await fetchJina(url)}catch{}
-      const e=new Error('Cloudflare bloqueou a leitura direta');e.code='cloudflare_blocked';throw e;
+    if(response.status!==403&&!/just a moment|cf-chl|cloudflare/i.test(html)){
+      if(!response.ok){const e=new Error('HTTP '+response.status);e.code='upstream_http';throw e}
+      return html;
     }
-    if(!response.ok){const e=new Error('HTTP '+response.status);e.code='upstream_http';throw e}
-    return html;
+  }catch(error){
+    if(error?.name!=='AbortError'&&error?.code!=='cloudflare_blocked'){
+      // Ainda tentamos o Reader abaixo dentro do mesmo orçamento total.
+    }
   }finally{clearTimeout(timer)}
+
+  const elapsed=Date.now()-started;
+  const remaining=Math.max(2500,timeout-elapsed);
+  try{return await fetchJina(url,remaining)}
+  catch{
+    const e=new Error('Cloudflare bloqueou a leitura direta');e.code='cloudflare_blocked';throw e;
+  }
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
 function mypProductId(value){
@@ -761,7 +773,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1476query:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1477budget:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -868,7 +880,7 @@ module.exports=async function handler(req,res){
     return res.status(200).json(out);
   }
 
-  const cacheKey='market:v1476query:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1477budget:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
