@@ -958,36 +958,200 @@
     {
       id:'anniv20-complete',
       label:'Completa 20 Anos',
-      componentIds:['g1','xy12'],
-      componentLabels:['Gerações','Evoluções'],
+      coreIds:['g1','xy12'],
+      summaryLabels:['Gerações','Evoluções','Promos XY','selos e Jumbos'],
       series:'20º Aniversário',
-      releaseDate:'2016'
+      releaseDate:'2016',
+      components:[
+        {id:'g1',label:'Gerações',required:true},
+        {id:'xy12',label:'Evoluções',required:true},
+        {
+          id:'g1',label:'Generations · selos 20th / Toys R Us',lang:'en',all:true,
+          only:['8','14','22','26','32','43','50','53'],transform:'stamp20'
+        },
+        {
+          id:'xyp',label:'XY Black Star Promos · 20º aniversário',lang:'en',all:true,jumbo:true,
+          only:['XY110','XY111','XY112','XY113','XY114','XY115','XY116','XY117','XY118','XY119','XY120',
+            'XY121','XY122','XY123','XY124','XY125','XY126','XY143','XY148','XY160','XY161','XY162','XY163',
+            'XY179','XY202','XY203','XY204','XY205','XY206','XY207','XY208','XY209','XY210'],
+          ensureJumbo:['XY121','XY122','XY123','XY124']
+        }
+      ]
     },
     {
       id:'anniv25-complete',
       label:'Completa 25 Anos',
-      componentIds:['cel25','cel25cc'],
-      componentLabels:['Celebrações','Classic Collection'],
+      coreIds:['cel25','cel25cc'],
+      summaryLabels:['Celebrações','Classic Collection','McDonald’s','General Mills','promos','Metal','First Partner Jumbo'],
       series:'25º Aniversário',
-      releaseDate:'2021'
+      releaseDate:'2021',
+      components:[
+        {id:'cel25',label:'Celebrações',required:true},
+        {id:'cel25cc',label:'Classic Collection',required:true},
+        {id:'2021swsh',label:'McDonald’s Collection 2021',all:true},
+        {
+          id:'swshp',label:'General Mills · promos 25 anos',lang:'en',all:true,
+          only:['SWSH010','SWSH011','SWSH012','SWSH013','SWSH039','SWSH040'],transform:'generalMillsHolo'
+        },
+        {
+          id:'swsh1',label:'General Mills · cartas regulares',lang:'en',all:true,
+          only:['63','73','89','117','127','136'],transform:'generalMillsNormal'
+        },
+        {
+          id:'swsh2',label:'General Mills · cartas regulares',lang:'en',all:true,
+          only:['89','94'],transform:'generalMillsNormal'
+        },
+        {
+          id:'swshp',label:'Promos dos produtos Celebrations',all:true,
+          only:['SWSH062','SWSH132','SWSH133','SWSH134','SWSH135','SWSH136','SWSH137','SWSH138',
+            'SWSH139','SWSH140','SWSH141','SWSH142','SWSH143','SWSH144','SWSH145','SWSH146','SWSH167','SWSH178']
+        },
+        {
+          id:'swshp',label:'Jumbos dos produtos Celebrations',lang:'en',all:true,jumbo:true,
+          only:['SWSH132','SWSH133','SWSH134','SWSH136','SWSH137','SWSH138','SWSH139'],
+          transform:'jumboOnly',ensureJumbo:['SWSH132','SWSH133','SWSH134','SWSH136','SWSH137','SWSH138','SWSH139']
+        },
+        {id:'base1',label:'Ultra-Premium Collection · Metal',lang:'en',all:true,only:['4','58'],transform:'metalOnly'},
+        {id:'base1',label:'First Partner · Kanto',lang:'en',all:true,jumbo:true,only:['44','46','58','63'],transform:'jumboOnly'},
+        {id:'neo1',label:'First Partner · Johto',lang:'en',all:true,jumbo:true,only:['54','57','81'],transform:'jumboOnly'},
+        {id:'ex1',label:'First Partner · Hoenn',lang:'en',all:true,jumbo:true,only:['59','74','76'],transform:'jumboOnly'},
+        {id:'dp1',label:'First Partner · Sinnoh',lang:'en',all:true,jumbo:true,only:['76','93','103'],transform:'jumboOnly'},
+        {id:'bwp',label:'First Partner · Unova',lang:'en',all:true,jumbo:true,only:['BW01','BW02','BW03'],transform:'jumboOnly'},
+        {id:'xyp',label:'First Partner · Kalos',lang:'en',all:true,jumbo:true,only:['XY01','XY02','XY03'],transform:'jumboOnly'},
+        {id:'smp',label:'First Partner · Alola',lang:'en',all:true,jumbo:true,only:['SM01','SM02','SM03'],transform:'jumboOnly'},
+        {id:'swshp',label:'First Partner · Galar',lang:'en',all:true,jumbo:true,only:['SWSH001','SWSH002','SWSH003'],transform:'jumboOnly'}
+      ]
     },
     {
       id:'anniv30-complete',
       label:'Completa 30 Anos',
-      componentIds:['30th','30th-c'],
-      componentLabels:['Celebração de 30 Anos','Coleção Clássica'],
+      coreIds:['30th','30th-c'],
+      summaryLabels:['30th Celebration','Coleção Clássica','Energias 30th','promos MEP','extras de produto'],
       series:'30º Aniversário',
-      releaseDate:'2026'
+      releaseDate:'2026',
+      components:[
+        {id:'30th',label:'Celebração de 30 Anos',required:true,all:true},
+        {id:'30th-c',label:'Coleção Clássica',required:true,all:true},
+        {id:'mee',label:'Energias Básicas 30th',all:true,only:['9','10','11','12','13','14','15','16']},
+        {
+          id:'mep',label:'Promos 30th · produtos 2026',all:true,jumbo:true,
+          only:['94','95','96','97','98','99','100','101','102','103','104','105','106','107','108','109']
+        }
+      ]
     }
   ];
 
   function completeAnniversaryForCatalog(list){
     const ids=new Set((list||[]).map(x=>String(x?.id||'')));
-    return ANNIVERSARY_COMPLETE_MASTER_SETS.filter(x=>x.componentIds.every(id=>ids.has(id)));
+    return ANNIVERSARY_COMPLETE_MASTER_SETS.filter(x=>(x.coreIds||[]).every(id=>ids.has(id)));
   }
 
   function completeAnniversaryById(id){
     return ANNIVERSARY_COMPLETE_MASTER_SETS.find(x=>x.id===String(id||''))||null;
+  }
+
+  function anniversaryLocalId(entry){
+    const api=String(entry?.apiId||'');
+    const set=String(entry?.setId||'');
+    if(set&&api.startsWith(set+'-'))return api.slice(set.length+1).toUpperCase();
+    return String(entry?.number||'').split('/')[0].trim().toUpperCase();
+  }
+
+  function anniversaryGroupEntries(entries){
+    const map=new Map();
+    for(const entry of entries||[]){
+      const key=String(entry?.apiId||anniversaryLocalId(entry));
+      if(!map.has(key))map.set(key,[]);
+      map.get(key).push(entry);
+    }
+    return [...map.values()];
+  }
+
+  function anniversaryClone(entry,suffix,label,patch={}){
+    return {
+      ...entry,
+      ...patch,
+      variantKey:String(entry?.variantKey||'normal')+'|anniversary:'+suffix,
+      variantLabel:label,
+      anniversaryExtra:true
+    };
+  }
+
+  function anniversaryBest(group,predicate){
+    return group.find(predicate)||group.find(e=>String(e?.variantSize||'').toLowerCase()!=='jumbo')||group[0]||null;
+  }
+
+  function transformAnniversaryComponent(entries,spec){
+    const list=Array.isArray(entries)?entries:[];
+    const mode=spec?.transform||'';
+    if(mode==='stamp20'){
+      const out=[];
+      for(const group of anniversaryGroupEntries(list)){
+        const base=anniversaryBest(group,e=>e.finish==='Normal')||group[0];
+        if(!base)continue;
+        const toys=group.find(e=>/toys|r-us|r us/i.test(String(e.variantLabel||'')+' '+String(e.variantStamps||'')));
+        const anniv=group.find(e=>/20th|annivers/i.test(String(e.variantLabel||'')+' '+String(e.variantStamps||'')));
+        out.push(toys||anniversaryClone(base,'20th-toysrus',"Toys 'R' Us stamp",{finish:base.finish||'Normal'}));
+        out.push(anniv||anniversaryClone(base,'20th-anniversary','20th Anniversary stamp',{finish:base.finish||'Normal'}));
+      }
+      return out;
+    }
+    if(mode==='generalMillsHolo'){
+      return anniversaryGroupEntries(list).map(group=>{
+        const chosen=anniversaryBest(group,e=>/25th|annivers|sequin/i.test(String(e.variantLabel||'')+' '+String(e.variantStamps||'')))||
+          anniversaryBest(group,e=>e.finish==='Foil'||String(e.variantType||'').toLowerCase()==='holo');
+        return chosen?anniversaryClone(chosen,'25th-general-mills-holo','General Mills 25 Anos · Sequin Holo',{finish:'Foil'}):null;
+      }).filter(Boolean);
+    }
+    if(mode==='generalMillsNormal'){
+      return anniversaryGroupEntries(list).map(group=>{
+        const chosen=anniversaryBest(group,e=>e.finish==='Normal'&&String(e.variantSize||'standard').toLowerCase()!=='jumbo');
+        return chosen?anniversaryClone(chosen,'25th-general-mills-normal','General Mills 25 Anos · Normal',{finish:'Normal'}):null;
+      }).filter(Boolean);
+    }
+    if(mode==='jumboOnly'){
+      return anniversaryGroupEntries(list).map(group=>{
+        const jumbo=group.find(e=>String(e.variantSize||'').toLowerCase()==='jumbo'||/jumbo/i.test(String(e.variantLabel||'')));
+        const chosen=jumbo||anniversaryBest(group,e=>String(e.variantSize||'standard').toLowerCase()!=='jumbo');
+        return chosen?(jumbo?jumbo:anniversaryClone(chosen,'25th-jumbo','Jumbo · 25º Aniversário',{variantSize:'jumbo',finish:chosen.finish||'Normal'})):null;
+      }).filter(Boolean);
+    }
+    if(mode==='metalOnly'){
+      return anniversaryGroupEntries(list).map(group=>{
+        const metal=group.find(e=>String(e.variantType||'').toLowerCase()==='metal'||/metal/i.test(String(e.variantLabel||'')));
+        const chosen=metal||anniversaryBest(group,e=>String(e.variantSize||'standard').toLowerCase()!=='jumbo');
+        return chosen?(metal?metal:anniversaryClone(chosen,'25th-metal','Metal · Celebrations Ultra-Premium Collection',{variantType:'metal',finish:'Especial'})):null;
+      }).filter(Boolean);
+    }
+    return list;
+  }
+
+  function ensureAnniversaryJumbos(entries,spec){
+    const wanted=Array.isArray(spec?.ensureJumbo)?spec.ensureJumbo.map(x=>String(x).toUpperCase()):[];
+    if(!wanted.length)return entries;
+    const out=[...(entries||[])];
+    for(const localId of wanted){
+      const same=out.filter(e=>anniversaryLocalId(e)===localId);
+      if(!same.length)continue;
+      if(same.some(e=>String(e.variantSize||'').toLowerCase()==='jumbo'||/jumbo/i.test(String(e.variantLabel||''))))continue;
+      const base=anniversaryBest(same,e=>String(e.variantSize||'standard').toLowerCase()!=='jumbo');
+      if(base)out.push(anniversaryClone(base,'jumbo-'+localId.toLowerCase(),'Jumbo',{variantSize:'jumbo'}));
+    }
+    return out;
+  }
+
+  async function fetchAnniversaryComponent(masterLang,spec){
+    const lang=spec.lang||masterLang;
+    const p=new URLSearchParams({v:'25',lang,set:spec.id});
+    if(spec.all)p.set('all','1');
+    if(spec.jumbo)p.set('jumbo','1');
+    if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
+    const r=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
+    const data=await r.json();
+    if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+(spec.label||spec.id)));
+    let entries=transformAnniversaryComponent(data.entries,spec);
+    entries=ensureAnniversaryJumbos(entries,spec);
+    return {...data,entries,__spec:spec};
   }
 
   async function fetchSeries(lang){
@@ -1060,7 +1224,7 @@
       const list=Array.isArray(catalog.sets)?catalog.sets:[];
       const completeAnniversaries=completeAnniversaryForCatalog(list);
       const completeOptions=completeAnniversaries.map(s=>
-        '<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.componentLabels.join(' + '))+'</option>'
+        '<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc((s.summaryLabels||[]).join(' + '))+'</option>'
       ).join('');
       sets.innerHTML='<option value="">Selecione a coleção</option>'+completeOptions+list.map(s=>
         '<option value="'+esc(s.id)+'">'+esc(s.displayName||s.name||s.id)+(s.isPromo?' · PROMOS':'')+'</option>'
@@ -1084,13 +1248,28 @@
       const complete=completeAnniversaryById(setId);
       let j;
       if(complete){
-        const parts=await Promise.all(complete.componentIds.map(async componentId=>{
-          const r=await fetch('/api/master-set?v=24&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(componentId),{cache:'no-store'});
-          const data=await r.json();
-          if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+componentId));
-          return data;
-        }));
+        const parts=[];
+        const warnings=[];
+        for(const spec of complete.components||[]){
+          try{
+            parts.push(await fetchAnniversaryComponent(lang,spec));
+          }catch(error){
+            if(spec.required)throw error;
+            console.warn('[Master comemorativo]',spec.label||spec.id,error);
+            warnings.push((spec.label||spec.id)+': '+(error?.message||error));
+          }
+        }
         if(epoch!==V14.masterEpoch)return;
+        const combined=[];
+        const seen=new Set();
+        for(const part of parts){
+          for(const entry of part.entries||[]){
+            const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+            if(seen.has(key))continue;
+            seen.add(key);
+            combined.push(entry);
+          }
+        }
         j={
           ok:true,
           set:{
@@ -1102,15 +1281,16 @@
             isPromoSet:false,
             isCompositeAnniversary:true
           },
-          entries:parts.flatMap(x=>Array.isArray(x.entries)?x.entries:[]),
-          components:parts.map((x,i)=>({
-            id:x.set?.id||complete.componentIds[i],
-            name:x.set?.name||complete.componentLabels[i],
+          entries:combined,
+          components:parts.map(x=>({
+            id:x.set?.id||x.__spec?.id,
+            name:x.__spec?.label||x.set?.name||x.__spec?.id,
             entries:Array.isArray(x.entries)?x.entries.length:0
-          }))
+          })),
+          anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch('/api/master-set?v=24&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetch('/api/master-set?v=25&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
@@ -1122,12 +1302,15 @@
         .trim();
       V14.masterPreview={...j,owned:new Set(),lang,displaySetName:complete?.label||selectedLabel||j.set.name};
       byId('v14MasterTitle').textContent=V14.masterPreview.displaySetName;
-      const componentText=complete?complete.componentLabels.join(' + '):'';
+      const componentText=complete?(complete.summaryLabels||[]).join(' + '):'';
       byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,componentText,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
       const notice=byId('v14PromoNotice');
       if(notice){
         if(complete){
-          notice.textContent=complete.label+' reúne '+complete.componentLabels.join(' + ')+' em um único fichário. Cada carta mantém a coleção original para número, imagem, variante e cotação.';
+          const warnings=Array.isArray(j.anniversaryWarnings)&&j.anniversaryWarnings.length
+            ?' Atenção: '+j.anniversaryWarnings.length+' grupo(s) extra(s) não puderam ser carregados agora.'
+            :'';
+          notice.textContent=complete.label+' reúne set principal, subsets, promos, distribuições especiais e extras físicos do aniversário em um único checklist. Jumbos e cards Metal entram como entradas próprias; cada carta mantém o set/idioma de origem para número, imagem e cotação.'+warnings;
         }else if(j.set.isPromoSet){
           notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
         }else{
