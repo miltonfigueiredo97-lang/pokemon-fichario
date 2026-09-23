@@ -314,7 +314,7 @@ async function sitemapCandidates(name){
 
 function normalizeCollectorToken(value){const raw=String(value||'').trim().replace(/[^A-Za-z0-9]/g,'');if(!raw)return'';const m=raw.match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);if(!m)return raw.toLowerCase();return (m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase()}
 function numberParts(value){const text=String(value||'');const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const m=text.match(new RegExp('('+token+')\\s*\\/\\s*('+token+')','i'));if(m)return{n:normalizeCollectorToken(m[1]),d:normalizeCollectorToken(m[2]),full:normalizeCollectorToken(m[1])+'/'+normalizeCollectorToken(m[2])};const x=text.match(new RegExp(token,'i'));return x?{n:normalizeCollectorToken(x[0]),d:'',full:normalizeCollectorToken(x[0])}:{n:'',d:'',full:''}}
-function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'(?:\\s*\\/\\s*'+token+')?)\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():''}}
+function pageIdentity(html){const text=stripTags(html);const token='[A-Za-z]{0,8}\\d{1,4}[A-Za-z]{0,4}';const titleMatch=text.match(new RegExp('(?:^|\\n)\\s*([^\\n]{1,120}?)\\s*\\(('+token+'(?:\\s*\\/\\s*'+token+')?)\\)\\s*(?:\\n|$)','m'));const codeMatch=text.match(/Código\s+([^\n]+)/i),editionMatch=text.match(/Edição\s+([^\n]+)/i),rarityMatch=text.match(/Raridade\s+([^\n]+)/i);return{text,name:titleMatch?titleMatch[1].trim():'',number:titleMatch?titleMatch[2].replace(/\s/g,''):'',code:codeMatch?codeMatch[1].trim():'',edition:editionMatch?editionMatch[1].trim():'',rarity:rarityMatch?rarityMatch[1].trim():''}}
 function marketIdentityLocaleScore(identity,wanted={}){
   const lang=String(wanted?.lang||'').toLowerCase();
   // identity.text também contém "Outras Edições". Usar o corpo inteiro
@@ -378,7 +378,24 @@ function extractMarket(identity,finish,condition){
   }
 
   const byCondition=offerRows.filter(x=>lineMatchesCondition(x,condition));
-  const exact=byCondition.filter(x=>lineMatchesFinish(x,finish));
+  const wantedFinish=finishKind(finish);
+  const np=numberParts(identity.number||'');
+  const n=/^\d+$/.test(np.n)?Number(np.n):0;
+  const d=/^\d+$/.test(np.d)?Number(np.d):0;
+  const rarity=normalize(identity.rarity||'');
+  const intrinsicFoil=/holo|ultra rara|ultra rare|illustration rare|ilustracao rara|ilustracao especial|special illustration|hiper rara|hyper rare|secret rare|secreta|rainbow|dourada|gold/.test(rarity)||(n>0&&d>0&&n>d);
+  const exact=byCondition.filter(x=>{
+    if(lineMatchesFinish(x,finish))return true;
+    const normalized=normalize(x);
+    if(wantedFinish==='foil'&&intrinsicFoil){
+      const otherSurface=/reverse|masterball|master ball|pokeball|poke ball|altered art/.test(normalized);
+      if(otherSurface)return false;
+      // Full-Art or an unlabeled row on an intrinsically holo product is the
+      // default physical printing, not a separate Normal card.
+      return /full art|full-art/.test(normalized)||!/foil|holo|reverse|masterball|master ball|pokeball|poke ball/.test(normalized);
+    }
+    return false;
+  });
   let selected=[];
   let exactVariant=false;
   // Strict market identity: never fall back to another quality or another
@@ -572,7 +589,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1469diag:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1470reader:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -601,6 +618,38 @@ module.exports=async function handler(req,res){
         };
         CACHE.set(browserKey,{value:out,expires:Date.now()+10*60*1000});
         return res.status(200).json(out);
+      }
+      if(market?.error==='product_blocked'&&safeMypProductUrl(market?.link)){
+        const discoveredLink=safeMypProductUrl(market.link);
+        try{
+          const text=await fetchJina(discoveredLink,14000);
+          const identity=pageIdentity(text);
+          if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
+            const readerMarket=extractMarket(identity,finish,condition);
+            if(hasAnyMarket(readerMarket)){
+              return res.status(200).json({
+                ok:true,source:'MYP Cards',provider:'Collection + Reader',mode:'collection-reader',
+                name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
+                finish,condition,link:discoveredLink,
+                min:Number(readerMarket.min||0),avg:Number(readerMarket.avg||0),max:Number(readerMarket.max||0),
+                samples:readerMarket.samples??null,availableQuantity:readerMarket.availableQuantity??null,
+                exactVariant:readerMarket.exactVariant!==false,
+                complete:!!(Number(readerMarket.min)>0&&Number(readerMarket.avg)>0&&Number(readerMarket.max)>0),
+                checkedAt:new Date().toISOString()
+              });
+            }
+            return res.status(200).json({
+              ok:false,error:'reader_no_variant',source:'MYP Cards',provider:'Collection + Reader',
+              link:discoveredLink,message:'Produto localizado automaticamente, mas o Reader não encontrou a variante/condição pedida.'
+            });
+          }
+          return res.status(200).json({
+            ok:false,error:'reader_identity_mismatch',source:'MYP Cards',provider:'Collection + Reader',
+            link:discoveredLink,message:'Produto localizado automaticamente, mas a identidade retornada pelo Reader não conferiu.'
+          });
+        }catch(error){
+          console.warn('MYP Reader após 403 falhou:',error?.message||error);
+        }
       }
       if(market?.error==='collection_not_found'){
         return res.status(200).json({
