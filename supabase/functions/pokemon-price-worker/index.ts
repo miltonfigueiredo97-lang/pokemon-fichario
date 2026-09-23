@@ -217,13 +217,21 @@ Deno.serve(async(req:Request)=>{
       // A API ainda valida a página real antes de aceitar qualquer preço.
       let fetchCard=card;
       const existingMyp=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
+      let learnedLink="";
       if(!existingMyp){
-        const learnedLink=await learnedMypLink(db,card).catch(()=> "");
+        learnedLink=await learnedMypLink(db,card).catch(()=> "");
         if(learnedLink)fetchCard={...card,myp_price_link:learnedLink};
       }
 
       const markets=await fetchMarkets(fetchCard);
       const myp=markets.myp,liga=markets.liga;
+      if(String(card.set_id||"")==="sv03.5"&&String(card.number||"")==="194/165"){
+        console.log("PRICE_DEBUG",JSON.stringify({
+          card:card.name,number:card.number,learnedLink,
+          myp:{ok:myp?.ok,error:myp?.error,provider:myp?.provider,mode:myp?.mode,link:myp?.link,min:myp?.min,avg:myp?.avg,max:myp?.max,message:myp?.message},
+          liga:{ok:liga?.ok,error:liga?.error}
+        }));
+      }
       const picked=choosePrimary(liga,myp);
       const market=picked.market;
 
