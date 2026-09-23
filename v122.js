@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.72';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.73';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.73',title:'Autorreparo contínuo de cotações',items:[
+      'Cartas sem cotação não ficam mais abandonadas após o limite de tentativas.',
+      'Uma varredura automática reenfileira periodicamente cartas sem preço para novas tentativas.',
+      'O worker continua rodando a cada minuto e aplica novas correções de parser sem intervenção manual.',
+      'O botão Editar cotação manualmente agora é fixo no modal da carta como fallback opcional.'
+    ]},
     {version:'V14.72',title:'Filtro de idioma estrito nos Master Sets',items:[
       'Português agora significa somente cartas realmente resolvidas em PT-BR; o fallback técnico para inglês não entra mais no fichário.',
       'Extras comemorativos exclusivos de inglês são omitidos automaticamente quando o Master Set está em Português.',
