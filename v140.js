@@ -3295,81 +3295,108 @@
     return 'Ainda sem cotação automática';
   }
 
-  function renderUnpricedAuditV1466(){
-    const details=byId('v1411Group_unpriced');
-    if(!details)return;
-    const cards=unpricedCardsV1466();
-    const badge=details.querySelector('[data-v1466-unpriced-count]');
-    const hint=details.querySelector('[data-v1466-unpriced-hint]');
-    if(badge)badge.textContent=String(cards.length);
-    if(hint)hint.textContent=cards.length===1?'1 carta para conferir':cards.length+' cartas para conferir';
+  function ensureUnpricedDialogV1468(){
+    let d=byId('v1468UnpricedDialog');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v1468UnpricedDialog';
+    d.className='v1468-unpriced-dialog';
+    d.innerHTML=`<div class="v1468-unpriced-shell">
+      <header class="v1468-unpriced-head">
+        <div><p class="kicker">AUDITORIA DE PREÇOS</p><div class="v1468-unpriced-title"><h2>Cartas sem cotação</h2><span id="v1468UnpricedTotal">0</span></div><p id="v1468UnpricedSubtitle" class="muted"></p></div>
+        <button id="v1468UnpricedClose" class="icon-only" type="button" aria-label="Fechar">×</button>
+      </header>
+      <div class="v1468-unpriced-tools">
+        <input id="v1468UnpricedSearch" type="search" placeholder="Buscar nome, número ou coleção">
+        <select id="v1468UnpricedProblem">
+          <option value="all">Todos os problemas</option>
+          <option value="timeout">Tempo esgotado</option>
+          <option value="not_found">Não encontrada</option>
+          <option value="variant">Acabamento / condição</option>
+          <option value="queued">Na fila</option>
+          <option value="other">Outros</option>
+        </select>
+      </div>
+      <div id="v1468UnpricedStats" class="v1468-unpriced-stats"></div>
+      <div id="v1468UnpricedList" class="v1468-unpriced-list"></div>
+    </div>`;
+    document.body.appendChild(d);
+    byId('v1468UnpricedClose').onclick=()=>d.close();
+    d.addEventListener('click',e=>{if(e.target===d)d.close()});
+    byId('v1468UnpricedSearch').addEventListener('input',renderUnpricedPopupV1468);
+    byId('v1468UnpricedProblem').addEventListener('change',renderUnpricedPopupV1468);
+    return d;
+  }
 
-    const body=details.querySelector('.v1411-action-body');
-    if(!body)return;
-    body.classList.add('v1466-unpriced-body');
-    body.innerHTML='';
+  function unpricedProblemKindV1468(card){
+    if(card?.price_processing_at||(card?.price_pending&&!card?.price_last_error))return 'queued';
+    const raw=String(card?.price_last_error||'').toLowerCase();
+    if(raw.includes('timeout'))return 'timeout';
+    if(raw.includes('variant_not_found'))return 'variant';
+    if(raw.includes('not_found')||raw.includes('product_not_found')||raw.includes('wrong_product'))return 'not_found';
+    return 'other';
+  }
 
-    const intro=document.createElement('div');
-    intro.className='v1466-unpriced-intro';
-    const title=document.createElement('strong');
-    title.textContent=cards.length
-      ? cards.length+' carta'+(cards.length===1?'':'s')+' sem cotação'
-      : 'Nenhuma carta sem cotação';
-    const copy=document.createElement('small');
-    copy.textContent=cards.length
-      ? 'Clique em uma carta para abrir e conferir o problema individualmente.'
-      : 'Todas as cartas deste fichário possuem ao menos uma cotação brasileira salva.';
-    intro.append(title,copy);
-    body.appendChild(intro);
+  function renderUnpricedPopupV1468(){
+    const d=ensureUnpricedDialogV1468();
+    const all=unpricedCardsV1466();
+    const query=norm(byId('v1468UnpricedSearch')?.value||'');
+    const problem=byId('v1468UnpricedProblem')?.value||'all';
+    const cards=all.filter(card=>{
+      if(problem!=='all'&&unpricedProblemKindV1468(card)!==problem)return false;
+      if(!query)return true;
+      return norm([card.name,card.number,card.set_name,card.finish,binderForCard(card)?.name,priceProblemTextV1466(card)].filter(Boolean).join(' ')).includes(query);
+    });
 
-    if(!cards.length)return;
+    byId('v1468UnpricedTotal').textContent=String(all.length);
+    byId('v1468UnpricedSubtitle').textContent=all.length
+      ? all.length+' carta'+(all.length===1?'':'s')+' sem cotação no fichário atual.'
+      : 'Todas as cartas deste fichário possuem cotação.';
+    byId('v1468UnpricedStats').textContent=cards.length===all.length?cards.length+' exibidas':cards.length+' de '+all.length+' exibidas';
 
-    const list=document.createElement('div');
-    list.className='v1466-unpriced-list';
+    const list=byId('v1468UnpricedList');
+    list.innerHTML='';
+    if(!cards.length){
+      list.innerHTML='<div class="v1468-unpriced-empty"><strong>Nenhuma carta encontrada</strong><small>Ajuste a busca ou o filtro.</small></div>';
+      return d;
+    }
+
     for(const card of cards){
       const row=document.createElement('button');
       row.type='button';
-      row.className='v1466-unpriced-row';
-
-      const thumb=document.createElement('span');
-      thumb.className='v1466-unpriced-thumb';
+      row.className='v1468-unpriced-row';
       const image=cardImage(card);
-      if(image){
-        const img=document.createElement('img');
-        img.src=image;
-        img.alt='';
-        img.loading='lazy';
-        thumb.appendChild(img);
-      }else thumb.textContent='?';
-
-      const meta=document.createElement('span');
-      meta.className='v1466-unpriced-meta';
-      const name=document.createElement('strong');
-      name.textContent=card.name||'Carta sem nome';
-      const identity=document.createElement('small');
       const binder=binderForCard(card);
-      const setName=card.set_name||card.setName||'Coleção';
-      const number=card.number?'#'+card.number:'Sem número';
-      const finish=card.finish||'Normal';
-      const binderText=isGeneral()&&binder?.name?' · '+binder.name:'';
-      identity.textContent=setName+' · '+number+' · '+finish+binderText;
-      const problem=document.createElement('em');
-      problem.textContent=priceProblemTextV1466(card);
-      meta.append(name,identity,problem);
-
-      const arrow=document.createElement('span');
-      arrow.className='v1466-unpriced-arrow';
-      arrow.textContent='›';
-
-      row.append(thumb,meta,arrow);
+      row.innerHTML=
+        '<span class="v1468-unpriced-thumb">'+(image?'<img src="'+esc(image)+'" alt="" loading="lazy">':'?')+'</span>'+
+        '<span class="v1468-unpriced-info"><span class="v1468-unpriced-name"><strong>'+esc(card.name||'Carta sem nome')+'</strong><b>'+esc(card.number?'#'+card.number:'Sem número')+'</b></span>'+
+        '<small>'+esc([card.set_name||'Coleção',card.finish||'Normal',isGeneral()&&binder?.name?binder.name:''].filter(Boolean).join(' · '))+'</small>'+
+        '<em>'+esc(priceProblemTextV1466(card))+'</em></span>'+
+        '<span class="v1468-unpriced-open"><small>Conferir</small><b>›</b></span>';
       row.onclick=()=>{
-        const panel=byId('summaryPanel');
-        if(panel)panel.classList.remove('mobile-open');
+        d.close();
+        byId('summaryPanel')?.classList.remove('mobile-open');
         openExistingCard(card,true);
       };
       list.appendChild(row);
     }
-    body.appendChild(list);
+    return d;
+  }
+
+  function openUnpricedPopupV1468(){
+    const d=renderUnpricedPopupV1468();
+    if(!d.open)d.showModal();
+    setTimeout(()=>byId('v1468UnpricedSearch')?.focus(),80);
+  }
+
+  function renderUnpricedAuditV1466(){
+    const details=byId('v1411Group_unpriced');
+    if(!details)return;
+    const count=unpricedCardsV1466().length;
+    const badge=details.querySelector('[data-v1466-unpriced-count]');
+    const hint=details.querySelector('[data-v1466-unpriced-hint]');
+    if(badge)badge.textContent=String(count);
+    if(hint)hint.textContent=count===1?'1 carta para conferir':count+' cartas para conferir';
   }
 
   function organizeSummaryActionsV14(){
@@ -3397,10 +3424,11 @@
         details.append(summary,body);
         details.addEventListener('toggle',()=>{
           if(!details.open)return;
+          if(def.id==='unpriced'){details.open=false;openUnpricedPopupV1468();return}
           root.querySelectorAll('.v1411-action-group[open]').forEach(other=>{if(other!==details)other.open=false});
           if(def.id==='friends')refreshFriendsSummaryV14();
-          if(def.id==='unpriced')renderUnpricedAuditV1466();
         });
+        if(def.id==='unpriced')summary.addEventListener('click',e=>{e.preventDefault();openUnpricedPopupV1468()});
         if(def.id==='friends'&&byId('v1411Group_settings'))root.insertBefore(details,byId('v1411Group_settings'));
         else root.appendChild(details);
       }
