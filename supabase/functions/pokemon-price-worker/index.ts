@@ -42,7 +42,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.84"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.85"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -117,7 +117,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.84"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.85"},
             signal:controller.signal
           });
           if(r.ok){
@@ -321,13 +321,10 @@ Deno.serve(async(req:Request)=>{
             .eq("id",card.id);
           fetchCard={...card,myp_price_link:siblingLink};
         }else{
-          learnedLink=await learnedMypLink(db,card).catch(()=> "");
-          if(learnedLink){
-            await db.from("pokemon_cards")
-              .update({myp_price_link:learnedLink})
-              .eq("id",card.id);
-            fetchCard={...card,myp_price_link:learnedLink};
-          }
+          // Sem uma variante irmã com URL MYP já validada, NÃO fabrique URL
+          // a partir de sequência de IDs + slug. A API conhece coleção/número
+          // e faz a descoberta canônica sem depender do nome localizado.
+          learnedLink="";
         }
       }
 
