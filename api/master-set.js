@@ -2,7 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='26';
+const MASTER_ALGO_VERSION='27';
 const SPECIAL_MASTER_ORIGINAL_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
@@ -262,14 +262,22 @@ module.exports=async function handler(req,res){
   const cached=CACHE.get(cacheKey);
   if(cached&&Date.now()-cached.at<3600000)return res.status(200).json(cached.value);
   try{
-    let set=await jsonOrNull(BASE+'/'+lang+'/sets/'+encodeURIComponent(setId));
+    const localizedSet=await jsonOrNull(BASE+'/'+lang+'/sets/'+encodeURIComponent(setId));
+    const localizedSetExists=!!localizedSet;
+    const localizedCards=Array.isArray(localizedSet?.cards)?localizedSet.cards:[];
+    let set=localizedSet;
     let sourceLang=lang;
-    if(!set||!Array.isArray(set.cards)||!set.cards.length){
+    if(!set||!localizedCards.length){
       const fallback=await jsonOrNull(BASE+'/en/sets/'+encodeURIComponent(setId));
       if(fallback){set=fallback;sourceLang='en'}
     }
     if(!set)throw new Error('Coleção não encontrada no TCGdex.');
 
+    // A coleção existir no catálogo do idioma selecionado é o sinal de que
+    // essa impressão física existe naquele idioma. Detalhes/imagens podem
+    // faltar na API localizada e ser preenchidos pelo endpoint EN sem mudar
+    // o idioma físico da carta.
+    const physicalSetLang=localizedSetExists?lang:sourceLang;
     let list=Array.isArray(set.cards)?[...set.cards]:[];
     const expectedCount=Math.max(
       Number(set?.cardCount?.official||0),
@@ -313,27 +321,51 @@ module.exports=async function handler(req,res){
 
     const details=await pool(list,18,async item=>{
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
-      if(preferred)return {...preferred,__variantLang:lang};
+      if(preferred){
+        let english=null;
+        const preferredHasDetailed=Array.isArray(preferred?.variants_detailed)&&preferred.variants_detailed.length;
+        const preferredHasVariants=preferred?.variants&&Object.keys(preferred.variants).length;
+        if(lang!=='en'&&(!preferred.image||(!preferredHasDetailed&&!preferredHasVariants))){
+          english=await jsonOrNull(BASE+'/en/cards/'+encodeURIComponent(item.id));
+        }
+        return {
+          ...(english||{}),
+          ...preferred,
+          image:preferred.image||english?.image||item?.image||'',
+          variants_detailed:preferredHasDetailed?preferred.variants_detailed:(english?.variants_detailed||preferred.variants_detailed),
+          variants:preferredHasVariants?preferred.variants:(english?.variants||preferred.variants),
+          __physicalLang:lang,
+          __variantSourceLang:(preferredHasDetailed||preferredHasVariants)?lang:(english?'en':lang)
+        };
+      }
       if(lang!=='en'){
         const english=await jsonOrNull(BASE+'/en/cards/'+encodeURIComponent(item.id));
-        if(english)return {...english,__variantLang:'en'};
+        if(english){
+          return {
+            ...english,
+            image:english.image||item?.image||'',
+            __physicalLang:physicalSetLang,
+            __variantSourceLang:'en'
+          };
+        }
       }
       return {
         ...item,
         variants:Object.keys(item?.variants||{}).length?item.variants:inferUniformSetVariants(set.cardCount,expectedCount),
-        __variantLang:sourceLang
+        __physicalLang:physicalSetLang,
+        __variantSourceLang:sourceLang
       };
     });
     const setName=set.name||setId;
     const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
-    const rawByCard=details.map(card=>(!card||card.__error)?[]:rawVariantsOf(card,card.__variantLang||lang));
+    const rawByCard=details.map(card=>(!card||card.__error)?[]:rawVariantsOf(card,card.__variantSourceLang||card.__physicalLang||lang));
     const profile=buildSetVariantProfile(rawByCard);
     const uniformOnlyType=uniformOnlySetType(set.cardCount,expectedCount);
     const entries=[];
     for(let i=0;i<details.length;i++){
       const card=details[i];
       if(!card||card.__error)continue;
-      const resolvedLang=String(card.__variantLang||sourceLang||lang).toLowerCase();
+      const resolvedLang=String(card.__physicalLang||physicalSetLang||sourceLang||lang).toLowerCase();
       if(strictLang&&resolvedLang!==lang)continue;
       const rawVariants=rawByCard[i];
       const anniversaryClassic=['cel25cc','30th-c'].includes(String(set.id||setId));
@@ -381,8 +413,8 @@ module.exports=async function handler(req,res){
           variantStamps:variant.stamp||[],
           variantSize:variant.size||'standard',
           source:'TCGdex',
-          languageCode:(card.__variantLang||sourceLang||lang)==='pt'?'pt-br':(card.__variantLang||sourceLang||lang),
-          language:(card.__variantLang||sourceLang||lang)==='pt'?'Português':(card.__variantLang||sourceLang||lang)==='ja'?'Japonês':'Inglês'
+          languageCode:resolvedLang==='pt'?'pt-br':resolvedLang,
+          language:resolvedLang==='pt'?'Português':resolvedLang==='ja'?'Japonês':'Inglês'
         });
       }
     }
@@ -410,6 +442,9 @@ module.exports=async function handler(req,res){
         includeAllPhysical,
         includeJumbo,
         strictLang,
+        localizedSetExists,
+        localizedCardCount:localizedCards.length,
+        physicalSetLang,
         only:[...onlySet],
         listLength:list.length,
         detailsLength:details.length,
