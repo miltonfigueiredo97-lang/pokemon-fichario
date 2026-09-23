@@ -6,7 +6,7 @@ const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
 const BATCH = 4;
 const RETRY_LIMIT = 3;
 const STALE_MS = 2 * 60 * 1000;
-const TERMINAL = new Set(["no_price_data","wrong_product","product_not_found","variant_not_found"]);
+const TERMINAL = new Set(["wrong_product","product_not_found"]);
 
 const CORS={
   "Access-Control-Allow-Origin":"*",
@@ -42,7 +42,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.80"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.81"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -221,6 +221,28 @@ async function fetchMarkets(card:any){
   }else{
     myp=await fetchSource(MYP_API,card,false,false)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+  }
+
+  // A MYP nem sempre rotula Reverse/Foil nas ofertas da mesma impressão.
+  // Se já conhecemos a página correta e a variante exata não devolveu preço,
+  // consultamos automaticamente o mercado padrão DA MESMA PÁGINA.
+  if(!hasMarketPrice(myp)&&hasMypLink&&String(card.finish||"Normal").toLowerCase()!=="normal"){
+    const err=String(myp?.error||"");
+    if(["variant_not_found","no_price_data","browser_error","fast_no_price","timeout"].includes(err)){
+      const genericCard={...card,finish:"Normal"};
+      const generic=await fetchSource(MYP_API,genericCard,true,true)
+        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_generic_error")}));
+      if(hasMarketPrice(generic)){
+        myp={
+          ...generic,
+          requestedFinish:String(card.finish||""),
+          variantFallback:true,
+          exactVariant:false,
+          mode:String(generic.mode||"")+"-same-product-fallback"
+        };
+        console.log("[MYP_VARIANT_FALLBACK]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link}));
+      }
+    }
   }
 
   const liga=await ligaPromise;
