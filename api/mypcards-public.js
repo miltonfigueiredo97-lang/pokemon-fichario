@@ -46,14 +46,14 @@ function mergeMarket(preferred,fallback){
 
 async function resolveNameAliases(name,apiId){
   const aliases=[String(name||'').trim()].filter(Boolean);
-  const key='name-aliases:v1469:'+String(apiId||'').trim();
+  const key='name-aliases:v1470:'+String(apiId||'').trim();
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return [...new Set([...aliases,...cached.value])];
   if(apiId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/cards/'+encodeURIComponent(apiId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.69'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.70'}
         });
         return r.ok?await r.json():null;
       }catch{return null}
@@ -71,7 +71,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.69'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.70'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -160,7 +160,7 @@ function productUrlsFromText(raw,names=[]){
 }
 
 async function resolveSetMeta(apiId,setName,setId){
-  const key='set-meta:v1469:'+String(setId||apiId||setName||'');
+  const key='set-meta:v1470:'+String(setId||apiId||setName||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
 
@@ -171,7 +171,7 @@ async function resolveSetMeta(apiId,setName,setId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/sets/'+encodeURIComponent(setId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.69'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.70'}
         });
         return r.ok?await r.json():null;
       }catch{return null}
@@ -234,7 +234,7 @@ function scoreEditionCandidate(candidate,meta,setName,setId){
 
 async function mypEditionUrl({apiId,setId,set}){
   const meta=await resolveSetMeta(apiId,set,setId);
-  const key='myp-edition:v1469:'+String(setId||set||'');
+  const key='myp-edition:v1470:'+String(setId||set||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
 
@@ -301,7 +301,7 @@ function collectionProductCandidatesFromText(raw,wantedNumber,names=[]){
   return found;
 }
 async function collectionPageText(editionUrl,page){
-  const key='collection-page:v1469:'+editionUrl+':'+page;
+  const key='collection-page:v1470:'+editionUrl+':'+page;
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const join=editionUrl.includes('?')?'&':'?';
@@ -317,9 +317,25 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
   if(!editionUrl)return[];
 
   const names=[name,...nameAliases].filter(Boolean);
+
+  // Primeiro use o filtro da própria edição. A página da coleção carrega
+  // produtos por relevância e usa "carregar mais"; page=N sozinho pode não
+  // alcançar cartas menos procuradas. Filtrar pelo número exato é determinístico.
+  const scopedQueries=[number,...names.map(n=>[n,number].filter(Boolean).join(' '))]
+    .map(x=>String(x||'').trim()).filter(Boolean).slice(0,3);
+  for(const query of scopedQueries){
+    try{
+      const join=editionUrl.includes('?')?'&':'?';
+      const url=editionUrl+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+      const body=await fetchJina(url,10000);
+      const urls=collectionProductCandidatesFromText(body,number,names);
+      if(urls.length)return urls.slice(0,6);
+    }catch{}
+  }
+
+  // Fallback para coleções que não aplicam o filtro no servidor.
   const maxPages=Math.max(1,Math.min(8,Math.ceil(Math.max(48,meta.total||240)/48)));
   const pages=Array.from({length:maxPages},(_,i)=>i+1);
-
   for(let i=0;i<pages.length;i+=3){
     const chunk=pages.slice(i,i+3);
     const bodies=await Promise.all(chunk.map(page=>collectionPageText(editionUrl,page).catch(()=>'')));
@@ -364,7 +380,7 @@ async function familySeedCandidates(wanted){
 
 async function sitemapCandidates(name){
   const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
-  const key='sitemap:v1469:'+wantedCompact,cached=CACHE.get(key);
+  const key='sitemap:v1470:'+wantedCompact,cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
   const matches=[];
   let root;
