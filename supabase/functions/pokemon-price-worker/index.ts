@@ -18,7 +18,7 @@ function json(data: unknown, status=200){
 }
 function num(v: unknown){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
 
-async function fetchSource(base:string, card:any, allowSavedLink=true){
+async function fetchSource(base:string, card:any, allowSavedLink=true, fast=false){
   const q=new URLSearchParams({
     name:String(card.name||""),
     number:String(card.number||""),
@@ -30,15 +30,16 @@ async function fetchSource(base:string, card:any, allowSavedLink=true){
     condition:String(card.condition||"Nova")
   });
   if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
+  if(base===MYP_API&&fast)q.set("fast","1");
   if(base===MYP_API&&allowSavedLink){
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
     if(link&&/mypcards\.com/i.test(link))q.set("link",link);
   }
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),58000);
+  const timer=setTimeout(()=>controller.abort(),fast?30000:58000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.70"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.73"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -110,7 +111,7 @@ async function englishCardSlug(card:any){
       const timer=setTimeout(()=>controller.abort(),6000);
       try{
         const r=await fetch("https://api.tcgdex.net/v2/en/cards/"+encodeURIComponent(apiId),{
-          headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.70"},
+          headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.73"},
           signal:controller.signal
         });
         if(r.ok){
@@ -190,14 +191,33 @@ function choosePrimary(liga:any,myp:any){
   return{market:null,source:"Sem preço BR"};
 }
 async function fetchMarkets(card:any){
-  let [myp,liga]=await Promise.all([
-    fetchSource(MYP_API,card,true).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")})),
-    fetchSource(LIGA_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
-  ]);
   const hasMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
     .map((v:any)=>String(v||"").trim()).some((v:string)=>/mypcards\.com/i.test(v));
+
+  const ligaPromise=fetchSource(LIGA_API,card,false)
+    .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}));
+
+  let myp:any;
+  if(hasMypLink){
+    // Link conhecido = leia a própria página primeiro. A rota fast percorre
+    // também as páginas de vendedores da MYP e evita gastar 58 s redescobrindo
+    // uma carta que já foi identificada por outra variante do mesmo número.
+    myp=await fetchSource(MYP_API,card,true,true)
+      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_error")}));
+
+    if(!hasMarketPrice(myp)){
+      myp=await fetchSource(MYP_API,card,true,false)
+        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+    }
+  }else{
+    myp=await fetchSource(MYP_API,card,false,false)
+      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+  }
+
+  const liga=await ligaPromise;
   if(["wrong_product","product_not_found"].includes(String(myp?.error||""))&&hasMypLink){
-    myp=await fetchSource(MYP_API,card,false).catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+    myp=await fetchSource(MYP_API,card,false,false)
+      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
   }
   return{myp,liga};
 }
