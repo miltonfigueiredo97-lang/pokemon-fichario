@@ -59,6 +59,33 @@ function mypProductId(value:unknown){
 }
 const learnedSetLinkCache=new Map<string,{offset:number,anchors:number,expires:number}|null>();
 
+const siblingLinkCache=new Map<string,{link:string,expires:number}>();
+async function siblingMypLink(db:any,card:any){
+  const setId=String(card?.set_id||"").trim();
+  const lang=String(card?.language_code||"").trim();
+  const number=String(card?.number||"").trim();
+  if(!setId||!number)return"";
+  const key=setId+"|"+lang+"|"+number;
+  const cached=siblingLinkCache.get(key);
+  if(cached&&cached.expires>Date.now())return cached.link;
+
+  const {data,error}=await db.from("pokemon_cards")
+    .select("myp_price_link")
+    .eq("set_id",setId)
+    .eq("language_code",lang)
+    .eq("number",number)
+    .not("myp_price_link","is",null)
+    .limit(3);
+
+  if(error||!Array.isArray(data))return"";
+  const link=data
+    .map((row:any)=>String(row?.myp_price_link||"").trim())
+    .find((value:string)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(value))||"";
+  if(link)siblingLinkCache.set(key,{link,expires:Date.now()+30*60_000});
+  return link;
+}
+
+
 const englishSlugCache=new Map<string,{slug:string,expires:number}>();
 function mypSlug(value:unknown){
   return String(value||"")
@@ -222,9 +249,15 @@ Deno.serve(async(req:Request)=>{
         card.myp_price_link,card.price_br_link,card.price_link
       ].map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v))||"";
       let learnedLink="";
+      let siblingLink="";
       if(!existingMyp){
-        learnedLink=await learnedMypLink(db,card).catch(()=> "");
-        if(learnedLink)fetchCard={...card,myp_price_link:learnedLink};
+        siblingLink=await siblingMypLink(db,card).catch(()=> "");
+        if(siblingLink){
+          fetchCard={...card,myp_price_link:siblingLink};
+        }else{
+          learnedLink=await learnedMypLink(db,card).catch(()=> "");
+          if(learnedLink)fetchCard={...card,myp_price_link:learnedLink};
+        }
       }
 
       const markets=await fetchMarkets(fetchCard);
