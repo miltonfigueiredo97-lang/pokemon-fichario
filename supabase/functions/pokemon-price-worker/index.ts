@@ -42,7 +42,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.82"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.83"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -250,8 +250,10 @@ async function fetchMarkets(card:any){
   }
 
   const liga=await ligaPromise;
-  if(["wrong_product","product_not_found"].includes(String(myp?.error||""))&&hasMypLink){
-    myp=await fetchSource(MYP_API,card,false,false)
+  if(["wrong_product","product_not_found","not_found","variant_not_found","browser_error","timeout"].includes(String(myp?.error||""))&&hasMypLink){
+    // Link aprendido/salvo pode ter ID correto e slug inválido. Refazer sem
+    // enviar o link força a API a localizar o produto por número + coleção.
+    myp=await fetchSource(MYP_API,{...card,myp_price_link:null,price_br_link:null,price_link:null},false,false)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
   }
   return{myp,liga};
