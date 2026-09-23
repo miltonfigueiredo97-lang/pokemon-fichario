@@ -39,7 +39,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),fast?15000:38000);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.75"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.78"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -208,7 +208,7 @@ async function fetchMarkets(card:any){
 
     if(!hasMarketPrice(myp)){
       const fastError=String(myp?.error||"");
-      const needsHeavyFallback=["fast_timeout","fast_unavailable","wrong_product","product_not_found"].includes(fastError);
+      const needsHeavyFallback=["fast_timeout","fast_unavailable","fast_no_price","wrong_product","product_not_found","variant_not_found","no_price_data"].includes(fastError);
       if(needsHeavyFallback){
         myp=await fetchSource(MYP_API,card,true,false)
           .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
