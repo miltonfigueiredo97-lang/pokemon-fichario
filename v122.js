@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.71';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.72';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.72',title:'Filtro de idioma estrito nos Master Sets',items:[
+      'Português agora significa somente cartas realmente resolvidas em PT-BR; o fallback técnico para inglês não entra mais no fichário.',
+      'Extras comemorativos exclusivos de inglês são omitidos automaticamente quando o Master Set está em Português.',
+      'A mesma regra vale para Master Sets individuais e para Completa 20, 25 e 30 Anos.',
+      'Entradas sintéticas de outro idioma, como extras RGB cadastrados em inglês, também respeitam o filtro selecionado.'
+    ]},
     {version:'V14.71',title:'RGB Mew entram como extras não listados de 30 anos',items:[
       'R/RGB, G/RGB e B/RGB agora aparecem na Completa 30 Anos como extras separados.',
       'Eles ficam explicitamente identificados como extras não listados, sem serem confundidos com a checklist oficial ou com as promos MEP.'
