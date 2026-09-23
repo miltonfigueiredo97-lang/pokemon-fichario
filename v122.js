@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.76';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.77';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,10 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.77',title:'Correção visual no detalhe da carta',items:[
+      'Removido o texto literal \\n que aparecia entre Atualizar preço e Editar cotação manualmente.',
+      'A Exeggutor 109/108 de Evoluções mantém a arte oficial bilíngue/japonesa da própria impressão; isso não representa troca de idioma do filtro.'
+    ]},
     {version:'V14.76',title:'Completa 20 Anos restaurada e imagens corrigidas',items:[
       'Gerações em PT-BR não é mais descartada quando o TCGdex usa o endpoint EN apenas para completar metadados ou imagem.',
       'O idioma físico continua PT-BR quando a coleção localizada existe; inglês não entra como carta física no filtro Português.',
