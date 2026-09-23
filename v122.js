@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.69';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.70';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.70',title:'Completas de 20, 25 e 30 anos com promos e extras',items:[
+      'Completa 20 Anos inclui Gerações, Evoluções, promos XY do aniversário, versões com selo 20th/Toys R Us e Jumbos Red & Blue.',
+      'Completa 25 Anos inclui Celebrations, Classic Collection, McDonald’s 2021, General Mills, promos SWSH, cards Metal da UPC e todos os First Partner Jumbos.',
+      'Completa 30 Anos inclui 30th Celebration, Coleção Clássica, as 8 Energias comemorativas MEE e as promos MEP 094–109 catalogadas/anunciadas.',
+      'Jumbos e cards Metal são entradas próprias. Promos de outro idioma preservam o idioma real em vez de serem marcadas falsamente como PT-BR.',
+      'Se uma fonte extra estiver temporariamente indisponível, o restante da coleção ainda carrega e o app avisa qual grupo falhou.'
+    ]},
     {version:'V14.69',title:'Busca MYP por edição + cotação manual',items:[
       'O backend localiza primeiro a edição correta no índice oficial de edições da MYP e depois encontra a carta pelo número dentro da coleção.',
       'Isso evita misturar impressões com o mesmo nome/número em outras edições e reduz buscas por nome que davam timeout.',
