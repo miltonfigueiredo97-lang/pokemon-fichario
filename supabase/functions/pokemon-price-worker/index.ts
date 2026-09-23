@@ -146,15 +146,23 @@ Deno.serve(async(req:Request)=>{
         return {state:"updated",source:picked.source};
       }
 
-      const errors=[String(liga?.error||""),String(myp?.error||"")].filter(Boolean);
-      const errorCode=errors.find(e=>!TERMINAL.has(e))||errors[0]||"no_price_data";
+      const ligaError=String(liga?.error||"").trim();
+      const mypError=String(myp?.error||"").trim();
+      const errors=[mypError,ligaError].filter(Boolean);
+      // MYP é a fonte principal para identidade/variante; não deixe um
+      // "not_found" da Liga esconder o erro real da MYP.
+      const errorCode=mypError||ligaError||"no_price_data";
+      const errorDetail=[
+        mypError?"myp:"+mypError:"",
+        ligaError?"liga:"+ligaError:""
+      ].filter(Boolean).join("|")||errorCode;
       const allTerminal=errors.length>0&&errors.every(e=>TERMINAL.has(e));
 
       if(allTerminal){
-        const clearIdentity=["wrong_product","product_not_found"].includes(String(myp?.error||""));
+        const clearIdentity=["wrong_product","product_not_found"].includes(mypError);
         const patch:any={
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:errorCode
+          price_priority:0,price_last_error:errorDetail
         };
         if(clearIdentity)patch.myp_price_link=null;
         const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
@@ -166,7 +174,7 @@ Deno.serve(async(req:Request)=>{
       if(attempts>=RETRY_LIMIT){
         const {error}=await db.from("pokemon_cards").update({
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:errorCode||"retry_limit"
+          price_priority:0,price_last_error:errorDetail||errorCode||"retry_limit"
         }).eq("id",card.id);
         if(error)throw error;
         terminal++;
@@ -177,7 +185,7 @@ Deno.serve(async(req:Request)=>{
       const retryAt=new Date(Date.now()+delayMinutes*60_000).toISOString();
       const {error}=await db.from("pokemon_cards").update({
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
-        price_last_error:errorCode||"temporary_error"
+        price_last_error:errorDetail||errorCode||"temporary_error"
       }).eq("id",card.id);
       if(error)throw error;
       retried++;
