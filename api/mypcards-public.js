@@ -122,6 +122,14 @@ async function fetchText(url,timeout=9000){
   }finally{clearTimeout(timer)}
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
+function mypProductId(value){
+  const safe=safeMypProductUrl(value);
+  return (safe.match(/\/produto\/(\d+)\//)||[])[1]||'';
+}
+function sameMypProduct(a,b){
+  const aa=mypProductId(a),bb=mypProductId(b);
+  return !!(aa&&bb&&aa===bb);
+}
 function aliasCompactKeys(names){
   return [...new Set((names||[]).map(name=>slugify(name).replace(/-/g,'')).filter(Boolean))];
 }
@@ -585,11 +593,13 @@ module.exports=async function handler(req,res){
     }
   }
 
+  let collectionDiscoveredLink='';
+
   // Fonte completa: abrir a página pública real em Chromium.
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1471diag:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
+    const browserKey='browser:v1472actor:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -620,44 +630,11 @@ module.exports=async function handler(req,res){
         return res.status(200).json(out);
       }
       if(market?.error==='product_blocked'&&safeMypProductUrl(market?.link)){
-        const discoveredLink=safeMypProductUrl(market.link);
-        try{
-          const text=await fetchJina(discoveredLink,14000);
-          const identity=pageIdentity(text);
-          if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
-            const readerMarket=extractMarket(identity,finish,condition);
-            if(hasAnyMarket(readerMarket)){
-              return res.status(200).json({
-                ok:true,source:'MYP Cards',provider:'Collection + Reader',mode:'collection-reader',
-                name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
-                finish,condition,link:discoveredLink,
-                min:Number(readerMarket.min||0),avg:Number(readerMarket.avg||0),max:Number(readerMarket.max||0),
-                samples:readerMarket.samples??null,availableQuantity:readerMarket.availableQuantity??null,
-                exactVariant:readerMarket.exactVariant!==false,
-                complete:!!(Number(readerMarket.min)>0&&Number(readerMarket.avg)>0&&Number(readerMarket.max)>0),
-                checkedAt:new Date().toISOString()
-              });
-            }
-            return res.status(200).json({
-              ok:false,error:'reader_no_variant',source:'MYP Cards',provider:'Collection + Reader',
-              link:discoveredLink,message:'Produto localizado automaticamente, mas o Reader não encontrou a variante/condição pedida.'
-            });
-          }
-          return res.status(200).json({
-            ok:false,
-            error:'reader_identity_mismatch::'+[
-              'name='+String(identity.name||'').slice(0,80),
-              'number='+String(identity.number||'').slice(0,40),
-              'edition='+String(identity.edition||'').slice(0,100),
-              'code='+String(identity.code||'').slice(0,100),
-              'head='+String(identity.text||'').replace(/\s+/g,' ').slice(0,220)
-            ].join('|'),
-            source:'MYP Cards',provider:'Collection + Reader',
-            link:discoveredLink,message:'Produto localizado automaticamente, mas a identidade retornada pelo Reader não conferiu.'
-          });
-        }catch(error){
-          console.warn('MYP Reader após 403 falhou:',error?.message||error);
-        }
+        // A coleção já identificou a impressão correta pelo número. O detalhe
+        // é bloqueado pelo Cloudflare, então preserve esta identidade e use o
+        // Actor da MYP para obter o preço do estoque filtrado.
+        collectionDiscoveredLink=safeMypProductUrl(market.link);
+        console.warn('Produto MYP localizado pela coleção; detalhe bloqueado. Validando preço via Actor:',collectionDiscoveredLink);
       }
       if(market?.error==='collection_not_found'){
         return res.status(200).json({
@@ -705,7 +682,31 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1467api:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  if(apifyFound&&hasAnyMarket(apifyFound)&&collectionDiscoveredLink&&sameMypProduct(apifyFound.link,collectionDiscoveredLink)){
+    const out={
+      ok:true,
+      source:'MYP Cards',
+      provider:'Apify + MYP Collection',
+      mode:'collection-validated-actor',
+      name,
+      number,
+      edition:set,
+      finish,
+      condition,
+      link:collectionDiscoveredLink,
+      min:Number(apifyFound.min||0),
+      avg:Number(apifyFound.avg||0),
+      max:Number(apifyFound.max||0),
+      samples:apifyFound.samples??null,
+      availableQuantity:apifyFound.availableQuantity??null,
+      exactVariant:apifyFound.exactVariant===true,
+      complete:!!(Number(apifyFound.min)>0&&Number(apifyFound.avg)>0&&Number(apifyFound.max)>0),
+      checkedAt:new Date().toISOString()
+    };
+    return res.status(200).json(out);
+  }
+
+  const cacheKey='market:v1472actor:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
