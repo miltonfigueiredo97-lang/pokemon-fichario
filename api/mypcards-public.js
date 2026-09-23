@@ -144,12 +144,20 @@ function marketIdentityLocaleScore(identity,wanted={}){
   return score;
 }
 function matchesWanted(identity,wanted){
-  const aliases=[wanted?.name,...(Array.isArray(wanted?.nameAliases)?wanted.nameAliases:[])].map(normalize).filter(Boolean);
-  const pn=normalize(identity.name);
-  if(aliases.length&&pn&&!aliases.some(wn=>wn===pn||pn.includes(wn)||wn.includes(pn)))return false;
   const w=numberParts(wanted.number),f=numberParts(identity.number);
   if(w.n&&f.n!==w.n)return false;
   if(w.d&&f.d&&f.d!==w.d)return false;
+
+  const setId=normalize(wanted?.setId||'');
+  const code=normalize(identity?.code||'');
+  // Na 151, set + número de colecionador + código MEW identificam a impressão
+  // de forma única. Isso cobre nomes localizados como Nidoran macho/fêmea sem
+  // depender de um alias manual para cada idioma.
+  const canonicalMew=(setId==='sv03 5'||setId==='sv3 5')&&code.includes('pokemon mew')&&!!w.n&&f.n===w.n;
+
+  const aliases=[wanted?.name,...(Array.isArray(wanted?.nameAliases)?wanted.nameAliases:[])].map(normalize).filter(Boolean);
+  const pn=normalize(identity.name);
+  if(!canonicalMew&&aliases.length&&pn&&!aliases.some(wn=>wn===pn||pn.includes(wn)||wn.includes(pn)))return false;
   if(marketIdentityLocaleScore(identity,wanted)<=-1000)return false;
   return true;
 }
@@ -339,7 +347,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1459:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1459b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -411,7 +419,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1459:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1459b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     const candidateLink=safeMypProductUrl(apifyFound?.link)||link;
