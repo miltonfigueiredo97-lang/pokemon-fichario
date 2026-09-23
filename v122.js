@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.67';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.68';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.68',title:'Sem cotação agora abre em popup amplo',items:[
+      'O bloco Sem cotação no Resumo virou apenas um atalho com contador e não expande mais a lista na lateral.',
+      'Ao clicar, abre um popup grande com todas as cartas sem cotação.',
+      'A lista possui busca por nome, número ou coleção e filtro por tipo de problema.',
+      'Cada carta mostra imagem, número, coleção, acabamento e erro da última tentativa.',
+      'Clicar em Conferir abre diretamente a carta para inspeção individual.'
+    ]},
     {version:'V14.67',title:'Master Sets completos de 20, 25 e 30 anos',items:[
       'No seletor de Master Set, as gerações comemorativas agora oferecem Completa 20 Anos, Completa 25 Anos e Completa 30 Anos.',
       'Completa 20 Anos reúne Gerações + Evoluções; Completa 25 Anos reúne Celebrações + Classic Collection; Completa 30 Anos reúne Celebração de 30 Anos + Coleção Clássica.',
