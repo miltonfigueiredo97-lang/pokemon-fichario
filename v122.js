@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.62';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.63';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.63',title:'Outras Edições usadas como ponte automática',items:[
+      'O sistema pode encontrar uma página da mesma carta com outro número e usá-la como porta de entrada para Outras Edições.',
+      'Exemplo: uma página base da Transferência do Bill pode levar automaticamente à impressão 194/165 MEW.',
+      'A descoberta combina busca da MYP, sitemap e links entre versões; não há tabela manual de produtos.',
+      'Depois de achar a impressão, as ofertas continuam filtradas por idioma PT-BR, condição e acabamento.'
+    ]},
     {version:'V14.62',title:'Busca MYP com fallback real por sitemap',items:[
       'Falha na busca visual da MYP não encerra mais a cotação; o sistema tenta automaticamente o índice/sitemap.',
       'Slugs equivalentes como bill-s-transfer e bills-transfer agora são reconhecidos como a mesma carta.',

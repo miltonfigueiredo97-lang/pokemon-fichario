@@ -53,7 +53,7 @@ async function resolveNameAliases(name,apiId){
     const rows=await Promise.all(['pt-br','en'].map(async locale=>{
       try{
         const r=await fetch('https://api.tcgdex.net/v2/'+locale+'/cards/'+encodeURIComponent(apiId),{
-          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.62'}
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.63'}
         });
         return r.ok?await r.json():null;
       }catch{return null}
@@ -71,7 +71,7 @@ async function resolveFullNumber(number,apiId){
   if(!/^\d+$/.test(raw)||!apiId)return raw;
   try{
     const rr=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(apiId),{
-      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.62'}
+      headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.63'}
     });
     if(!rr.ok)return raw;
     const d=await rr.json();
@@ -122,6 +122,61 @@ async function fetchText(url,timeout=9000){
   }finally{clearTimeout(timer)}
 }
 function safeMypProductUrl(value){try{const u=new URL(String(value||''));if(!/(^|\.)mypcards\.com$/i.test(u.hostname))return'';if(!/^\/pokemon\/produto\/\d+\//i.test(u.pathname))return'';return`${u.protocol}//${u.host}${u.pathname}`}catch{return''}}
+function aliasCompactKeys(names){
+  return [...new Set((names||[]).map(name=>slugify(name).replace(/-/g,'')).filter(Boolean))];
+}
+function productUrlsFromText(raw,names=[]){
+  const text=decodeHtml(String(raw||''));
+  const found=[];
+  const add=value=>{
+    let u=String(value||'').trim().replace(/[)"'<>.,;]+$/g,'');
+    if(!u)return;
+    if(u.startsWith('/'))u=ROOT+u;
+    if(!/^https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\//i.test(u))return;
+    try{
+      const parsed=new URL(u);
+      u=`${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+    }catch{return}
+    found.push(u);
+  };
+  for(const m of text.matchAll(/https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\/[A-Za-z0-9%_\-]+/gi))add(m[0]);
+  for(const m of text.matchAll(/(?:href=|\]\()\s*["']?(\/pokemon\/produto\/\d+\/[A-Za-z0-9%_\-]+)/gi))add(m[1]);
+  const keys=aliasCompactKeys(names);
+  const unique=[...new Set(found)];
+  if(!keys.length)return unique;
+  const matching=unique.filter(url=>{
+    const slug=(url.split('/').filter(Boolean).pop()||'').replace(/[^a-z0-9]/gi,'').toLowerCase();
+    return keys.some(key=>slug===key||slug.includes(key)||key.includes(slug));
+  });
+  return matching.length?matching:unique;
+}
+async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
+  const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
+  const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
+  const queries=[...new Set(names.flatMap(n=>[
+    [n,number,setCode].filter(Boolean).join(' '),
+    [n,number].filter(Boolean).join(' '),
+    [n,setCode].filter(Boolean).join(' '),
+    n
+  ]))].slice(0,6);
+  const urls=[];
+  for(const query of queries){
+    try{
+      const searchUrl=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+      const body=await fetchText(searchUrl,9000);
+      urls.push(...productUrlsFromText(body,names));
+      if(urls.length>=8)break;
+    }catch{}
+  }
+  return [...new Set(urls)].slice(0,12);
+}
+async function familySeedCandidates(wanted){
+  const names=[...new Set([wanted?.name,...(wanted?.nameAliases||[])].filter(Boolean))];
+  const groups=await Promise.all(names.map(n=>sitemapCandidates(n).catch(()=>[])));
+  const search=await readerSearchCandidates(wanted).catch(()=>[]);
+  return [...new Set([...search,...groups.flat()])].slice(0,14);
+}
+
 async function sitemapCandidates(name){
   const wantedSlug=slugify(name),wantedCompact=wantedSlug.replace(/-/g,'');
   const key='sitemap:v1462:'+wantedCompact,cached=CACHE.get(key);
@@ -261,33 +316,43 @@ function extractMarket(identity,finish,condition){
 
 async function resolvePage({name,nameAliases=[],number,set,setId,link,lang,finish,condition}){
   const direct=safeMypProductUrl(link);
-  let urls=[];
-  if(direct)urls=[direct];
-  else{
-    const groups=await Promise.all([...new Set([name,...nameAliases].filter(Boolean))].map(n=>sitemapCandidates(n).catch(()=>[])));
-    urls=[...new Set(groups.flat())];
-  }
+  const wanted={name,nameAliases,number,set,setId,lang};
+  const familyNames=[name,...nameAliases].filter(Boolean);
+  const queue=direct?[direct]:await familySeedCandidates({name,nameAliases,number,set,setId});
+  const seen=new Set();
   let best=null;
-  for(const url of urls){
+  let inspected=0;
+
+  while(queue.length&&inspected<14){
+    const url=queue.shift();
+    if(!url||seen.has(url))continue;
+    seen.add(url);inspected++;
     try{
-      const html=await fetchText(url),identity=pageIdentity(html);
-      if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang}))continue;
-      const market=extractMarket(identity,finish,condition),wantedNumber=String(number||'').replace(/\s/g,''),wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code),langNorm=normalize(lang);
-      let score=0;
-      if(matchesWanted(identity,{name,nameAliases,number:wantedNumber,set,setId,lang}))score+=1000;else if(wantedNumber)score-=1200;
-      score+=marketIdentityLocaleScore(identity,{setId,lang});
+      const raw=await fetchText(url,9000);
+      const identity=pageIdentity(raw);
+      const exact=matchesWanted(identity,wanted);
+
+      if(exact){
+        const market=extractMarket(identity,finish,condition);
+        const wantedSet=normalize(set),edition=normalize(identity.edition),code=normalize(identity.code);
+        let score=1000+marketIdentityLocaleScore(identity,{setId,lang})+(market.samples||0);
+        if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
+        const candidate={url,identity,market,score};
+        if(!best||candidate.score>best.score)best=candidate;
+        if(hasAnyMarket(market))break;
+      }
+
+      // Mesmo quando o número não bate, uma página do mesmo personagem/carta
+      // pode ser a porta de entrada para "Outras Edições". Ex.: 156/165 -> 194/165.
       const identityName=normalize(identity.name);
-      if([name,...nameAliases].map(normalize).some(n=>n&&n===identityName))score+=350;
-      if(wantedSet&&(edition.includes(wantedSet)||wantedSet.includes(edition)||code.includes(wantedSet)))score+=280;
-      const japanese=/japones|japanese|sv2a/.test(`${edition} ${code}`);
-      if(langNorm==='ja'&&japanese)score+=220;
-      if(langNorm&&langNorm!=='ja'&&japanese)score-=260;
-      score+=(market.samples||0);
-      const candidate={url,identity,market,score};
-      if(!best||candidate.score>best.score)best=candidate;
-      if(score>=1000&&market.samples)break;
+      const familyMatch=familyNames.map(normalize).some(n=>n&&identityName&&(identityName===n||identityName.includes(n)||n.includes(identityName)));
+      if(exact||familyMatch){
+        const siblings=productUrlsFromText(raw,familyNames);
+        for(const sibling of siblings)if(!seen.has(sibling))queue.push(sibling);
+      }
     }catch{}
   }
+
   if(!best&&direct){
     return resolvePage({name,nameAliases,number,set,setId,link:'',lang,finish,condition});
   }
@@ -315,6 +380,11 @@ module.exports=async function handler(req,res){
 
   const directLink=safeMypProductUrl(link);
   const nameAliases=await resolveNameAliases(name,apiId);
+  let browserSeedLink=directLink;
+  if(!browserSeedLink&&!fast){
+    const seeds=await familySeedCandidates({name,nameAliases,number,set,setId}).catch(()=>[]);
+    browserSeedLink=seeds[0]||'';
+  }
 
   // Atualização manual de uma única carta: nunca prende a interface por
   // Chromium/Apify. Se já sabemos a página da MYP, tentamos uma leitura direta
@@ -366,18 +436,18 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1462:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1463:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(browserSeedLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
-      const market=await findAndScrapeMypBrowser(directLink||'',{name,nameAliases,number,set,setId,apiId,lang,finish,condition});
+      const market=await findAndScrapeMypBrowser(browserSeedLink||'',{name,nameAliases,number,set,setId,apiId,lang,finish,condition});
       if(market?.ok&&hasAnyMarket(market)){
         const resolvedLink=safeMypProductUrl(market.link)||directLink||'';
         const out={
           ok:true,
           source:'MYP Cards',
           provider:'Chromium',
-          mode:directLink?'browser-page':'browser-search-page',
+          mode:browserSeedLink?'browser-family-page':'browser-search-page',
           name,
           number,
           edition:market.edition||set,
@@ -429,7 +499,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1462b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1463b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
