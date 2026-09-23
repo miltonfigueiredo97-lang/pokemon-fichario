@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.60';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.61';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,12 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.61',title:'MYP procura idioma e versões da mesma carta automaticamente',items:[
+      'As bandeiras das ofertas da MYP agora são usadas para separar PT-BR, EN, JP e outros idiomas.',
+      'Se a página encontrada não tiver a oferta correta, o scraper percorre automaticamente outras edições/versões da mesma carta.',
+      'Cartas naturalmente holográficas tratam a oferta padrão sem rótulo como Foil quando a própria impressão é Holo/Ultra Rara/secreta.',
+      'A busca continua automática por nome PT-BR/EN + número + coleção e salva o link correto encontrado.'
+    ]},
     {version:'V14.60',title:'Descoberta MYP automática e fila autônoma',items:[
       'O sistema não usa mais IDs MYP hardcoded para a coleção 151.',
       'Se um link salvo falhar, ele é descartado e a MYP é pesquisada automaticamente por nome, número, coleção e aliases PT-BR/EN.',
