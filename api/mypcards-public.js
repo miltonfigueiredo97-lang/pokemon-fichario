@@ -6,7 +6,12 @@ const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
 
 function normalize(value){return String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
-function slugify(value){return normalize(value).replace(/\s+/g,'-')}
+function slugify(value){
+  return normalize(String(value||'')
+    .replace(/♀/g,' femea ')
+    .replace(/♂/g,' macho '))
+    .replace(/\s+/g,'-')
+}
 function decodeHtml(text){return String(text||'').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&quot;/gi,'"').replace(/&#39;/gi,"'").replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(Number(n))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCharCode(parseInt(n,16)))}
 function stripTags(html){return decodeHtml(String(html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,' ').replace(/<br\s*\/?>/gi,'\n').replace(/<\/(?:p|div|li|tr|h\d)>/gi,'\n').replace(/<[^>]+>/g,' ')).replace(/[ \t]+/g,' ').replace(/\n\s+/g,'\n').replace(/\n{3,}/g,'\n\n').trim()}
 function parseMoney(value){const raw=String(value||'').replace(/R\$/gi,'').trim();if(!raw)return null;let n=raw.replace(/\s/g,'');if(n.includes(','))n=n.replace(/\./g,'').replace(',','.');const v=Number(n);return Number.isFinite(v)?v:null}
@@ -75,15 +80,32 @@ async function resolveFullNumber(number,apiId){
     return /^\d+$/.test(local)&&total>0 ? String(Number(local))+'/'+String(total) : raw;
   }catch{return raw}
 }
-async function fetchJina(target,timeout=18000){
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
-  try{
-    const url='https://r.jina.ai/'+target;
-    const r=await fetch(url,{headers:{'Accept':'text/plain','X-Timeout':'12','X-Engine':'browser','X-No-Cache':'true'},signal:controller.signal});
-    const text=await r.text();
-    if(!r.ok){const e=new Error('Jina HTTP '+r.status);e.code='jina_http';throw e}
-    return text;
-  }finally{clearTimeout(timer)}
+async function fetchJina(target,timeout=22000){
+  const url='https://r.jina.ai/'+target;
+  const started=Date.now();
+  let lastError=null;
+  const attempts=[
+    {engine:'',budget:Math.min(12000,timeout)},
+    {engine:'browser',budget:Math.max(5000,timeout-12000)}
+  ];
+  for(const attempt of attempts){
+    const remaining=timeout-(Date.now()-started);
+    if(remaining<=1500)break;
+    const controller=new AbortController();
+    const budget=Math.min(attempt.budget,remaining);
+    const timer=setTimeout(()=>controller.abort(),budget);
+    try{
+      const headers={'Accept':'text/plain','X-No-Cache':'true','X-Timeout':String(Math.max(5,Math.floor(budget/1000)-1))};
+      if(attempt.engine)headers['X-Engine']=attempt.engine;
+      const r=await fetch(url,{headers,signal:controller.signal});
+      const text=await r.text();
+      if(r.ok&&text.trim())return text;
+      const e=new Error('Jina HTTP '+r.status);e.code='jina_http';lastError=e;
+    }catch(error){lastError=error}
+    finally{clearTimeout(timer)}
+  }
+  if(lastError)throw lastError;
+  const e=new Error('Jina reader unavailable');e.code='jina_unavailable';throw e;
 }
 async function fetchText(url,timeout=9000){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
@@ -347,7 +369,7 @@ module.exports=async function handler(req,res){
   // O fetch HTTP simples é bloqueado pelo Cloudflare, mas o navegador real
   // executa o desafio e enxerga as mesmas ofertas exibidas ao usuário.
   {
-    const browserKey='browser:v1459b:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
+    const browserKey='browser:v1460:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+String(condition||'').toUpperCase()+'|'+(directLink||'discover');
     const browserCached=CACHE.get(browserKey);
     if(browserCached&&browserCached.expires>Date.now())return res.status(200).json(browserCached.value);
     try{
@@ -419,7 +441,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  const cacheKey='market:v1459c:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
+  const cacheKey='market:v1460:'+normalize(name)+'|'+number+'|'+normalize(set)+'|'+normalize(setId)+'|'+normalize(lang)+'|'+normalize(finish)+'|'+condition.toUpperCase()+'|'+safeMypProductUrl(link);
   const cached=CACHE.get(cacheKey);if(cached&&cached.expires>Date.now())return res.status(200).json(cached.value);
   try{
     // Preserve the deterministic/canonical product identity through the
