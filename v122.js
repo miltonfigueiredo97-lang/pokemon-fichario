@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.59';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.60';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.60',title:'Descoberta MYP automática e fila autônoma',items:[
+      'O sistema não usa mais IDs MYP hardcoded para a coleção 151.',
+      'Se um link salvo falhar, ele é descartado e a MYP é pesquisada automaticamente por nome, número, coleção e aliases PT-BR/EN.',
+      'O link correto descoberto é salvo automaticamente para as próximas atualizações.',
+      'A fila tem limite de tentativas e não deixa cartas presas indefinidamente.',
+      'ATUALIZANDO indica processamento real; cartas aguardando aparecem como NA FILA.'
+    ]},
     {version:'V14.59',title:'Fila automática de preços corrigida',items:[
       'A MYP não usa mais Outras Edições da página para decidir o idioma e a coleção da carta atual.',
       'MEW PT-BR deixa de ser rejeitada só porque a página também cita SV2A/Japonês em outras impressões.',
