@@ -2861,11 +2861,12 @@
             setSinglePriceWatchLabel('Sem cotação disponível');
             return{state:'unavailable',data};
           }
-          setSinglePriceWatchLabel(data.price_processing_at?'Atualizando no servidor…':'Aguardando servidor…');
+          const processingAge=Date.now()-Date.parse(data.price_processing_at||0);
+          setSinglePriceWatchLabel(data.price_processing_at&&processingAge<35_000?'Atualizando no servidor…':'Na fila…');
         }
 
         const elapsed=Date.now()-started;
-        await sleep(elapsed<30_000?1500:4000);
+        await sleep(elapsed<35_000?1200:3000);
       }
       return{state:'timeout'};
     })();
