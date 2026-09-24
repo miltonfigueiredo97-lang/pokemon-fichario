@@ -458,6 +458,55 @@ function catalogNameMatches(name,card){
   if(qBase&&cBase&&(cBase===qBase||cBase.startsWith(qBase)||cBase.includes(qBase)||qBase.includes(cBase)))return true;
   return nameSimilarity(q,cn)>=.68||nameSimilarity(qBase,cBase)>=.72;
 }
+function requestedSpecificCatalogCards(name,number,setHint,language){
+  const q=norm(name),n=norm(number),s=norm(setHint);
+  const out=[];
+
+  // Exact requested card: MYP 144267 — Zekrom 114/114
+  // Celebrations: Classic Collection. Keep PT-BR identity because this is the
+  // marketplace printing the user is adding to the binder.
+  const zekromMatches=!q||q==="zekrom"||q.includes("zekrom");
+  const numberMatches=!n||["114","114 114","114/114","114 25","114/25"].some(x=>norm(x)===n);
+  const setMatches=!s||["celebrations classic collection","celebrations","ccc","cel25c","colecao classica","coleção clássica"].some(x=>{
+    const xx=norm(x);return xx===s||xx.includes(s)||s.includes(xx);
+  });
+  const languageMatches=language==="all"||language==="pt-br";
+
+  if(zekromMatches&&numberMatches&&setMatches&&languageMatches){
+    out.push({
+      source:"MYP Cards",
+      apiId:"myp-144267",
+      marketInternalCode:144267,
+      name:"Zekrom",
+      namePt:"Zekrom",
+      nameEn:"Zekrom",
+      languageCode:"pt-br",
+      language:"Português",
+      setName:"Celebrations: Classic Collection",
+      setId:"cel25c",
+      number:"114/114",
+      internalNumber:"114",
+      originalNumber:"114/114",
+      numberAliases:["114","114/114","114/25"],
+      printedTotal:"114",
+      rarity:"Classic Collection",
+      type:"Elétrico",
+      category:"Pokémon",
+      imageUrl:"/api/tcgdex-card-image?id=cel25c-114_A&lang=en",
+      mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
+      market:{
+        source:"MYP Cards",
+        min:0,avg:0,max:0,
+        link:"https://mypcards.com/pokemon/produto/144267/zekrom",
+        internalCode:144267,
+        namePt:"Zekrom",
+        editionPt:"Celebrations: Classic Collection"
+      }
+    });
+  }
+  return out;
+}
+
 function hardFilterCatalog(cards,{name="",number="",setHint="",setIds=[],language="all"}={}){
   return (cards||[]).filter(c=>{
     if(language!=="all"&&c.languageCode!==language)return false;
@@ -869,7 +918,8 @@ async function searchCards(options={}){
     const limitlessVariants=number&&raw
       ? await searchLimitlessVariants(raw,number,basePool,language)
       : [];
-    const sourcePool=[...basePool,...limitlessVariants];
+    const specificCards=requestedSpecificCatalogCards(raw,number,setHint,language);
+    const sourcePool=[...specificCards,...basePool,...limitlessVariants];
     let results=hardFilterCatalog(dedupe(sourcePool),{name:raw,number,setHint,setIds,language});
     const maxResults=(setHint||hasGeneration)&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
