@@ -1094,7 +1094,7 @@ module.exports=async function handler(req,res){
       });
     }
     try{
-      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true};
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
       const market=await Promise.race([
         findAndScrapeMypBrowser(directLink,wanted),
         new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),10500))
