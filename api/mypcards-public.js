@@ -1028,7 +1028,7 @@ module.exports=async function handler(req,res){
   // (nome + número + coleção). Ele já valida idioma, condição e acabamento.
   const apifyConfigured=!!process.env.APIFY_API_TOKEN;
   let apifyFound=null,apifyError='';
-  if(directLink&&apifyConfigured){
+  if(directLink&&apifyConfigured&&normalize(setId)!=='g1'){
     try{
       const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
       if(hasAnyMarket(found)||safeMypProductUrl(found?.link))apifyFound=found;
@@ -1197,7 +1197,7 @@ module.exports=async function handler(req,res){
     }
   }
 
-  if(!apifyFound&&apifyConfigured){
+  if(!apifyFound&&apifyConfigured&&normalize(setId)!=='g1'){
     try{
       const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
       if(hasAnyMarket(found)||safeMypProductUrl(found?.link))apifyFound=found;
