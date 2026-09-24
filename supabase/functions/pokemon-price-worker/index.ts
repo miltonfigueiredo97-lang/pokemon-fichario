@@ -45,7 +45,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.92"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.93"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.92"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.93"},
             signal:controller.signal
           });
           if(r.ok){
@@ -149,6 +149,34 @@ async function mypCardSlug(card:any){
 
   englishSlugCache.set(key,{slug,expires:Date.now()+24*60*60_000});
   return slug;
+}
+
+function generationsMypProductId(value:unknown){
+  const raw=String(value||"").trim().replace(/\s/g,"").toLowerCase();
+  let m=raw.match(/^rc0*(\d+)\/rc32$/i);
+  if(m){
+    const n=Number(m[1]);
+    return n>=1&&n<=32?36243+n:0;
+  }
+  if(/^0*28a\/83$/i.test(raw))return 36188;
+  if(/^0*73a\/83$/i.test(raw))return 115355;
+  m=raw.match(/^0*(\d+)\/83$/);
+  if(!m)return 0;
+  const n=Number(m[1]);
+  if(n<1||n>83)return 0;
+  return (n<=28?36159:36160)+n;
+}
+async function canonicalGenerationsLink(card:any){
+  if(String(card?.set_id||"").trim().toLowerCase()!=="g1")return"";
+  const productId=generationsMypProductId(card?.number);
+  if(!productId)return"";
+  let slug="";
+  if(String(card?.number||"").replace(/\s/g,"").toLowerCase()==="73a/83"){
+    slug="grunhido-da-equipe-flare";
+  }else{
+    slug=await mypCardSlug(card).catch(()=> "card");
+  }
+  return "https://mypcards.com/pokemon/produto/"+String(productId)+"/"+(slug||"card");
 }
 
 async function canonicalMew151Link(card:any){
@@ -241,20 +269,27 @@ async function fetchMarkets(card:any){
 
   let myp:any;
   if(hasMypLink){
-    // Link conhecido = leia a própria página primeiro. A rota fast percorre
-    // também as páginas de vendedores da MYP e evita gastar 58 s redescobrindo
-    // uma carta que já foi identificada por outra variante do mesmo número.
-    myp=await fetchSource(MYP_API,card,true,true)
-      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_error")}));
-    console.log("[MYP_FAST]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode,identity:myp?.identity}));
+    const directGenerations=String(card?.set_id||"").trim().toLowerCase()==="g1";
+    if(directGenerations){
+      myp=await fetchSource(MYP_API,card,true,false)
+        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error"),link:card.myp_price_link||""}));
+      console.log("[MYP_GEN_DIRECT]",String(card.id||""),String(card.number||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link}));
+    }else{
+      // Link conhecido = leia a própria página primeiro. A rota fast percorre
+      // também as páginas de vendedores da MYP e evita gastar 58 s redescobrindo
+      // uma carta que já foi identificada por outra variante do mesmo número.
+      myp=await fetchSource(MYP_API,card,true,true)
+        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_error")}));
+      console.log("[MYP_FAST]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode,identity:myp?.identity}));
 
-    if(!hasMarketPrice(myp)){
-      const fastError=String(myp?.error||"");
-      const needsHeavyFallback=["fast_timeout","fast_unavailable","fast_no_price","wrong_product","product_not_found","variant_not_found","no_price_data"].includes(fastError);
-      if(needsHeavyFallback){
-        myp=await fetchSource(MYP_API,card,true,false)
-          .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
-        console.log("[MYP_FULL]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
+      if(!hasMarketPrice(myp)){
+        const fastError=String(myp?.error||"");
+        const needsHeavyFallback=["fast_timeout","fast_unavailable","fast_no_price","wrong_product","product_not_found","variant_not_found","no_price_data"].includes(fastError);
+        if(needsHeavyFallback){
+          myp=await fetchSource(MYP_API,card,true,false)
+            .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+          console.log("[MYP_FULL]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
+        }
       }
     }
   }else{
@@ -364,17 +399,17 @@ Deno.serve(async(req:Request)=>{
       let learnedLink="";
       let siblingLink="";
       const canonical151Link=await canonicalMew151Link(card).catch(()=> "");
-      if(canonical151Link){
-        // A edição brasileira MEW tem mapeamento MYP determinístico:
-        // produto 205873 + número do colecionador. Ele prevalece até sobre um
-        // link antigo já salvo, evitando contaminação por SV2A, League Promo,
-        // Metal Card ou outra impressão com o mesmo nome/número.
-        if(mypProductId(existingMyp)!==mypProductId(canonical151Link)){
+      const canonicalGenerations=await canonicalGenerationsLink(card).catch(()=> "");
+      const canonicalLink=canonical151Link||canonicalGenerations;
+      if(canonicalLink){
+        // Coleções com mapeamento MYP determinístico não precisam de busca
+        // por nome. Isso evita fila lenta e contaminação por outra impressão.
+        if(mypProductId(existingMyp)!==mypProductId(canonicalLink)){
           await db.from("pokemon_cards")
-            .update({myp_price_link:canonical151Link})
+            .update({myp_price_link:canonicalLink})
             .eq("id",card.id);
         }
-        fetchCard={...card,myp_price_link:canonical151Link};
+        fetchCard={...card,myp_price_link:canonicalLink};
       }else if(!existingMyp){
         siblingLink=await siblingMypLink(db,card).catch(()=> "");
         if(siblingLink){
