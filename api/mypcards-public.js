@@ -1,6 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
-const { findAndScrapeMypBrowser } = require('../lib/myp-browser');
+const { findAndScrapeMypBrowser, searchExactMypBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -957,43 +957,31 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
-  // V15.14: replicate the same path used manually here:
-  // web search for the exact printing -> exact MYP product -> read that page.
-  // No Chromium launch in the normal automatic path.
+  // V15.15: automatic fast path uses a real browser against the MYP search,
+  // with the exact same identity pattern: "Name (number/total)".
+  // It does NOT enter collection crawling, sitemap or multi-minute fallbacks.
   if(!directLink&&name&&number){
     try{
-      const external=await externalSearchCandidates({name,nameAliases,number,set});
-      const checked=await Promise.all(external.slice(0,4).map(async candidate=>{
-        try{
-          const text=await fetchJina(candidate,4500);
-          const identity=pageIdentity(text);
-          if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang}))return null;
-          let market=await marketAcrossSellerPages(candidate,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-          if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
-            market=sameProductFallbackMarket(identity,finish,condition);
-          }
-          return {candidate,identity,market};
-        }catch{return null}
-      }));
-      const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
-      if(hit){
-        directLink=safeMypProductUrl(hit.candidate);
-        if(hasAnyMarket(hit.market)){
-          return res.status(200).json({
-            ok:true,source:'MYP Cards',provider:'External exact search',mode:'web-exact-name-number',
-            name:hit.identity?.name||name,number:hit.identity?.number||number,
-            edition:hit.identity?.edition||set,finish,condition,link:directLink,
-            min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
-            samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
-            exactVariant:hit.market.exactVariant===true,
-            variantFallback:hit.market.variantFallback===true,
-            complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
-            checkedAt:new Date().toISOString()
-          });
-        }
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
+      const exact=await Promise.race([
+        searchExactMypBrowser(wanted),
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),10500))
+      ]);
+      const exactLink=safeMypProductUrl(exact?.link);
+      if(exactLink)directLink=exactLink;
+      if(exact?.ok&&hasAnyMarket(exact)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Browser exact search',mode:exact.mode||'browser-exact-only',
+          name,number,edition:exact.edition||set,finish,condition,link:exactLink||'',
+          min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
+          samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
+          exactVariant:exact.exactVariant===true,variantFallback:exact.variantFallback===true,
+          complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
+          checkedAt:new Date().toISOString()
+        });
       }
     }catch(error){
-      console.warn('MYP external exact search:',error?.message||error);
+      console.warn('MYP exact browser:',error?.message||error);
     }
   }
 
