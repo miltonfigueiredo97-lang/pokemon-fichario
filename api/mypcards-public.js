@@ -246,7 +246,7 @@ async function canonicalizeKnownProductLink({link,apiId,setId,set,number,name,na
 
   // 3) Busca global pelo número, sem confiar no slug/nome localizado.
   try{
-    const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
+    const setCode=(normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5')?'MEW':normalize(setId)==='g1'?'GEN':String(set||'').trim();
     for(const query of [[number,setCode].filter(Boolean).join(' '),number].filter(Boolean)){
       const searchUrl=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
       const body=await fetchJina(searchUrl,8000);
@@ -367,6 +367,15 @@ async function mypEditionUrl({apiId,setId,set}){
   const key='myp-edition:v1483:'+String(setId||set||'');
   const cached=CACHE.get(key);
   if(cached&&cached.expires>Date.now())return cached.value;
+
+  // A MYP cataloga Generations com o nome completo "XY: Generations (GEN)".
+  // O slug /pokemon/generations aponta para outra família moderna e fazia a
+  // descoberta por coleção falhar para quase todo o master set de 2016.
+  if(normalize(setId)==='g1'){
+    const value=ROOT+'/pokemon/xy-generations';
+    CACHE.set(key,{value,expires:Date.now()+24*60*60*1000});
+    return value;
+  }
 
   // Primeiro derive a URL diretamente dos nomes oficiais/localizados do set.
   // Isso evita escolher atalhos genéricos como /pokemon/151 quando a página
@@ -520,7 +529,7 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
 
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
-  const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
+  const setCode=(normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5')?'MEW':normalize(setId)==='g1'?'GEN':String(set||'').trim();
   // Número + coleção primeiro. A MYP pode abreviar/localizar o nome do produto
   // (ex.: Venomoth aparece como "Ven"), mas o número da impressão continua estável.
   const queries=[...new Set([
