@@ -1117,27 +1117,55 @@ function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignu
 async function registerPWA(){
   if(!("serviceWorker"in navigator))return;
   try{
+    const build=String(window.POKEMON_BINDER_BUILD||'V15.11').replace(/^V/i,'');
     let reloading=false;
     navigator.serviceWorker.addEventListener("controllerchange",()=>{
       if(reloading)return;
       reloading=true;
-      location.reload();
+      const u=new URL(location.href);
+      u.searchParams.set('pbv',build);
+      location.replace(u.href);
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v=14.79",{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("/sw.js?v="+encodeURIComponent(build),{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
       const worker=reg.installing;
       if(!worker)return;
       worker.addEventListener("statechange",()=>{
-        if(worker.state==="installed"&&navigator.serviceWorker.controller){
+        if(worker.state==="installed"){
           worker.postMessage({type:"SKIP_WAITING"});
         }
       });
     });
   }catch(e){console.warn(e)}
 }
-async function boot(){bindEvents();registerPWA();const{data}=await db.auth.getSession();await renderAuthState(data.session);db.auth.onAuthStateChange((_e,s)=>setTimeout(()=>renderAuthState(s),0))}
+
+async function reconcileLiveBuild(){
+  try{
+    const current=String(window.POKEMON_BINDER_BUILD||'').replace(/^V/i,'');
+    const rr=await fetch('/index.html?buildcheck='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+    if(!rr.ok)return;
+    const html=await rr.text();
+    const match=html.match(/POKEMON_BINDER_BUILD=['"]V?([^'"]+)['"]/i);
+    const live=String(match?.[1]||'').replace(/^V/i,'');
+    if(live&&current&&live!==current){
+      const u=new URL(location.href);
+      u.searchParams.set('pbv',live);
+      location.replace(u.href);
+    }
+  }catch(e){console.warn('[Build check]',e)}
+}
+
+async function boot(){
+  bindEvents();
+  registerPWA();
+  reconcileLiveBuild();
+  setInterval(reconcileLiveBuild,60_000);
+  const{data}=await db.auth.getSession();
+  await renderAuthState(data.session);
+  db.auth.onAuthStateChange((_e,s)=>setTimeout(()=>renderAuthState(s),0))
+}
 document.addEventListener("DOMContentLoaded",boot);
 
 // ===== V5 RELIABLE SLOT DRAG =====
