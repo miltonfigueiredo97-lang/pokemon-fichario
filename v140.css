@@ -1439,3 +1439,17 @@ body.v1498-clean-binder .binder-pocket>.v1425-slot-add:hover{
     font-size:8px!important;
   }
 }
+
+
+/* V15.00 — Wishlist = Não tenho visualmente */
+body:not(.v113-show-missing-color) .pocket-card.status-wanted img{
+  filter:grayscale(1) brightness(.48)!important;
+}
+body.v113-show-missing-color .pocket-card.status-wanted img{
+  filter:none!important;
+}
+#summaryPanel #v1500ExportPdf{
+  color:#dfe7ff!important;
+  border-color:rgba(143,199,255,.24)!important;
+  background:rgba(143,199,255,.045)!important;
+}
