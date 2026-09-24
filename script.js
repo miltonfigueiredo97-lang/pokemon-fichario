@@ -743,7 +743,14 @@ function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.ap
 async function searchCards(options={}){
   const live=!!options.live,requestId=++catalogSearchSeq;
   let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
-  const seriesId=$("searchSeries")?.value||"";
+  const seriesEl=$("searchSeries");
+  const setEl=$("searchSet");
+  const hasGeneration=!!(seriesEl&&seriesEl.selectedIndex>0);
+  const seriesId=hasGeneration?String(seriesEl.value||"").trim():"";
+  const generationLabel=hasGeneration?String(seriesEl.selectedOptions?.[0]?.textContent||"").trim():"";
+  const generationSetIds=hasGeneration
+    ? [...new Set([...(setEl?.options||[])].map(o=>String(o.value||"").trim()).filter(Boolean))]
+    : [];
   if(!setHint){
     const normalized=norm(raw);
     const y30=/\b30(?:th)?\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
@@ -759,7 +766,7 @@ async function searchCards(options={}){
 
   const typedLetters=norm(raw).replace(/\s+/g,"").length;
   const setLetters=norm(setHint).replace(/\s+/g,"").length;
-  if(!raw&&!number&&!setHint){
+  if(!raw&&!number&&!setHint&&!hasGeneration){
     catalogResults=[];populateRarityFilter();renderCatalog();$("searchStatus").textContent="";return;
   }
   if(live&&!number&&typedLetters<2&&setLetters<2){
@@ -779,16 +786,12 @@ async function searchCards(options={}){
     const langs=language==="all"?["pt-br","en","ja"]:[language];
     let setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
 
-    // Se só a geração foi escolhida, usamos todas as coleções carregadas
-    // naquele seletor como universo permitido. Nome/número então refinam
-    // DENTRO da geração, nunca voltam a procurar no catálogo inteiro.
-    if(!setHint&&seriesId){
-      const setSelect=$("searchSet");
-      setIds=[...new Set([...(setSelect?.options||[])]
-        .map(o=>String(o.value||"").trim())
-        .filter(Boolean))];
-      // Segurança para o caso de a busca disparar antes do select terminar de carregar.
-      if(!setIds.length){
+    // V15.04: geração é sempre filtro rígido. Não dependemos apenas de
+    // series.value: se o seletor mostra uma geração, o universo permitido é
+    // a lista de coleções carregada logo ao lado.
+    if(!setHint&&hasGeneration){
+      setIds=[...generationSetIds];
+      if(!setIds.length&&seriesId){
         try{
           const langKey=language==="ja"?"ja":language==="en"?"en":"pt";
           const rr=await fetch('/api/set-catalog?lang='+encodeURIComponent(langKey)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
@@ -818,7 +821,7 @@ async function searchCards(options={}){
       : [];
     const sourcePool=[...basePool,...limitlessVariants];
     let results=hardFilterCatalog(dedupe(sourcePool),{name:raw,number,setHint,setIds,language});
-    const maxResults=setHint&&!raw&&!number?400:100;
+    const maxResults=(setHint||hasGeneration)&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
     populateRarityFilter();renderCatalog();
 
@@ -852,9 +855,8 @@ async function searchCards(options={}){
 
     const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
     const jpOfficialCount=catalogResults.filter(c=>c.source==="Pokémon Japão Oficial").length;
-    const seriesLabel=$("searchSeries")?.selectedOptions?.[0]?.textContent||"";
     const setLabel=$("searchSet")?.selectedOptions?.[0]?.textContent||"";
-    const criteria=[raw&&`nome “${raw}”`,seriesId&&`geração “${seriesLabel}”`,number&&`nº ${number}`,setHint&&`coleção “${setLabel||setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" + ");
+    const criteria=[raw&&`nome “${raw}”`,hasGeneration&&`geração “${generationLabel}”`,number&&`nº ${number}`,setHint&&`coleção “${setLabel||setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" + ");
     $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${jpOfficialCount?` · ${jpOfficialCount} impressão(ões) japonesa(s) oficial(is)`:``}${criteria?` · correspondendo a: ${criteria}`:""}.`;
   }catch(e){
     if(requestId!==catalogSearchSeq)return;
