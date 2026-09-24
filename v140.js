@@ -1832,7 +1832,20 @@
     star.addEventListener('pointerdown',e=>e.stopPropagation());
     star.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act(e)}});
     b.appendChild(star);
-    if(!isWishlistBinder()){
+    if(isWishlistBinder()){
+      const ribbon=b.querySelector('.card-status-ribbon');
+      if(ribbon){
+        ribbon.setAttribute('role','button');
+        ribbon.setAttribute('tabindex','0');
+        ribbon.title='Escolher fichário e decidir se a carta foi comprada';
+        ribbon.setAttribute('aria-label','Mover esta carta da Lista de Desejos para um fichário');
+        const openMove=e=>{e.preventDefault();e.stopPropagation();openWishlistTransferV1494(card)};
+        ribbon.addEventListener('click',openMove);
+        ribbon.addEventListener('pointerdown',e=>e.stopPropagation());
+        ribbon.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMove(e)}});
+        ribbon.classList.add('v1497-wishlist-move-ribbon');
+      }
+    }else{
       const wished=!!wishlistCardMatch(card);
       const wish=document.createElement('span');
       wish.className='v1493-wishlist-dollar'+(wished?' active':'');
@@ -3805,16 +3818,16 @@
       d.innerHTML='<div class="dialog-shell narrow v1494-wishlist-move-shell">'+
         '<div class="dialog-head"><div><p class="kicker">LISTA DE DESEJOS</p><h2>Colocar carta em um fichário</h2><p class="muted compact-copy">Escolha para onde esta carta deve ir e se ela continua na Lista de Desejos.</p></div><button id="v1494WishlistMoveClose" class="icon-only" type="button">×</button></div>'+
         '<label class="v1494-target-label">Fichário de destino<select id="v1494WishlistTarget"></select></label>'+
-        '<div class="v1494-wishlist-choice"><button id="v1494WishlistBought" type="button"><strong>✓ Comprei a carta</strong><span>Coloca como Tenho no fichário escolhido e remove da Lista de Desejos.</span></button>'+
-        '<button id="v1494WishlistKeep" type="button"><strong>&#36; Ainda quero comprar</strong><span>Coloca a carta no fichário escolhido como Não tenho e mantém também na Lista de Desejos.</span></button></div></div>';
+        '<div class="v1494-wishlist-choice"><button id="v1494WishlistBought" type="button"><strong>✓ Remover da Lista de Desejos — comprei</strong><span>Entra no fichário escolhido como Tenho e sai da Lista de Desejos.</span></button>'+
+        '<button id="v1494WishlistKeep" type="button"><strong>&#36; Colocar sem remover da Lista de Desejos</strong><span>Não foi comprada: entra no fichário escolhido como Não tenho e continua também na Lista de Desejos.</span></button></div></div>';
       document.body.appendChild(d);byId('v1494WishlistMoveClose').onclick=()=>d.close();
       d.addEventListener('click',e=>{if(e.target===d)d.close()});
       byId('v1494WishlistBought').onclick=()=>applyWishlistTransferV1494(true);byId('v1494WishlistKeep').onclick=()=>applyWishlistTransferV1494(false);
     }
   }
-  function openWishlistTransferV1494(){
+  function openWishlistTransferV1494(cardArg=null){
     ensureWishlistTransferUIV1494();
-    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null,wishlist=wishlistBinder();
+    const card=cardArg||(editingCardId?V14.allCards.find(x=>x.id===editingCardId):null),wishlist=wishlistBinder();
     if(!card||!wishlist||card.binder_id!==wishlist.id)return;
     const targets=V14.binders.filter(b=>b.id!==wishlist.id),select=byId('v1494WishlistTarget');
     select.innerHTML=targets.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+(b.binder_kind==='set'?' · Master Set':'')+'</option>').join('');
