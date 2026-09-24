@@ -1109,33 +1109,38 @@ module.exports=async function handler(req,res){
   if(!directLink&&process.env.APIFY_API_TOKEN){
     try{
       const early=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
-      if(hasAnyMarket(early)){
-        const exactNeeded=finishKind(finish)!=='normal';
-        if(!exactNeeded||early.exactVariant===true){
-          const actorLink=safeMypProductUrl(early.link);
-          if(actorLink){
-            return res.status(200).json({
-              ok:true,
-              source:'MYP Cards',
-              provider:'Apify early exact market',
-              mode:'actor-first-no-link',
-              name,
-              number,
-              edition:set,
-              finish,
-              condition,
-              link:actorLink,
-              min:Number(early.min||0),
-              avg:Number(early.avg||0),
-              max:Number(early.max||0),
-              samples:early.samples??null,
-              availableQuantity:early.availableQuantity??null,
-              exactVariant:early.exactVariant===true,
-              complete:!!(Number(early.min)>0&&Number(early.avg)>0&&Number(early.max)>0),
-              checkedAt:new Date().toISOString()
-            });
-          }
-        }
+      const actorLink=safeMypProductUrl(early?.link);
+
+      // V15.06: descoberta de identidade e leitura de preço são independentes.
+      // Se o Actor encontrou a impressão correta, nunca jogue esse link fora só
+      // porque a variante/acabamento ainda não trouxe preço nessa mesma chamada.
+      if(actorLink){
+        directLink=actorLink;
+        catalogResolvedLink=true;
+      }
+
+      if(hasAnyMarket(early)&&actorLink){
+        return res.status(200).json({
+          ok:true,
+          source:'MYP Cards',
+          provider:'Apify exact printing',
+          mode:'actor-first-no-link',
+          name,
+          number,
+          edition:set,
+          finish,
+          condition,
+          link:actorLink,
+          min:Number(early.min||0),
+          avg:Number(early.avg||0),
+          max:Number(early.max||0),
+          samples:early.samples??null,
+          availableQuantity:early.availableQuantity??null,
+          exactVariant:early.exactVariant===true,
+          variantFallback:early.variantFallback===true,
+          complete:!!(Number(early.min)>0&&Number(early.avg)>0&&Number(early.max)>0),
+          checkedAt:new Date().toISOString()
+        });
       }
     }catch(error){
       console.warn('MYP early Actor falhou; continuando Reader/Chromium:',error?.code||error?.message||error);
