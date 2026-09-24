@@ -4184,11 +4184,10 @@
         const src=cardImage(card)||card.image_url||'';
         const price=priceModeValue(card,mode);
         const status=String(card.collection_status||'owned');
-        const bw=status==='missing'||status==='wanted';
         const statusLabel=({owned:'Tenho',wanted:'Quero',missing:'Não tenho',ordered:'Pedido'})[status]||status;
         slots.push(
           '<div class="slot">'+
-            '<div class="card '+(bw?'bw':'')+'">'+
+            '<div class="card">'+
               (src?'<img src="'+pdfEscapeV1500(src)+'" alt="'+pdfEscapeV1500(card.name||'Carta')+'">':'<div class="noimg">'+pdfEscapeV1500(card.name||'Carta')+'</div>')+
               '<div class="price">'+(price>0?pdfEscapeV1500(moneyPdf(price)):'Buscando cotação')+'</div>'+
             '</div>'+
@@ -4213,7 +4212,7 @@
       'h1{font-size:15pt;margin:0 0 1mm}header p,.price-mode{margin:0;font-size:8pt;color:#555}.price-mode{font-weight:700;padding-top:1mm}'+
       '.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:1.4mm;flex:1;align-items:start}'+
       '.slot{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:.7mm;overflow:hidden;background:transparent;border:0;border-radius:0}'+
-      '.slot.empty{background:transparent;border:0}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm}.card.bw img{filter:grayscale(1) brightness(.55)}'+
+      '.slot.empty{background:transparent;border:0}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm;filter:none!important}'+
       '.price{position:absolute;left:2mm;right:2mm;bottom:2mm;background:rgba(0,0,0,.88);color:#fff;border-radius:1.5mm;padding:1.3mm;text-align:center;font-size:8.5pt;font-weight:800}.noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border:1px dashed #bbb;color:#777;font-size:9pt;text-align:center;padding:4mm}'+
       '.meta{width:100%;display:grid;gap:.35mm;margin-top:.8mm;text-align:center;line-height:1.08}.meta strong{font-size:7.2pt}.meta span{font-size:6.1pt;color:#555}.meta small{font-size:5.8pt;color:#777}'+
       '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{break-after:page}.sheet:last-child{break-after:auto}}'+
