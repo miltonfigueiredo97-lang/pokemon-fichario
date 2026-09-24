@@ -1,6 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
-const { findAndScrapeMypBrowser, searchExactMypBrowser } = require('../lib/myp-browser');
+const { findAndScrapeMypBrowser, searchExactMypBrowser, searchWebExactMypBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -1096,7 +1096,7 @@ module.exports=async function handler(req,res){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
       const market=await Promise.race([
-        findAndScrapeMypBrowser(directLink,wanted),
+        searchWebExactMypBrowser(wanted,directLink),
         new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),20000))
       ]);
       if(market?.ok&&hasAnyMarket(market)){
