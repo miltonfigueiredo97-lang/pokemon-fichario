@@ -6,7 +6,7 @@ const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
 const BATCH = 16;
 const RETRY_LIMIT = 3;
 const STALE_MS = 2 * 60 * 1000;
-const TERMINAL = new Set(["wrong_product","product_not_found"]);
+const TERMINAL = new Set(["wrong_product","product_not_found","not_found","no_price_data","variant_not_found","language_not_found","condition_not_found"]);
 
 const CORS={
   "Access-Control-Allow-Origin":"*",
@@ -45,7 +45,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.89"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.91"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.89"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.91"},
             signal:controller.signal
           });
           if(r.ok){
@@ -317,6 +317,7 @@ Deno.serve(async(req:Request)=>{
     .lte("price_next_retry_at",nowIso)
     .or("price_processing_at.is.null,price_processing_at.lt."+staleIso)
     .order("price_priority",{ascending:false})
+    .order("price_attempts",{ascending:true})
     .order("price_requested_at",{ascending:true})
     .limit(BATCH);
 
