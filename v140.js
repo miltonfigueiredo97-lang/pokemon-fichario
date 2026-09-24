@@ -958,13 +958,13 @@
     {
       id:'anniv20-complete',
       label:'Completa 20 Anos',
-      coreIds:['g1','xy12'],
+      coreIds:['g1'],
       summaryLabels:['Gerações','Evoluções','Promos oficiais 20 anos','extras regionais quando existirem no idioma'],
       series:'20º Aniversário',
       releaseDate:'2016',
       components:[
         {id:'g1',label:'Gerações',required:true},
-        {id:'xy12',label:'Evoluções',required:true},
+        {id:'xy12',label:'Evolutions',lang:'en',required:true},
         {
           id:'xyp',label:'Promos brasileiras 20 anos · Copag',required:true,
           fetchLang:'en',physicalLang:'pt',
@@ -974,11 +974,11 @@
           ]
         },
         {
-          id:'xyp',label:'Outras promos internacionais 20 anos',
+          id:'xyp',label:'Promos internacionais oficiais 20 anos',lang:'en',required:true,
           only:[
-            'XY125','XY126','XY143','XY148',
-            'XY160','XY161','XY162','XY163',
-            'XY179',
+            'XY110','XY111','XY112','XY113','XY114','XY115','XY116','XY117','XY118','XY119','XY120',
+            'XY121','XY122','XY123','XY124','XY125','XY126','XY143','XY148',
+            'XY160','XY161','XY162','XY163','XY179',
             'XY202','XY203','XY204','XY205','XY206','XY207','XY208','XY209','XY210'
           ]
         },
