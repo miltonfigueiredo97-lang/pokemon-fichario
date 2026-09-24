@@ -1265,3 +1265,18 @@ dialog.sheet-dialog:not([open]){
     padding:13px;
   }
 }
+
+
+/* V14.97 — ação direta no selo QUERO */
+.card-status-ribbon.v1497-wishlist-move-ribbon{
+  cursor:pointer!important;
+  pointer-events:auto!important;
+  transition:transform .14s ease,filter .14s ease,box-shadow .14s ease;
+}
+.card-status-ribbon.v1497-wishlist-move-ribbon:hover,
+.card-status-ribbon.v1497-wishlist-move-ribbon:focus-visible{
+  transform:translateY(-1px) scale(1.04);
+  filter:brightness(1.08);
+  outline:none;
+  box-shadow:0 3px 10px rgba(0,0,0,.28);
+}
