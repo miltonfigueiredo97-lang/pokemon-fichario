@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.78';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.79';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.79',title:'20 anos agora respeita a edição física de cada idioma',items:[
+      'Português: Completa 20 Anos usa Gerações + as 15 promos comprovadamente lançadas pela Copag no Brasil (XY110–XY120 e XY121–XY124).',
+      'Inglês: Completa 20 Anos usa Generations + Evolutions + todas as promos internacionais do aniversário, incluindo XY125/126, XY143, XY148, XY160–163, XY179 e XY202–210.',
+      'Selos Toys R Us/20th Anniversary e Jumbos Red & Blue permanecem como extras internacionais e só entram no idioma correspondente.',
+      'XY — Evolutions foi removida do catálogo Português e é bloqueada como Master Set PT-BR, pois não teve lançamento físico em português pela Copag.',
+      'As promos brasileiras usam o cadastro EN apenas como fonte técnica de imagem/metadados; continuam registradas como impressões PT-BR no fichário.'
+    ]},
     {version:'V14.78',title:'Completa 20 Anos com todas as promos localizadas',items:[
       'As promos XY de 20 anos deixaram de ser forçadas para inglês e agora entram quando existe impressão no idioma selecionado.',
       'A lista auditada inclui XY110–XY126, XY143, XY148, XY160–XY163, XY179 e XY202–XY210.',
