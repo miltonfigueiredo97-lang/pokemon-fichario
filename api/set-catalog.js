@@ -71,7 +71,8 @@ module.exports=async function handler(req,res){
         cardCount:d.cardCount||brief.cardCount||{},
         isPromo:/promo|black star/i.test(String(d.name||brief.name||'')+' '+String(brief.id||''))
       };
-    }).sort((a,b)=>dateValue(a.releaseDate)-dateValue(b.releaseDate)||String(a.displayName).localeCompare(String(b.displayName),'en',{numeric:true}));
+    }).filter(s=>!(lang==='pt'&&String(s.id||'').toLowerCase()==='xy12'))
+      .sort((a,b)=>dateValue(a.releaseDate)-dateValue(b.releaseDate)||String(a.displayName).localeCompare(String(b.displayName),'en',{numeric:true}));
 
     const value={ok:true,series:{id:serie.id||seriesId,name:serie.name||seriesId},sets};
     CACHE.set(key,{at:Date.now(),value});
