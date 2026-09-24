@@ -249,9 +249,17 @@ module.exports=async function handler(req,res){
   res.setHeader('Cache-Control','s-maxage=3600, stale-while-revalidate=86400');
   const lang=apiLang(req.query.lang),setId=String(req.query.set||'').trim();
   if(!setId)return res.status(400).json({ok:false,error:'set_required'});
+  const requestedStrictLang=['1','true','yes'].includes(String(req.query.strictLang||'').toLowerCase());
+  if(requestedStrictLang&&lang==='pt'&&String(setId).toLowerCase()==='xy12'){
+    return res.status(200).json({
+      ok:false,
+      error:'set_not_released_in_language',
+      message:'XY — Evolutions não teve lançamento físico em português no Brasil. Selecione Inglês para montar essa coleção.'
+    });
+  }
   const includeAllPhysical=['1','true','yes','all'].includes(String(req.query.all||'').toLowerCase());
   const includeJumbo=['1','true','yes'].includes(String(req.query.jumbo||'').toLowerCase());
-  const strictLang=['1','true','yes'].includes(String(req.query.strictLang||'').toLowerCase());
+  const strictLang=requestedStrictLang;
   const onlyRaw=String(req.query.only||'').split(',').map(x=>x.trim()).filter(Boolean);
   const onlyKey=v=>{
     const raw=String(v||'').trim().toUpperCase();
