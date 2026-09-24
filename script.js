@@ -504,6 +504,17 @@ async function searchTCGdex(lang,name,number,options={}){
         out.fuzzyUsed=false;out.fuzzyTerm="";
         return out;
       }
+
+      // V15.01: buscas por coleção inteira também precisam hidratar a ficha
+      // completa. O retorno resumido do endpoint de sets muitas vezes traz
+      // nome/número, mas não traz image. Isso deixava coleções inteiras sem arte.
+      if(pool.length<=120){
+        const details=await Promise.all(pool.map(c=>fetchTCGdexCard(lang,c.apiId,c)));
+        const out=details.filter(Boolean);
+        out.fuzzyUsed=false;out.fuzzyTerm="";
+        return out;
+      }
+
       pool.fuzzyUsed=false;pool.fuzzyTerm="";
       return pool;
     }
@@ -774,6 +785,34 @@ async function searchCards(options={}){
     const maxResults=setHint&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
     populateRarityFilter();renderCatalog();
+
+    // V15.01: imagem é obrigatória no catálogo. Para coleções grandes, não
+    // bloqueamos a busca esperando centenas de requests; resolvemos em lotes
+    // e redesenhamos o catálogo conforme as artes chegam.
+    const missingImages=catalogResults.filter(card=>!cardImage(card));
+    if(missingImages.length){
+      (async()=>{
+        const queue=missingImages.slice(0,160);
+        const workers=Math.min(6,queue.length);
+        let cursor=0,changed=false;
+        const run=async()=>{
+          while(requestId===catalogSearchSeq){
+            const i=cursor++;
+            if(i>=queue.length)return;
+            const card=queue[i];
+            const before=cardImage(card);
+            await hydrateMissingCatalogImage(card,card.languageCode||language||'en');
+            if(!before&&cardImage(card))changed=true;
+            if(changed&&i%4===0&&requestId===catalogSearchSeq){
+              renderCatalog();
+              changed=false;
+            }
+          }
+        };
+        await Promise.all(Array.from({length:workers},run));
+        if(requestId===catalogSearchSeq)renderCatalog();
+      })().catch(e=>console.warn('Catalog image hydration',e));
+    }
 
     const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
     const jpOfficialCount=catalogResults.filter(c=>c.source==="Pokémon Japão Oficial").length;
