@@ -501,6 +501,10 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
       const urls=collectionProductCandidatesFromText(body,number,[]);
       if(urls.length)return urls.slice(0,6);
     }
+    // O Reader/Jina pode remover os hrefs dos cards desta listagem dinâmica.
+    // Não desperdice dezenas de segundos em buscas genéricas: o Chromium
+    // enxerga os anchors reais da coleção e é o próximo fallback.
+    return[];
   }
 
   const names=[name,...nameAliases].filter(Boolean);
