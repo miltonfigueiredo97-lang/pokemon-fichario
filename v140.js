@@ -53,6 +53,10 @@
         .select('*').single();
       if(error)throw error;
       Object.assign(legacy,data||{name:'Lista de Desejos',binder_kind:'wishlist'});
+      const {error:cardsError}=await db.from('pokemon_cards')
+        .update({collection_status:'wanted',quantity:0,updated_at:new Date().toISOString()})
+        .eq('binder_id',legacy.id).eq('user_id',currentUser.id);
+      if(cardsError)throw cardsError;
       return legacy;
     }
 
