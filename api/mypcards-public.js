@@ -896,15 +896,31 @@ module.exports=async function handler(req,res){
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
   let directLink=safeMypProductUrl(link);
+  let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
   if(directLink&&!isCanonicalMewPtBrProductLink(directLink,{setId,lang,number})){
     directLink=await canonicalizeKnownProductLink({link:directLink,apiId,setId,set,number,name,nameAliases});
   }
   if(!directLink&&normalize(setId)==='g1'){
     const indexed=await collectionIndexCandidates({apiId,setId,set,number,name,nameAliases}).catch(()=>[]);
-    if(indexed.length)directLink=safeMypProductUrl(indexed[0]);
+    if(indexed.length){
+      directLink=safeMypProductUrl(indexed[0]);
+      catalogResolvedLink=!!directLink;
+    }
   }
   const browserSeedLink=directLink;
+
+  // Descoberta e leitura são etapas diferentes. Para Generations, devolva o
+  // produto assim que o catálogo oficial da MYP o localizar; o worker então
+  // usa esse link conhecido na leitura direta, sem perder a descoberta em um
+  // timeout de uma requisição monolítica.
+  if(catalogResolvedLink&&String(req.query.actorOnly||'')!=='1'){
+    return res.status(200).json({
+      ok:false,error:'link_resolved',source:'MYP Cards',provider:'MYP Generations catalog',
+      name,number,edition:set,finish,condition,link:directLink,
+      message:'Produto MYP localizado; preço será lido diretamente pelo worker.'
+    });
+  }
 
   if(String(req.query.actorOnly||'')==='1'){
     if(!process.env.APIFY_API_TOKEN){
