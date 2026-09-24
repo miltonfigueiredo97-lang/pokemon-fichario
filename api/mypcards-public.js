@@ -939,16 +939,18 @@ module.exports=async function handler(req,res){
   if(!directLink&&name&&number){
     try{
       const quickCandidates=await readerSearchCandidates({name,nameAliases,number,set,setId});
-      for(const candidate of quickCandidates.slice(0,10)){
+      // V15.10: candidate validation is parallel and bounded. A single bad page
+      // must never turn one price lookup into a 60+ second chain.
+      const tested=await Promise.all(quickCandidates.slice(0,6).map(async candidate=>{
         try{
-          const text=await fetchJina(candidate,6500);
+          const text=await fetchJina(candidate,4200);
           const identity=pageIdentity(text);
-          if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
-            directLink=safeMypProductUrl(candidate);
-            if(directLink)break;
-          }
-        }catch{}
-      }
+          return matchesWanted(identity,{name,nameAliases,number,set,setId,lang})
+            ? safeMypProductUrl(candidate)
+            : '';
+        }catch{return ''}
+      }));
+      directLink=tested.find(Boolean)||'';
     }catch(error){
       console.warn('MYP exact search discovery failed:',error?.message||error);
     }
