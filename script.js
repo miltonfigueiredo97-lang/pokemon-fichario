@@ -158,6 +158,28 @@ function goToPage(p){currentPage=Math.min(Math.max(1,+p||1),Math.max(1,+settings
 function renderPagesGrid(){const g=$("pagesGrid");if(!g)return;g.innerHTML="";for(let p=1;p<=Math.max(1,+settings.binder_pages||1);p++){const b=document.createElement("button");b.className="page-thumb"+(p===currentPage?" active":"");const cells=[];for(let s=1;s<=9;s++){const c=getCardAt(p,s),img=c?cardImage(c):"";cells.push(`<span class="page-mini-pocket">${img?`<img src="${esc(img)}">`:""}</span>`)}b.innerHTML=`<strong>Página ${p}</strong><div class="page-mini-grid">${cells.join("")}</div><small>${cardsOnPage(p).length}/9</small>`;b.onclick=()=>{goToPage(p);closeDialog("pagesDialog")};g.appendChild(b)}}
 function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{page,slot}:freePositions(page,1)[0];catalogSelection.clear();updateSelectionTray();$("searchName").value="";$("searchNumber").value="";$("searchSet").value="";$("resultsList").innerHTML="";$("searchStatus").textContent=`Primeira carta irá para página ${pendingPosition.page}, bolso ${pendingPosition.slot}.`;openDialog("addDialog");setTimeout(()=>$("searchName").focus(),100)}
 async function searchMypCards(name,number,setHint){if(!name)return{cards:[],needsToken:false};try{const p=new URLSearchParams({name});if(number)p.set("number",number);if(setHint)p.set("set",setHint);const r=await fetch(`/api/mypcards?${p}`,{cache:"no-store"}),j=await r.json();return j.ok?{cards:(j.cards||[]).map(mapMyp),needsToken:false}:{cards:[],needsToken:!!j.needsToken,message:j.message||""}}catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}}
+async function searchMypCatalogPublic(name,number,setHint,language,options={}){
+  const raw=String(name||"").trim();
+  if(raw.length<2)return[];
+  const live=!!options.live;
+  if(live&&norm(raw).replace(/\s+/g,"").length<4)return[];
+  try{
+    const p=new URLSearchParams({
+      name:raw,
+      lang:language==="all"?"pt-br":language,
+      limit:String(live?24:60)
+    });
+    if(number)p.set("number",number);
+    if(setHint)p.set("set",setHint);
+    const rr=await fetch("/api/myp-catalog-public?"+p.toString(),{cache:"no-store"});
+    if(!rr.ok)return[];
+    const j=await rr.json();
+    return j?.ok&&Array.isArray(j.cards)?j.cards:[];
+  }catch(e){
+    console.warn("MYP public catalog",e);
+    return[];
+  }
+}
 function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
 async function searchLimitlessVariants(name,number,cards,language){
   const wanted=numParts(number);
@@ -802,10 +824,11 @@ async function searchCards(options={}){
     }
     const wantsJa=language==="all"||language==="ja";
     const wantsLegacy=language==="all"||language==="en";
-    const [groups,jpOfficial,mypSearch,legacyCards,anniversaryCards]=await Promise.all([
+    const [groups,jpOfficial,mypSearch,mypPublicCards,legacyCards,anniversaryCards]=await Promise.all([
       Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint,setIds}))),
       wantsJa?searchJapaneseOfficial(raw,number,setHint,{live}):Promise.resolve([]),
       raw?searchMypCards(raw,number,setHint):Promise.resolve({cards:[],needsToken:false}),
+      raw?searchMypCatalogPublic(raw,number,setHint,language,{live}):Promise.resolve([]),
       wantsLegacy&&raw?searchLegacyCards(raw,number,setHint,{live}):Promise.resolve([]),
       raw?searchAnniversaryClassicCollections(langs,raw,number,{live}):Promise.resolve([])
     ]);
@@ -815,7 +838,7 @@ async function searchCards(options={}){
     const tcgFlat=groups.flat();
     const basePool=language==="ja"&&jpOfficial.length
       ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
-      : [...tcgFlat,...anniversaryCards,...legacyCards,...jpOfficial,...mypCards];
+      : [...tcgFlat,...anniversaryCards,...legacyCards,...jpOfficial,...mypCards,...mypPublicCards];
     const limitlessVariants=number&&raw
       ? await searchLimitlessVariants(raw,number,basePool,language)
       : [];
@@ -886,7 +909,7 @@ function updateSelectionTray(){const n=catalogSelection.size;$("selectedCount").
 async function findMarket(c){if(c.market&&(c.market.min||c.market.avg||c.market.max))return c.market;const m=await searchMypCards(c.namePt||c.name,c.number,c.setId||c.setName);if(m.cards.length){const r=rank(m.cards,{name:c.namePt||c.name,number:c.number,setHint:c.setId||c.setName,language:"pt-br"});if(r[0]?.market)return r[0].market}return{source:"MYP Cards",needsToken:m.needsToken,min:0,avg:0,max:0,link:""}}
 function inferFinish(c){const r=norm(c.rarity);if(r.includes("holo"))return"Holo";if(r.includes("full art")||r.includes("ultra"))return"Full-Art";if(norm(c.setName).includes("promo"))return"Promo";return"Normal"}
 async function addSelectedCards(){const cards=[...catalogSelection.values()];if(!cards.length)return;const b=$("btnAddSelected");busy(b,true,"Adicionando...");try{const positions=freePositions(pendingPosition?.page||currentPage,cards.length);const maxPage=Math.max(...positions.map(p=>p.page));if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);for(let i=0;i<cards.length;i++){const c=cards[i],pos=positions[i],market=await findMarket(c),payload=cardPayload(c,{page:pos.page,slot:pos.slot,status:"owned",quantity:1,condition:"Nova",finish:inferFinish(c),notes:""},market);const{data:existing}=await db.from("pokemon_cards").select("id,quantity").eq("user_id",currentUser.id).eq("card_key",payload.card_key).eq("condition",payload.condition).eq("finish",payload.finish).maybeSingle();if(existing)await db.from("pokemon_cards").update({quantity:(+existing.quantity||0)+1}).eq("id",existing.id).eq("user_id",currentUser.id);else{const{error}=await db.from("pokemon_cards").insert(payload);if(error)throw error}}catalogSelection.clear();closeDialog("addDialog");currentPage=positions[0]?.page||currentPage;await loadCards(false);toast(`${cards.length} carta${cards.length===1?"":"s"} adicionada${cards.length===1?"":"s"}.`)}catch(e){console.error(e);toast("Não consegui adicionar todas as cartas.")}finally{busy(b,false)}}
-function cardPayload(c,v,m={}){return{user_id:currentUser.id,card_key:cardKey(c),api_source:c.source||"catalog",api_id:c.apiId||"",name:c.name||"",language_code:c.languageCode||"",language:c.language||"",set_name:c.setName||"",set_id:c.setId||"",number:c.number||"",rarity:c.rarity||"",card_type:c.type||"",image_url:cardImage(c),quantity:v.status==="owned"?Math.max(1,+v.quantity||1):0,condition:v.condition||"Nova",finish:v.finish||"Normal",collection_status:v.status||"owned",binder_page:+v.page||1,binder_slot:+v.slot||1,price_min:+m.min||0,price_avg:+m.avg||0,price_max:+m.max||0,currency:"BRL",price_source:m.min||m.avg||m.max?"MYP Cards":"Sem preço BR",price_link:m.link||ligaUrl(c),price_br_source:m.min||m.avg||m.max?"MYP Cards":null,price_br_link:m.link||null,market_internal_code:m.internalCode||c.marketInternalCode||null,market_name_pt:m.namePt||c.namePt||null,market_edition_pt:m.editionPt||null,market_image_pt:m.imagePt||c.imagePt||null,market_image_en:m.imageEn||c.imageEn||null,price_checked_at:new Date().toISOString(),notes:v.notes||""}}
+function cardPayload(c,v,m={}){return{user_id:currentUser.id,card_key:cardKey(c),api_source:c.source||"catalog",api_id:c.apiId||"",name:c.name||"",language_code:c.languageCode||"",language:c.language||"",set_name:c.setName||"",set_id:c.setId||"",number:c.number||"",rarity:c.rarity||"",card_type:c.type||"",image_url:cardImage(c),quantity:v.status==="owned"?Math.max(1,+v.quantity||1):0,condition:v.condition||"Nova",finish:v.finish||"Normal",collection_status:v.status||"owned",binder_page:+v.page||1,binder_slot:+v.slot||1,price_min:+m.min||0,price_avg:+m.avg||0,price_max:+m.max||0,currency:"BRL",price_source:m.min||m.avg||m.max?"MYP Cards":"Sem preço BR",price_link:m.link||ligaUrl(c),price_br_source:m.min||m.avg||m.max?"MYP Cards":null,price_br_link:m.link||null,myp_price_link:m.link||c.mypLink||null,market_internal_code:m.internalCode||c.marketInternalCode||null,market_name_pt:m.namePt||c.namePt||null,market_edition_pt:m.editionPt||null,market_image_pt:m.imagePt||c.imagePt||null,market_image_en:m.imageEn||c.imageEn||null,price_checked_at:new Date().toISOString(),notes:v.notes||""}}
 async function chooseCatalogCard(c){selectedCard=c;editingCardId=null;selectedStatus="owned";selectedMarket=null;if(!pendingPosition)pendingPosition=freePositions(currentPage,1)[0];fillInspector(c,{...pendingPosition,quantity:1,condition:"Nova",finish:inferFinish(c),notes:"",status:"owned"});closeDialog("addDialog");openDialog("cardDialog");await refreshMarket()}
 function fillInspector(c,v){$("selectedTitle").textContent=c.name||"Carta";$("selectedMeta").textContent=`${c.setName||c.set_name||"-"} · ${c.language||"-"}`;$("selectedLangBadge").textContent=c.language||"";$("detailRarity").textContent=c.rarity?`Raridade · ${c.rarity}`:"Raridade · —";$("detailType").textContent=c.type?`Tipo · ${c.type}`:"Tipo · —";$("detailNumber").textContent=`# ${c.number||"—"}`;const img=cardImage(c);$("card3dImage").src=img||"";$("card3d").classList.remove("flipped");$("cardQuantity").value=v.quantity??1;$("cardCondition").value=v.condition||"Nova";$("cardFinish").value=v.finish||"Normal";$("cardPage").value=v.page||currentPage;$("cardSlot").value=v.slot||1;$("cardNotes").value=v.notes||"";$("btnDeleteSelected").classList.toggle("hidden",!editingCardId);setSelectedStatus(v.status||"owned");$("ligaSearchLink").href=ligaUrl(c);$("mypcardsLink").classList.add("hidden");setPrices(0,0,0);$("marketStatus").textContent="Consultando mercado brasileiro...";$("globalPriceLine").textContent=c.pricing?"TCGdex também possui referência de mercado global para esta impressão.":""}
 async function refreshMarket(){if(!selectedCard)return;const m=await findMarket(selectedCard);selectedMarket=m;setPrices(m.min,m.avg,m.max);if(m.link){$("mypcardsLink").href=m.link;$("mypcardsLink").classList.remove("hidden")}$("marketStatus").textContent=m.min||m.avg||m.max?`MYP Cards · ${m.availableQuantity??"?"} oferta(s)`:m.needsToken?"MYP Cards aguardando chave API":"Sem cotação BR automática agora"}
