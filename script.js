@@ -382,10 +382,15 @@ async function resolveCatalogSetIds(langs,hint){
   return ranked.filter(x=>x.score>=floor).slice(0,4).map(x=>x.id);
 }
 function cardMatchesSetFilter(c,setHint,setIds=[]){
-  if(!String(setHint||"").trim())return true;
-  if(anniversaryCardSetMatches(c,setHint))return true;
   const ids=new Set((setIds||[]).map(String));
   const cid=String(c?.setId||c?.set_id||"");
+  // Geração escolhida sem coleção: setIds contém TODAS as coleções daquela geração.
+  // Portanto ela também é um filtro rígido, não apenas um peso de ranking.
+  if(!String(setHint||"").trim()){
+    if(!ids.size)return true;
+    return !!cid&&ids.has(cid);
+  }
+  if(anniversaryCardSetMatches(c,setHint))return true;
   if(ids.size&&cid&&ids.has(cid))return true;
   // Para catálogo TCGdex, se a coleção foi resolvida por ID, outro set é proibido.
   if(ids.size&&(c?.source==="TCGdex"||c?.api_source==="TCGdex"))return false;
@@ -400,9 +405,20 @@ function cardNumberMatches(wanted,card){
   const values=[card?.number,card?.internalNumber,...(Array.isArray(card?.numberAliases)?card.numberAliases:[])].filter(Boolean);
   return values.some(v=>collectorNumberMatches(wanted,v));
 }
-function hardFilterCatalog(cards,{number="",setHint="",setIds=[],language="all"}={}){
+function catalogNameMatches(name,card){
+  const q=norm(name),cn=norm(card?.name);
+  if(!q)return true;
+  if(!cn)return false;
+  if(cn===q||cn.startsWith(q)||cn.includes(q)||q.includes(cn))return true;
+  const qBase=q.replace(/\b(ex|gx|v|vmax|vstar|break|lv x)\b/g,'').trim();
+  const cBase=cn.replace(/\b(ex|gx|v|vmax|vstar|break|lv x)\b/g,'').trim();
+  if(qBase&&cBase&&(cBase===qBase||cBase.startsWith(qBase)||cBase.includes(qBase)||qBase.includes(cBase)))return true;
+  return nameSimilarity(q,cn)>=.68||nameSimilarity(qBase,cBase)>=.72;
+}
+function hardFilterCatalog(cards,{name="",number="",setHint="",setIds=[],language="all"}={}){
   return (cards||[]).filter(c=>{
     if(language!=="all"&&c.languageCode!==language)return false;
+    if(name&&!catalogNameMatches(name,c))return false;
     if(number&&!cardNumberMatches(number,c))return false;
     if(!cardMatchesSetFilter(c,setHint,setIds))return false;
     return true;
@@ -727,6 +743,7 @@ function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.ap
 async function searchCards(options={}){
   const live=!!options.live,requestId=++catalogSearchSeq;
   let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
+  const seriesId=$("searchSeries")?.value||"";
   if(!setHint){
     const normalized=norm(raw);
     const y30=/\b30(?:th)?\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
@@ -760,7 +777,26 @@ async function searchCards(options={}){
 
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
-    const setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
+    let setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
+
+    // Se só a geração foi escolhida, usamos todas as coleções carregadas
+    // naquele seletor como universo permitido. Nome/número então refinam
+    // DENTRO da geração, nunca voltam a procurar no catálogo inteiro.
+    if(!setHint&&seriesId){
+      const setSelect=$("searchSet");
+      setIds=[...new Set([...(setSelect?.options||[])]
+        .map(o=>String(o.value||"").trim())
+        .filter(Boolean))];
+      // Segurança para o caso de a busca disparar antes do select terminar de carregar.
+      if(!setIds.length){
+        try{
+          const langKey=language==="ja"?"ja":language==="en"?"en":"pt";
+          const rr=await fetch('/api/set-catalog?lang='+encodeURIComponent(langKey)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+          const jj=await rr.json();
+          if(jj?.ok)setIds=[...new Set((jj.sets||[]).map(s=>String(s.id||"")).filter(Boolean))];
+        }catch(e){console.warn("Generation set filter",e)}
+      }
+    }
     const wantsJa=language==="all"||language==="ja";
     const wantsLegacy=language==="all"||language==="en";
     const [groups,jpOfficial,mypSearch,legacyCards,anniversaryCards]=await Promise.all([
@@ -781,7 +817,7 @@ async function searchCards(options={}){
       ? await searchLimitlessVariants(raw,number,basePool,language)
       : [];
     const sourcePool=[...basePool,...limitlessVariants];
-    let results=hardFilterCatalog(dedupe(sourcePool),{number,setHint,setIds,language});
+    let results=hardFilterCatalog(dedupe(sourcePool),{name:raw,number,setHint,setIds,language});
     const maxResults=setHint&&!raw&&!number?400:100;
     catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
     populateRarityFilter();renderCatalog();
@@ -816,7 +852,9 @@ async function searchCards(options={}){
 
     const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
     const jpOfficialCount=catalogResults.filter(c=>c.source==="Pokémon Japão Oficial").length;
-    const criteria=[raw&&`nome “${raw}”`,number&&`nº ${number}`,setHint&&`coleção “${setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" + ");
+    const seriesLabel=$("searchSeries")?.selectedOptions?.[0]?.textContent||"";
+    const setLabel=$("searchSet")?.selectedOptions?.[0]?.textContent||"";
+    const criteria=[raw&&`nome “${raw}”`,seriesId&&`geração “${seriesLabel}”`,number&&`nº ${number}`,setHint&&`coleção “${setLabel||setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" + ");
     $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${jpOfficialCount?` · ${jpOfficialCount} impressão(ões) japonesa(s) oficial(is)`:``}${criteria?` · correspondendo a: ${criteria}`:""}.`;
   }catch(e){
     if(requestId!==catalogSearchSeq)return;
