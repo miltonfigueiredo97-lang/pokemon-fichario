@@ -1453,3 +1453,25 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
   border-color:rgba(143,199,255,.24)!important;
   background:rgba(143,199,255,.045)!important;
 }
+
+
+/* V15.09 — consulta manual por link MYP */
+.v1509-link-fetch-row{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  align-items:center;
+  gap:10px;
+  margin-top:8px;
+}
+.v1509-link-fetch-row small{
+  font-size:9px;
+  line-height:1.35;
+}
+@media(max-width:620px){
+  .v1509-link-fetch-row{
+    grid-template-columns:1fr;
+  }
+  .v1509-link-fetch-row .btn{
+    width:100%;
+  }
+}
