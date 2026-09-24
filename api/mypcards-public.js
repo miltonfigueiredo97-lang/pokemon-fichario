@@ -565,6 +565,30 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
   return[];
 }
 
+async function externalSearchCandidates({name,nameAliases=[],number,set}){
+  const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
+  const exact=names[0]||String(name||'').trim();
+  if(!exact||!number)return[];
+  const q=['site:mypcards.com/pokemon/produto', '"'+exact+'"', '"'+number+'"', set?('"'+set+'"'):'']
+    .filter(Boolean).join(' ');
+  const urls=[];
+  const searchUrls=[
+    'https://www.google.com/search?q='+encodeURIComponent(q),
+    'https://www.bing.com/search?q='+encodeURIComponent(q)
+  ];
+  const bodies=await Promise.all(searchUrls.map(async u=>{
+    try{return await fetchJina(u,5000)}catch{return''}
+  }));
+  for(const body of bodies){
+    if(!body)continue;
+    urls.push(...productUrlsFromText(body,names));
+    const raw=[...String(body).matchAll(/https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\/[a-z0-9-]+/gi)]
+      .map(m=>m[0]);
+    urls.push(...raw);
+  }
+  return [...new Set(urls)].slice(0,8);
+}
+
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const setCode=(normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5')?'MEW':normalize(setId)==='g1'?'GEN':String(set||'').trim();
@@ -933,33 +957,43 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
-  // V15.13: replicate the human path first: open MYP search with
-  // "Name (number/total)", validate the exact product, then read its offers.
-  // This path is bounded to 12 seconds total.
+  // V15.14: replicate the same path used manually here:
+  // web search for the exact printing -> exact MYP product -> read that page.
+  // No Chromium launch in the normal automatic path.
   if(!directLink&&name&&number){
     try{
-      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
-      const exactBrowser=await Promise.race([
-        findAndScrapeMypBrowser('',wanted),
-        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),9000))
-      ]);
-      const browserLink=safeMypProductUrl(exactBrowser?.link);
-      if(browserLink)directLink=browserLink;
-      if(exactBrowser?.ok&&hasAnyMarket(exactBrowser)){
-        return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Chromium exact search',mode:exactBrowser.mode||'browser-exact-search',
-          name,number,edition:exactBrowser.edition||set,finish,condition,
-          link:browserLink||'',
-          min:Number(exactBrowser.min||0),avg:Number(exactBrowser.avg||0),max:Number(exactBrowser.max||0),
-          samples:exactBrowser.samples??null,availableQuantity:exactBrowser.availableQuantity??null,
-          exactVariant:exactBrowser.exactVariant===true,
-          variantFallback:exactBrowser.variantFallback===true,
-          complete:!!(Number(exactBrowser.min)>0&&Number(exactBrowser.avg)>0&&Number(exactBrowser.max)>0),
-          checkedAt:new Date().toISOString()
-        });
+      const external=await externalSearchCandidates({name,nameAliases,number,set});
+      const checked=await Promise.all(external.slice(0,4).map(async candidate=>{
+        try{
+          const text=await fetchJina(candidate,4500);
+          const identity=pageIdentity(text);
+          if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang}))return null;
+          let market=await marketAcrossSellerPages(candidate,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
+          if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+            market=sameProductFallbackMarket(identity,finish,condition);
+          }
+          return {candidate,identity,market};
+        }catch{return null}
+      }));
+      const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
+      if(hit){
+        directLink=safeMypProductUrl(hit.candidate);
+        if(hasAnyMarket(hit.market)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'External exact search',mode:'web-exact-name-number',
+            name:hit.identity?.name||name,number:hit.identity?.number||number,
+            edition:hit.identity?.edition||set,finish,condition,link:directLink,
+            min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
+            samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
+            exactVariant:hit.market.exactVariant===true,
+            variantFallback:hit.market.variantFallback===true,
+            complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
       }
     }catch(error){
-      console.warn('MYP exact browser:',error?.message||error);
+      console.warn('MYP external exact search:',error?.message||error);
     }
   }
 
@@ -1070,7 +1104,7 @@ module.exports=async function handler(req,res){
       });
     }
     try{
-      const text=await fetchJina(directLink,8000);
+      const text=await fetchJina(directLink,4500);
       const identity=pageIdentity(text);
       const identityOk=matchesWanted(identity,{name,nameAliases,number,set,setId,lang});
       if(identityOk){
