@@ -966,12 +966,17 @@
         {id:'g1',label:'Gerações',required:true},
         {id:'xy12',label:'Evoluções',required:true},
         {
-          id:'xyp',label:'Promos oficiais 20 anos · XY',required:true,
+          id:'xyp',label:'Promos brasileiras 20 anos · Copag',required:true,
+          fetchLang:'en',physicalLang:'pt',
           only:[
             'XY110','XY111','XY112','XY113','XY114','XY115','XY116','XY117','XY118','XY119','XY120',
-            'XY121','XY122','XY123','XY124',
-            'XY125','XY126',
-            'XY143','XY148',
+            'XY121','XY122','XY123','XY124'
+          ]
+        },
+        {
+          id:'xyp',label:'Outras promos internacionais 20 anos',
+          only:[
+            'XY125','XY126','XY143','XY148',
             'XY160','XY161','XY162','XY163',
             'XY179',
             'XY202','XY203','XY204','XY205','XY206','XY207','XY208','XY209','XY210'
@@ -1174,23 +1179,33 @@
   }
 
   async function fetchAnniversaryComponent(masterLang,spec){
-    // A component marked with a language is physically restricted to that
-    // language. Never inject it into another language just to fill the checklist.
+    // lang = restrição física real. fetchLang = apenas fonte técnica de metadados.
     if(spec.lang&&spec.lang!==masterLang){
       return {ok:true,set:{id:spec.id,name:spec.label||spec.id,languageCode:spec.lang},entries:[],__spec:spec,__excludedByLanguage:true};
     }
-    const lang=masterLang;
-    const p=new URLSearchParams({v:'28',lang,set:spec.id,strictLang:'1'});
+    if(spec.physicalLang&&spec.physicalLang!==masterLang){
+      return {ok:true,set:{id:spec.id,name:spec.label||spec.id,languageCode:spec.physicalLang},entries:[],__spec:spec,__excludedByLanguage:true};
+    }
+    const fetchLang=spec.fetchLang||masterLang;
+    const forcePhysical=!!spec.physicalLang;
+    const p=new URLSearchParams({v:'28',lang:fetchLang,set:spec.id,strictLang:forcePhysical?'0':'1'});
     if(spec.all)p.set('all','1');
     if(spec.jumbo)p.set('jumbo','1');
     if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
     const r=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
     const data=await r.json();
     if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+(spec.label||spec.id)));
-    let entries=(Array.isArray(data.entries)?data.entries:[]).filter(e=>{
-      const code=String(e?.languageCode||'').toLowerCase();
-      return masterLang==='pt'?code==='pt-br':code===masterLang;
-    });
+    let entries=Array.isArray(data.entries)?data.entries:[];
+    if(forcePhysical){
+      const physicalCode=spec.physicalLang==='pt'?'pt-br':spec.physicalLang;
+      const physicalLabel=spec.physicalLang==='pt'?'Português':spec.physicalLang==='ja'?'Japonês':'Inglês';
+      entries=entries.map(e=>({...e,languageCode:physicalCode,language:physicalLabel,anniversaryLocalizedOverride:true}));
+    }else{
+      entries=entries.filter(e=>{
+        const code=String(e?.languageCode||'').toLowerCase();
+        return masterLang==='pt'?code==='pt-br':code===masterLang;
+      });
+    }
     entries=transformAnniversaryComponent(entries,spec);
     entries=ensureAnniversaryJumbos(entries,spec);
     if(spec.required&&!entries.length){
