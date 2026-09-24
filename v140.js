@@ -977,7 +977,10 @@
     const lang=byId('searchLanguage'),series=byId('searchSeries'),sets=byId('searchSet');
     if(!series||!sets||series.dataset.v1450==='1')return;
     series.dataset.v1450='1';
-    series.addEventListener('change',()=>loadCatalogCollectionsV1450(false));
+    series.addEventListener('change',async()=>{
+      await loadCatalogCollectionsV1450(false);
+      if(typeof searchCards==='function')searchCards({live:false});
+    });
     sets.addEventListener('change',()=>{if(typeof searchCards==='function')searchCards({live:false})});
     if(lang&&!lang.dataset.v1450Catalog){
       lang.dataset.v1450Catalog='1';
