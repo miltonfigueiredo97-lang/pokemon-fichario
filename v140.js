@@ -4111,9 +4111,42 @@
     if(hint)hint.textContent=count===1?'1 carta para conferir':count+' cartas para conferir';
   }
 
+  function setCleanBinderModeV1498(enabled){
+    const on=!!enabled;
+    document.body.classList.toggle('v1498-clean-binder',on);
+    try{localStorage.setItem('pokemon-binder-clean-view',on?'1':'0')}catch{}
+    const btn=byId('v1498CleanBinder');
+    if(btn){
+      btn.classList.toggle('active',on);
+      btn.innerHTML=on
+        ? '<span class="v1498-clean-icon">↩</span><span><strong>Voltar ao fichário normal</strong><small>Mostrar status, favoritos e atalhos</small></span>'
+        : '<span class="v1498-clean-icon">◫</span><span><strong>Ver fichário limpo</strong><small>Mostrar somente as cartas e o preço</small></span>';
+      btn.setAttribute('aria-pressed',on?'true':'false');
+    }
+  }
+
+  function ensureCleanBinderButtonV1498(){
+    const panel=byId('summaryPanel');
+    const root=document.querySelector('#summaryPanel .action-grid');
+    if(!panel||!root)return;
+    let btn=byId('v1498CleanBinder');
+    if(!btn){
+      btn=document.createElement('button');
+      btn.id='v1498CleanBinder';
+      btn.type='button';
+      btn.className='v1498-clean-binder-btn';
+      btn.onclick=()=>setCleanBinderModeV1498(!document.body.classList.contains('v1498-clean-binder'));
+      root.parentElement?.insertBefore(btn,root);
+    }
+    let saved=false;
+    try{saved=localStorage.getItem('pokemon-binder-clean-view')==='1'}catch{}
+    setCleanBinderModeV1498(saved);
+  }
+
   function organizeSummaryActionsV14(){
     const root=document.querySelector('#summaryPanel .action-grid');
     if(!root)return;
+    ensureCleanBinderButtonV1498();
     const defs=[
       {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
       {id:'unpriced',icon:'!',title:'Sem cotação salva',hint:'Cartas para conferir',items:[]},
