@@ -2,7 +2,7 @@
 (function(){
   'use strict';
 
-  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.77';
+  const APP_VERSION=window.POKEMON_BINDER_BUILD||'V14.78';
   const $v=(s,r=document)=>r.querySelector(s);
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const finishSelections=new Map();
@@ -29,6 +29,13 @@
   ];
 
   const RELEASE_NOTES=[
+    {version:'V14.78',title:'Completa 20 Anos com todas as promos localizadas',items:[
+      'As promos XY de 20 anos deixaram de ser forçadas para inglês e agora entram quando existe impressão no idioma selecionado.',
+      'A lista auditada inclui XY110–XY126, XY143, XY148, XY160–XY163, XY179 e XY202–XY210.',
+      'Promos são validadas carta por carta no catálogo localizado: uma promo ausente em PT não vira PT apenas porque o set XY Promos existe em português.',
+      'Jumbos Red & Blue e selos Toys R Us/20th continuam separados como extras internacionais e não entram na montagem PT-BR.',
+      'A versão brasileira Red & Blue continua sem Jumbo, conforme o produto nacional da Copag.'
+    ]},
     {version:'V14.77',title:'Escolha do escopo ao atualizar cotações',items:[
       'Atualizar cotações agora abre um seletor antes de colocar cartas na fila.',
       'Coleção inteira atualiza todas as cartas do fichário atual.',
