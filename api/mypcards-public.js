@@ -155,6 +155,26 @@ function isCanonicalMewPtBrProductLink(link,{setId,lang,number}={}){
   if(collector<1||collector>207)return false;
   return Number(mypProductId(link)||0)===205873+collector;
 }
+function generationsMypProductId(number){
+  const raw=String(number||'').trim().replace(/\s/g,'').toLowerCase();
+  let m=raw.match(/^rc0*(\d+)\/rc32$/i);
+  if(m){
+    const n=Number(m[1]);
+    return n>=1&&n<=32?36243+n:0;
+  }
+  if(/^0*28a\/83$/i.test(raw))return 36188;
+  if(/^0*73a\/83$/i.test(raw))return 115355;
+  m=raw.match(/^0*(\d+)\/83$/);
+  if(!m)return 0;
+  const n=Number(m[1]);
+  if(n<1||n>83)return 0;
+  return (n<=28?36159:36160)+n;
+}
+function isCanonicalGenerationsProductLink(link,{setId,number}={}){
+  if(normalize(setId)!=='g1')return false;
+  const expected=generationsMypProductId(number);
+  return !!expected&&Number(mypProductId(link)||0)===expected;
+}
 function productUrlByIdFromText(raw,productId){
   const id=Number(productId||0);
   if(!id)return'';
@@ -902,7 +922,9 @@ module.exports=async function handler(req,res){
   let directLink=safeMypProductUrl(link);
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
-  if(directLink&&!isCanonicalMewPtBrProductLink(directLink,{setId,lang,number})){
+  if(directLink
+    &&!isCanonicalMewPtBrProductLink(directLink,{setId,lang,number})
+    &&!isCanonicalGenerationsProductLink(directLink,{setId,number})){
     directLink=await canonicalizeKnownProductLink({link:directLink,apiId,setId,set,number,name,nameAliases});
   }
   if(!directLink&&normalize(setId)==='g1'){
