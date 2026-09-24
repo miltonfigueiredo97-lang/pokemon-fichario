@@ -242,17 +242,24 @@
     if(!area||!bar||!spread)return;
     if(window.matchMedia('(max-width:820px)').matches){
       bar.style.removeProperty('left');
+      bar.style.removeProperty('right');
       bar.style.removeProperty('width');
       bar.style.removeProperty('max-width');
       bar.style.removeProperty('transform');
       return;
     }
+
+    // V14.95: a barra pertence à área inteira do fichário, não à largura da
+    // página física. Quando novos controles eram adicionados (renomear,
+    // amigos etc.), limitar a barra ao spread fazia todo o menu ser cortado.
     const ar=area.getBoundingClientRect(),sr=spread.getBoundingClientRect();
-    if(sr.width<20)return;
+    if(ar.width<40||sr.width<20)return;
+    const gutter=10;
     const barHeight=Math.max(1,bar.getBoundingClientRect().height);
-    bar.style.left=(sr.left-ar.left)+'px';
-    bar.style.width=sr.width+'px';
-    bar.style.maxWidth=sr.width+'px';
+    bar.style.left=gutter+'px';
+    bar.style.right=gutter+'px';
+    bar.style.width='auto';
+    bar.style.maxWidth='none';
     bar.style.top=Math.max(6,sr.top-ar.top-barHeight-5)+'px';
     bar.style.transform='none';
   }
