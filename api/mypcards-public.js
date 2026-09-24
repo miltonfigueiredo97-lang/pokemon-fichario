@@ -568,39 +568,48 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const setCode=(normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5')?'MEW':normalize(setId)==='g1'?'GEN':String(set||'').trim();
-  // Número + coleção primeiro. A MYP pode abreviar/localizar o nome do produto
-  // (ex.: Venomoth aparece como "Ven"), mas o número da impressão continua estável.
   const queries=[...new Set([
     [number,setCode].filter(Boolean).join(' '),
-    number,
     ...names.flatMap(n=>[
-      [n,number,setCode].filter(Boolean).join(' '),
       [n,number].filter(Boolean).join(' '),
-      [n,setCode].filter(Boolean).join(' '),
-      n
-    ])
-  ].map(x=>String(x||'').trim()).filter(Boolean))].slice(0,8);
+      [n,number,setCode].filter(Boolean).join(' '),
+      [n,setCode].filter(Boolean).join(' ')
+    ]),
+    number,
+    ...names
+  ].map(x=>String(x||'').trim()).filter(Boolean))].slice(0,10);
+
   const urls=[];
   for(const query of queries){
-    try{
-      const searchUrl=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
-      const body=await fetchText(searchUrl,9000);
-      // Para buscas por número, não filtre o candidato pelo slug/nome.
-      const byNumber=query===number||query===[number,setCode].filter(Boolean).join(' ');
-      urls.push(...productUrlsFromText(body,byNumber?[]:names));
-      if(urls.length>=8)break;
-    }catch{}
+    const variants=[
+      ROOT+'/pokemon?ProdutoSearch%5Bquery%5D='+encodeURIComponent(query),
+      ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query)
+    ];
+    for(const searchUrl of variants){
+      try{
+        // V14.97: preferir o Reader para páginas de busca da MYP. A leitura
+        // direta é frequentemente bloqueada pelo Cloudflare e fazia cartas
+        // existentes terminarem como not_found.
+        const body=await fetchJina(searchUrl,11000);
+        const byNumber=query===number||query===[number,setCode].filter(Boolean).join(' ');
+        urls.push(...productUrlsFromText(body,byNumber?[]:names));
+        if(urls.length>=12)break;
+      }catch{}
+    }
+    if(urls.length>=12)break;
   }
-  return [...new Set(urls)].slice(0,12);
+  return [...new Set(urls)].slice(0,18);
 }
 async function familySeedCandidates(wanted){
   const names=[...new Set([wanted?.name,...(wanted?.nameAliases||[])].filter(Boolean))];
-  const indexed=await collectionIndexCandidates(wanted).catch(()=>[]);
-  if(indexed.length)return indexed.slice(0,8);
-  const search=await readerSearchCandidates(wanted).catch(()=>[]);
-  if(search.length)return search.slice(0,10);
-  const groups=await Promise.all(names.map(n=>sitemapCandidates(n).catch(()=>[])));
-  return [...new Set(groups.flat())].slice(0,12);
+  // V14.97: não confiar em uma única rota de descoberta. Mistura catálogo,
+  // busca e sitemap e deixa resolvePage validar número/coleção/idioma.
+  const [indexed,search,groups]=await Promise.all([
+    collectionIndexCandidates(wanted).catch(()=>[]),
+    readerSearchCandidates(wanted).catch(()=>[]),
+    Promise.all(names.map(n=>sitemapCandidates(n).catch(()=>[]))).then(x=>x.flat())
+  ]);
+  return [...new Set([...(indexed||[]),...(search||[]),...(groups||[])])].slice(0,24);
 }
 
 async function sitemapCandidates(name){
@@ -863,7 +872,7 @@ async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang
   let best=null;
   let inspected=0;
 
-  while(queue.length&&inspected<14){
+  while(queue.length&&inspected<24){
     const url=queue.shift();
     if(!url||seen.has(url))continue;
     seen.add(url);inspected++;
