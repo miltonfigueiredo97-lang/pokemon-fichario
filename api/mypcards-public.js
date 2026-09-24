@@ -511,7 +511,8 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
 
   // Mesmo sem filtro de busca, as cartas de número mais alto costumam estar
   // nas primeiras páginas quando ordenadas por código decrescente.
-  const maxPages=Math.max(1,Math.min(8,Math.ceil(Math.max(48,meta.total||240)/48)));
+  const effectiveTotal=normalize(setId)==='g1'?117:(meta.total||240);
+  const maxPages=Math.max(1,Math.min(8,Math.ceil(Math.max(48,effectiveTotal)/48)));
   const pages=Array.from({length:maxPages},(_,i)=>i+1);
   for(const editionUrl of editionUrls){
     for(let i=0;i<pages.length;i+=3){
