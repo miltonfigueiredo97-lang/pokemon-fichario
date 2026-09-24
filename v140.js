@@ -1624,12 +1624,15 @@
         payload.binder_id=binder.id;
         payload.card_key=(payload.card_key||cardKey(base))+'|variant:'+String(e.variantKey||e.variantLabel||e.finish);
         const requestedAt=V14.masterPriceRequestedAt||new Date().toISOString();
-        payload.price_pending=true;
+        // Master Set não deve disparar scraping para cartas que o usuário
+        // marcou como "Não tenho". Só cartas possuídas entram automaticamente
+        // na fila; as demais podem ser cotadas depois pelo botão de preços.
+        payload.price_pending=owned;
         payload.price_processing_at=null;
-        payload.price_requested_at=requestedAt;
-        payload.price_next_retry_at=requestedAt;
+        payload.price_requested_at=owned?requestedAt:null;
+        payload.price_next_retry_at=owned?requestedAt:null;
         payload.price_attempts=0;
-        payload.price_priority=100;
+        payload.price_priority=owned?100:0;
         payload.price_last_error=null;
         payload.price_checked_at=null;
         return payload;
@@ -1651,16 +1654,18 @@
       try{activeStatusFilter='all'}catch{}
       await db.from('pokemon_settings').update({current_binder_id:binder.id}).eq('user_id',currentUser.id);
       await loadCardsV14(false);
-      kickPriceWorkerNow();
-      setTimeout(kickPriceWorkerNow,2500);
       const createdPending=collection.filter(x=>x.binder_id===binder.id&&x.price_pending);
-      if(createdPending.length)watchVisiblePriceBatch(createdPending,{resume:true}).catch(()=>{});
+      if(createdPending.length){
+        kickPriceWorkerNow();
+        setTimeout(kickPriceWorkerNow,2500);
+        watchVisiblePriceBatch(createdPending,{resume:true}).catch(()=>{});
+      }
       V14.masterPriceRequestedAt=null;
 
       releaseMobileInteraction();
       setTimeout(releaseMobileInteraction,180);
       setTimeout(releaseMobileInteraction,650);
-      queueBackgroundPrices([...collection]);
+      if(createdPending.length)queueBackgroundPrices(createdPending,{front:true});
 
       const ownedCount=rows.filter(x=>x.collection_status==='owned').length;
       const setText=previews.length>1?' · '+previews.length+' Master Sets':'';
