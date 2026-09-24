@@ -1280,3 +1280,118 @@ dialog.sheet-dialog:not([open]){
   outline:none;
   box-shadow:0 3px 10px rgba(0,0,0,.28);
 }
+
+
+/* V14.98 — controles compactos no card + modo fichário limpo */
+.pocket-card .v14-favorite-star{
+  top:5px!important;
+  right:5px!important;
+  width:21px!important;
+  height:21px!important;
+  font-size:13px!important;
+  border-width:1px!important;
+  box-shadow:0 1px 5px rgba(0,0,0,.28)!important;
+}
+.pocket-card .v1493-wishlist-dollar{
+  top:5px!important;
+  left:auto!important;
+  right:30px!important;
+  width:21px!important;
+  height:21px!important;
+  font-size:12px!important;
+  border-width:1px!important;
+  box-shadow:0 1px 5px rgba(0,0,0,.28)!important;
+}
+.pocket-card .v14-favorite-star:hover,
+.pocket-card .v14-favorite-star:focus-visible,
+.pocket-card .v1493-wishlist-dollar:hover,
+.pocket-card .v1493-wishlist-dollar:focus-visible{
+  transform:scale(1.05)!important;
+}
+
+/* Botão no painel lateral */
+.v1498-clean-binder-btn{
+  width:100%;
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr);
+  align-items:center;
+  gap:9px;
+  margin:0 0 10px;
+  padding:9px 10px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:10px;
+  background:rgba(10,14,17,.72);
+  color:#ece9e2;
+  text-align:left;
+  cursor:pointer;
+}
+.v1498-clean-binder-btn:hover,
+.v1498-clean-binder-btn:focus-visible{
+  outline:none;
+  border-color:rgba(88,228,186,.34);
+  background:rgba(88,228,186,.055);
+}
+.v1498-clean-binder-btn.active{
+  border-color:rgba(88,228,186,.38);
+  background:rgba(88,228,186,.075);
+}
+.v1498-clean-binder-btn .v1498-clean-icon{
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:8px;
+  background:#151a1f;
+  color:#58e4ba;
+  font-size:14px;
+  font-weight:900;
+}
+.v1498-clean-binder-btn>span:last-child{
+  min-width:0;
+  display:grid;
+  gap:2px;
+}
+.v1498-clean-binder-btn strong{
+  font-size:10px;
+  font-weight:900;
+}
+.v1498-clean-binder-btn small{
+  color:#7f898f;
+  font-size:8px;
+  line-height:1.3;
+}
+
+/* Fichário limpo: a carta vira a protagonista. Só preço permanece. */
+body.v1498-clean-binder .pocket-card .card-status-ribbon,
+body.v1498-clean-binder .pocket-card .card-qty,
+body.v1498-clean-binder .pocket-card .v14-favorite-star,
+body.v1498-clean-binder .pocket-card .v1493-wishlist-dollar,
+body.v1498-clean-binder .pocket-card .v14-price-pending,
+body.v1498-clean-binder .pocket-card .v14-price-unavailable{
+  display:none!important;
+}
+body.v1498-clean-binder .pocket-card{
+  cursor:pointer!important;
+}
+body.v1498-clean-binder .pocket-card .card-value{
+  display:block!important;
+}
+
+/* Em modo limpo, esconder também botões de ação do bolso para a visão ficar limpa. */
+body.v1498-clean-binder .binder-pocket>.v1425-slot-add{
+  opacity:.18;
+}
+body.v1498-clean-binder .binder-pocket>.v1425-slot-add:hover{
+  opacity:1;
+}
+
+@media(max-width:820px){
+  .pocket-card .v14-favorite-star,
+  .pocket-card .v1493-wishlist-dollar{
+    width:19px!important;
+    height:19px!important;
+  }
+  .pocket-card .v14-favorite-star{font-size:12px!important}
+  .pocket-card .v1493-wishlist-dollar{font-size:11px!important;right:27px!important}
+}
