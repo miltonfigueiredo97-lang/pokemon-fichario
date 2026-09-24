@@ -1672,7 +1672,9 @@
         payload.price_requested_at=requestedAt;
         payload.price_next_retry_at=requestedAt;
         payload.price_attempts=0;
-        payload.price_priority=100;
+        // Master Set pode criar centenas de linhas de uma vez. Mantém prioridade
+        // abaixo de cartas adicionadas manualmente para não bloquear a fila.
+        payload.price_priority=500;
         payload.price_last_error=null;
         payload.price_checked_at=null;
         return payload;
@@ -1811,7 +1813,7 @@
     payload.collection_status='wanted';payload.quantity=0;payload.price_processing_at=null;
     payload.price_pending=!Number(card.price_min||card.price_avg||card.price_max||0);
     payload.price_requested_at=new Date().toISOString();payload.price_next_retry_at=payload.price_pending?payload.price_requested_at:null;
-    payload.price_attempts=0;payload.price_priority=payload.price_pending?30:0;
+    payload.price_attempts=0;payload.price_priority=payload.price_pending?5000:0;
     const {data,error}=await db.from('pokemon_cards').insert(payload).select('*').single();
     if(error)return toast('Não consegui adicionar à Lista de Desejos.');
     V14.allCards.push(data);collection=physicalCollection();renderAll();toast('Adicionada à Lista de Desejos.');
@@ -2180,7 +2182,9 @@
         payload.price_requested_at=new Date().toISOString();
         payload.price_next_retry_at=payload.price_requested_at;
         payload.price_attempts=0;
-        payload.price_priority=0;
+        // Carta adicionada manualmente deve passar na frente de backfills e
+        // Master Sets; o usuário acabou de adicioná-la e espera cotação rápida.
+        payload.price_priority=5000;
         payload.price_last_error=null;
 
         // One database row = one physical card in one pocket.
