@@ -4143,15 +4143,102 @@
     setCleanBinderModeV1498(saved);
   }
 
+  function pdfEscapeV1500(value){
+    return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function exportBinderPdfV1500(){
+    const binder=activeBinder();
+    if(!binder){
+      toast('Escolha um fichário específico para exportar em PDF.');
+      return;
+    }
+
+    const popup=window.open('','_blank');
+    if(!popup){
+      toast('O navegador bloqueou a janela do PDF. Libere pop-ups e tente novamente.');
+      return;
+    }
+
+    const cards=V14.allCards
+      .filter(card=>card.binder_id===binder.id)
+      .sort((a,b)=>(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1));
+    const pageCount=Math.max(1,+binder.pages||1,Math.ceil(cards.length/9));
+    const byPosition=new Map(cards.map(card=>[(+card.binder_page||1)+':'+(+card.binder_slot||1),card]));
+    const mode=currentPriceMode();
+    const modeLabel=priceModeLabel(mode);
+    const moneyPdf=value=>money(Number(value||0));
+
+    const pages=[];
+    for(let page=1;page<=pageCount;page++){
+      const slots=[];
+      for(let slot=1;slot<=9;slot++){
+        const card=byPosition.get(page+':'+slot);
+        if(!card){
+          slots.push('<div class="slot empty"></div>');
+          continue;
+        }
+        const src=cardImage(card)||card.image_url||'';
+        const price=priceModeValue(card,mode);
+        const status=String(card.collection_status||'owned');
+        const bw=status==='missing'||status==='wanted';
+        const statusLabel=({owned:'Tenho',wanted:'Quero',missing:'Não tenho',ordered:'Pedido'})[status]||status;
+        slots.push(
+          '<div class="slot">'+
+            '<div class="card '+(bw?'bw':'')+'">'+
+              (src?'<img src="'+pdfEscapeV1500(src)+'" alt="'+pdfEscapeV1500(card.name||'Carta')+'">':'<div class="noimg">'+pdfEscapeV1500(card.name||'Carta')+'</div>')+
+              '<div class="price">'+(price>0?pdfEscapeV1500(moneyPdf(price)):'Buscando cotação')+'</div>'+
+            '</div>'+
+            '<div class="meta"><strong>'+pdfEscapeV1500(card.name||'')+'</strong><span>'+pdfEscapeV1500(card.number||'')+(card.set_name?' · '+pdfEscapeV1500(card.set_name):'')+'</span><small>'+pdfEscapeV1500(statusLabel)+'</small></div>'+
+          '</div>'
+        );
+      }
+      pages.push(
+        '<section class="sheet">'+
+          '<header><div><h1>'+pdfEscapeV1500(binder.name||'Fichário Pokémon')+'</h1><p>Página '+page+' de '+pageCount+'</p></div><div class="price-mode">Valor '+pdfEscapeV1500(modeLabel)+'</div></header>'+
+          '<div class="grid">'+slots.join('')+'</div>'+
+        '</section>'
+      );
+    }
+
+    popup.document.open();
+    popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+pdfEscapeV1500(binder.name||'Fichário Pokémon')+' — PDF</title>'+
+      '<style>'+
+      '@page{size:A4 portrait;margin:9mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif}'+
+      '.sheet{min-height:277mm;page-break-after:always;display:flex;flex-direction:column}.sheet:last-child{page-break-after:auto}'+
+      'header{height:16mm;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #d8d8d8;margin-bottom:4mm;padding-bottom:2.5mm}'+
+      'h1{font-size:15pt;margin:0 0 1mm}header p,.price-mode{margin:0;font-size:8pt;color:#555}.price-mode{font-weight:700;padding-top:1mm}'+
+      '.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3.5mm;flex:1}'+
+      '.slot{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;border:1px solid #e2e2e2;border-radius:3mm;padding:2.2mm;background:#fafafa;overflow:hidden}'+
+      '.slot.empty{background:#fff;border-style:dashed}.card{position:relative;width:43mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:2mm}.card.bw img{filter:grayscale(1) brightness(.55)}'+
+      '.price{position:absolute;left:2mm;right:2mm;bottom:2mm;background:rgba(0,0,0,.88);color:#fff;border-radius:1.5mm;padding:1.3mm;text-align:center;font-size:8.5pt;font-weight:800}.noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border:1px dashed #bbb;color:#777;font-size:9pt;text-align:center;padding:4mm}'+
+      '.meta{width:100%;display:grid;gap:.6mm;margin-top:1.6mm;text-align:center;line-height:1.15}.meta strong{font-size:7.5pt}.meta span{font-size:6.4pt;color:#555}.meta small{font-size:6pt;color:#777}'+
+      '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{break-after:page}.sheet:last-child{break-after:auto}}'+
+      '</style></head><body>'+pages.join('')+
+      '<script>window.addEventListener("load",function(){var imgs=[].slice.call(document.images);Promise.all(imgs.map(function(i){return i.complete?Promise.resolve():new Promise(function(r){i.onload=i.onerror=r})})).then(function(){setTimeout(function(){window.print()},250)});setTimeout(function(){window.print()},3500)});<\/script>'+
+      '</body></html>');
+    popup.document.close();
+  }
+
   function organizeSummaryActionsV14(){
     const root=document.querySelector('#summaryPanel .action-grid');
     if(!root)return;
     ensureCleanBinderButtonV1498();
+    if(!byId('v1500ExportPdf')){
+      const pdf=document.createElement('button');
+      pdf.id='v1500ExportPdf';
+      pdf.type='button';
+      pdf.className='action-btn';
+      pdf.textContent='Exportar fichário em PDF';
+      pdf.onclick=exportBinderPdfV1500;
+      root.appendChild(pdf);
+    }
+
     const defs=[
       {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
       {id:'unpriced',icon:'!',title:'Sem cotação salva',hint:'Cartas para conferir',items:[]},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
-      {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'CSV e impressão',items:['btnExport','btnPrint']},
+      {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'PDF, CSV e impressão',items:['v1500ExportPdf','btnExport','btnPrint']},
       {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
       {id:'settings',icon:'⚙',title:'Configurações',hint:'Aparência e conta',items:['btnSummarySettings','v112Logout']}
     ];
