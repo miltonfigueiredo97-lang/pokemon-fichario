@@ -45,7 +45,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.91"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.92"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +120,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.91"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.92"},
             signal:controller.signal
           });
           if(r.ok){
@@ -233,7 +233,7 @@ function choosePrimary(liga:any,myp:any){
   return{market:null,source:"Sem preço BR"};
 }
 async function fetchMarkets(card:any){
-  const hasMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
+  let hasMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
     .map((v:any)=>String(v||"").trim()).some((v:string)=>/mypcards\.com/i.test(v));
 
   const ligaPromise=fetchSource(LIGA_API,card,false)
@@ -260,6 +260,22 @@ async function fetchMarkets(card:any){
   }else{
     myp=await fetchSource(MYP_API,card,false,false)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
+
+    // Algumas coleções, como XY: Generations, conseguem localizar o produto
+    // muito mais rápido pelo catálogo do que raspar preço na mesma requisição.
+    // Quando a API devolve apenas o link resolvido, reutilize-o imediatamente
+    // numa leitura direta e preserve-o mesmo se a leitura de preço expirar.
+    if(String(myp?.error||"")==="link_resolved"&&/mypcards\.com/i.test(String(myp?.link||""))){
+      const resolvedLink=String(myp.link);
+      card={...card,myp_price_link:resolvedLink};
+      hasMypLink=true;
+      myp=await fetchSource(MYP_API,card,true,false)
+        .catch((e:any)=>({
+          ok:false,
+          error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error"),
+          link:resolvedLink
+        }));
+    }
   }
 
   // A MYP nem sempre rotula Reverse/Foil nas ofertas da mesma impressão.
@@ -289,7 +305,7 @@ async function fetchMarkets(card:any){
   }
 
   const liga=await ligaPromise;
-  if(["wrong_product","product_not_found","not_found","variant_not_found","browser_error","timeout"].includes(String(myp?.error||""))&&hasMypLink){
+  if(["wrong_product","product_not_found","not_found","variant_not_found","browser_error","timeout"].includes(String(myp?.error||""))&&hasMypLink&&String(card?.set_id||"").toLowerCase()!=="g1"){
     // Link aprendido/salvo pode ter ID correto e slug inválido. Refazer sem
     // enviar o link força a API a localizar o produto por número + coleção.
     myp=await fetchSource(MYP_API,{...card,myp_price_link:null,price_br_link:null,price_link:null},false,false)
@@ -427,6 +443,9 @@ Deno.serve(async(req:Request)=>{
       // MYP é a fonte principal para identidade/variante; não deixe um
       // "not_found" da Liga esconder o erro real da MYP.
       const errorCode=mypError||ligaError||"no_price_data";
+      const discoveredMypLink=String(myp?.link||"").trim();
+      const keepMypLink=discoveredMypLink&&!["wrong_product","product_not_found"].includes(mypError)
+        ?discoveredMypLink:"";
       const errorDetail=[
         mypError?"myp:"+mypError:"",
         ligaError?"liga:"+ligaError:""
@@ -440,6 +459,7 @@ Deno.serve(async(req:Request)=>{
           price_priority:0,price_last_error:errorDetail
         };
         if(clearIdentity)patch.myp_price_link=null;
+        else if(keepMypLink)patch.myp_price_link=keepMypLink;
         const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
         if(error)throw error;
         terminal++;
@@ -447,10 +467,12 @@ Deno.serve(async(req:Request)=>{
       }
 
       if(attempts>=RETRY_LIMIT){
-        const {error}=await db.from("pokemon_cards").update({
+        const retryLimitPatch:any={
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
           price_priority:0,price_last_error:errorDetail||errorCode||"retry_limit"
-        }).eq("id",card.id);
+        };
+        if(keepMypLink)retryLimitPatch.myp_price_link=keepMypLink;
+        const {error}=await db.from("pokemon_cards").update(retryLimitPatch).eq("id",card.id);
         if(error)throw error;
         terminal++;
         return {state:"retry_limit"};
@@ -460,10 +482,12 @@ Deno.serve(async(req:Request)=>{
       // O cron roda a cada minuto, então isso evita buracos de 2–4 minutos.
       const delaySeconds=attempts<=1?30:60;
       const retryAt=new Date(Date.now()+delaySeconds*1000).toISOString();
-      const {error}=await db.from("pokemon_cards").update({
+      const retryPatch:any={
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
         price_last_error:errorDetail||errorCode||"temporary_error"
-      }).eq("id",card.id);
+      };
+      if(keepMypLink)retryPatch.myp_price_link=keepMypLink;
+      const {error}=await db.from("pokemon_cards").update(retryPatch).eq("id",card.id);
       if(error)throw error;
       retried++;
       return {state:"retry"};
