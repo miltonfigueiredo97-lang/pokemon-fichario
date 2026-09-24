@@ -2,7 +2,7 @@
 
 const CACHE=new Map();
 const BASE='https://api.tcgdex.net/v2';
-const MASTER_ALGO_VERSION='27';
+const MASTER_ALGO_VERSION='28';
 const SPECIAL_MASTER_ORIGINAL_NUMBERS={
   cel25cc:{
     CC001:'2/102',CC002:'4/102',CC003:'15/102',CC004:'73/102',CC005:'8/82',
@@ -273,10 +273,14 @@ module.exports=async function handler(req,res){
     }
     if(!set)throw new Error('Coleção não encontrada no TCGdex.');
 
-    // A coleção existir no catálogo do idioma selecionado é o sinal de que
-    // essa impressão física existe naquele idioma. Detalhes/imagens podem
-    // faltar na API localizada e ser preenchidos pelo endpoint EN sem mudar
-    // o idioma físico da carta.
+    const setName=set.name||setId;
+    const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
+    const localizedIds=new Set(localizedCards.map(x=>String(x?.id||'')));
+
+    // Em sets normais, a existência do set localizado indica que a impressão
+    // física existe naquele idioma, mesmo que detalhes/imagens usem EN como
+    // metadado auxiliar. Em sets de PROMO, a validação precisa ser por carta:
+    // um XY Promo ausente do índice PT não pode virar PT só porque o set xyp existe.
     const physicalSetLang=localizedSetExists?lang:sourceLang;
     let list=Array.isArray(set.cards)?[...set.cards]:[];
     const expectedCount=Math.max(
@@ -320,6 +324,11 @@ module.exports=async function handler(req,res){
     }
 
     const details=await pool(list,18,async item=>{
+      const itemId=String(item?.id||'');
+      const localizedPhysical=localizedIds.has(itemId);
+      const physicalLangForItem=lang==='en'
+        ?'en'
+        :(localizedPhysical?lang:(localizedSetExists&&!isPromoSet?lang:sourceLang));
       const preferred=await jsonOrNull(BASE+'/'+lang+'/cards/'+encodeURIComponent(item.id));
       if(preferred){
         let english=null;
@@ -334,7 +343,7 @@ module.exports=async function handler(req,res){
           image:preferred.image||english?.image||item?.image||'',
           variants_detailed:preferredHasDetailed?preferred.variants_detailed:(english?.variants_detailed||preferred.variants_detailed),
           variants:preferredHasVariants?preferred.variants:(english?.variants||preferred.variants),
-          __physicalLang:lang,
+          __physicalLang:physicalLangForItem,
           __variantSourceLang:(preferredHasDetailed||preferredHasVariants)?lang:(english?'en':lang)
         };
       }
@@ -344,7 +353,7 @@ module.exports=async function handler(req,res){
           return {
             ...english,
             image:english.image||item?.image||'',
-            __physicalLang:physicalSetLang,
+            __physicalLang:physicalLangForItem,
             __variantSourceLang:'en'
           };
         }
@@ -352,12 +361,10 @@ module.exports=async function handler(req,res){
       return {
         ...item,
         variants:Object.keys(item?.variants||{}).length?item.variants:inferUniformSetVariants(set.cardCount,expectedCount),
-        __physicalLang:physicalSetLang,
+        __physicalLang:physicalLangForItem,
         __variantSourceLang:sourceLang
       };
     });
-    const setName=set.name||setId;
-    const isPromoSet=/promo|black star/i.test(setName+' '+String(set.id||setId));
     const rawByCard=details.map(card=>(!card||card.__error)?[]:rawVariantsOf(card,card.__variantSourceLang||card.__physicalLang||lang));
     const profile=buildSetVariantProfile(rawByCard);
     const uniformOnlyType=uniformOnlySetType(set.cardCount,expectedCount);
@@ -444,6 +451,8 @@ module.exports=async function handler(req,res){
         strictLang,
         localizedSetExists,
         localizedCardCount:localizedCards.length,
+        localizedIdsCount:localizedIds.size,
+        isPromoSet,
         physicalSetLang,
         only:[...onlySet],
         listLength:list.length,
