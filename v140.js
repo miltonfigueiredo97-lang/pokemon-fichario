@@ -1865,8 +1865,8 @@
     }
 
     const processingAt=Date.parse(card.price_processing_at||0);
-    const activelyProcessing=!!(processingAt&&processingAt>Date.now()-40_000);
-    const hasSavedPrice=Number(card.price_min||card.price_avg||card.price_max||0)>0;
+    const hasSavedPrice=Number(card.price_min||card.price_avg||card.price_max||card.myp_price_min||card.myp_price_avg||card.myp_price_max||card.liga_price_min||card.liga_price_avg||card.liga_price_max||0)>0;
+    const activelyProcessing=!hasSavedPrice&&!!(processingAt&&processingAt>Date.now()-40_000);
     if(activelyProcessing){
       const tag=document.createElement('span');
       tag.className='v14-price-pending processing';
@@ -4087,8 +4087,9 @@
       return (source?source.toUpperCase()+': ':'')+label;
     });
     const history=friendly.length?' · última tentativa: '+friendly.join(' · '):'';
-    if(card?.price_processing_at)return 'ATUALIZANDO'+history;
-    if(card?.price_pending){
+    const hasSavedQuote=Number(card?.price_min||card?.price_avg||card?.price_max||card?.myp_price_min||card?.myp_price_avg||card?.myp_price_max||card?.liga_price_min||card?.liga_price_avg||card?.liga_price_max||0)>0;
+    if(!hasSavedQuote&&card?.price_processing_at)return 'ATUALIZANDO'+history;
+    if(!hasSavedQuote&&card?.price_pending){
       const hasMyp=/mypcards\.com/i.test(String(card?.myp_price_link||card?.price_br_link||card?.price_link||''));
       return 'NA FILA · '+(hasMyp?'link MYP localizado':'procurando link MYP')+history;
     }
