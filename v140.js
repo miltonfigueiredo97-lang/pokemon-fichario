@@ -1757,6 +1757,35 @@
     renderAll();
     const pending=V14.allCards.filter(c=>!!c.price_pending);
     if(pending.length)setTimeout(()=>queueBackgroundPrices(pending),60);
+
+    // V14.94: uma carta sem preço nunca vira estado morto.
+    // Se MYP/Liga ainda não devolveram valor, ela volta para a fila persistente.
+    const unresolved=V14.allCards.filter(card=>{
+      const hasPrice=Number(card.price_min||card.price_avg||card.price_max||card.myp_price_min||card.myp_price_avg||card.myp_price_max||card.liga_price_min||card.liga_price_avg||card.liga_price_max||0)>0;
+      return !hasPrice&&!card.price_pending&&!card.price_processing_at;
+    });
+    if(unresolved.length){
+      const now=new Date().toISOString();
+      for(let i=0;i<unresolved.length;i+=150){
+        const ids=unresolved.slice(i,i+150).map(x=>x.id);
+        db.from('pokemon_cards').update({
+          price_pending:true,
+          price_processing_at:null,
+          price_requested_at:now,
+          price_next_retry_at:now,
+          price_attempts:0,
+          price_priority:20
+        }).eq('user_id',currentUser.id).in('id',ids).then(()=>{}).catch(()=>{});
+      }
+      unresolved.forEach(card=>{
+        card.price_pending=true;
+        card.price_processing_at=null;
+        card.price_next_retry_at=now;
+        card.price_attempts=0;
+        card.price_priority=20;
+      });
+      setTimeout(()=>queueBackgroundPrices(unresolved),120);
+    }
     if(show)toast('Fichário atualizado.');
   }
 
@@ -1940,9 +1969,9 @@
       b.appendChild(tag);
     }else if(!hasSavedPrice&&card.price_last_error){
       const tag=document.createElement('span');
-      tag.className='v14-price-unavailable';
-      tag.textContent='SEM COTAÇÃO';
-      tag.setAttribute('aria-label','Nenhuma cotação foi encontrada após as tentativas automáticas');
+      tag.className='v14-price-unavailable v1494-price-searching';
+      tag.textContent='BUSCANDO COTAÇÃO';
+      tag.setAttribute('aria-label','Cotação ainda não localizada; o sistema continuará tentando automaticamente');
       b.appendChild(tag);
     }
     return b;
@@ -3881,6 +3910,131 @@
     setTimeout(enhanceSelectionTrayV1493,0);
   }
 
+  function nextPositionForBinderV1494(binder){
+    const used=new Set(V14.allCards.filter(x=>x.binder_id===binder.id).map(x=>(+x.binder_page||1)+':'+(+x.binder_slot||1)));
+    const pages=Math.max(1,+binder.pages||1);
+    for(let page=1;page<=pages;page++)for(let slot=1;slot<=9;slot++)if(!used.has(page+':'+slot))return{page,slot};
+    return{page:pages+1,slot:1};
+  }
+
+  function syncWishlistTransferButtonV1494(){
+    const btn=byId('v1494WishlistTransfer');
+    if(!btn)return;
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    const show=!!(card&&wishlistBinder()&&card.binder_id===wishlistBinder().id);
+    btn.classList.toggle('hidden',!show);
+  }
+
+  function ensureWishlistTransferUIV1494(){
+    const actions=document.querySelector('#cardDialog .v1417-card-actions');
+    if(actions&&!byId('v1494WishlistTransfer')){
+      const btn=document.createElement('button');
+      btn.id='v1494WishlistTransfer';
+      btn.type='button';
+      btn.className='btn btn-secondary v1494-wishlist-transfer hidden';
+      btn.textContent='↗ Colocar em outro fichário';
+      btn.onclick=openWishlistTransferV1494;
+      actions.prepend(btn);
+    }
+    if(!byId('v1494WishlistMoveDialog')){
+      const d=document.createElement('dialog');
+      d.id='v1494WishlistMoveDialog';
+      d.className='sheet-dialog v1494-wishlist-move-dialog';
+      d.innerHTML='<div class="dialog-shell narrow v1494-wishlist-move-shell">'+
+        '<div class="dialog-head"><div><p class="kicker">LISTA DE DESEJOS</p><h2>Colocar carta em um fichário</h2><p class="muted compact-copy">Escolha para onde esta carta deve ir e se ela continua na Lista de Desejos.</p></div><button id="v1494WishlistMoveClose" class="icon-only" type="button">×</button></div>'+
+        '<label class="v1494-target-label">Fichário de destino<select id="v1494WishlistTarget"></select></label>'+
+        '<div class="v1494-wishlist-choice">'+
+          '<button id="v1494WishlistBought" type="button"><strong>✓ Comprei a carta</strong><span>Coloca como Tenho no fichário escolhido e remove da Lista de Desejos.</span></button>'+
+          '<button id="v1494WishlistKeep" type="button"><strong>$ Ainda quero comprar</strong><span>Coloca a carta no fichário escolhido como Não tenho e mantém também na Lista de Desejos.</span></button>'+
+        '</div>'+
+      '</div>';
+      document.body.appendChild(d);
+      byId('v1494WishlistMoveClose').onclick=()=>d.close();
+      d.addEventListener('click',e=>{if(e.target===d)d.close()});
+      byId('v1494WishlistBought').onclick=()=>applyWishlistTransferV1494(true);
+      byId('v1494WishlistKeep').onclick=()=>applyWishlistTransferV1494(false);
+    }
+  }
+
+  function openWishlistTransferV1494(){
+    ensureWishlistTransferUIV1494();
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    const wishlist=wishlistBinder();
+    if(!card||!wishlist||card.binder_id!==wishlist.id)return;
+    const targets=V14.binders.filter(b=>b.id!==wishlist.id);
+    const select=byId('v1494WishlistTarget');
+    select.innerHTML=targets.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+(b.binder_kind==='set'?' · Master Set':'')+'</option>').join('');
+    if(!targets.length)return toast('Crie outro fichário antes de mover esta carta.');
+    const d=byId('v1494WishlistMoveDialog');
+    d.dataset.cardId=card.id;
+    d.showModal();
+  }
+
+  async function applyWishlistTransferV1494(bought){
+    const d=byId('v1494WishlistMoveDialog');
+    const card=V14.allCards.find(x=>x.id===d?.dataset?.cardId);
+    const target=V14.binders.find(b=>b.id===byId('v1494WishlistTarget')?.value);
+    const wishlist=wishlistBinder();
+    if(!card||!target||!wishlist)return;
+    const clicked=bought?byId('v1494WishlistBought'):byId('v1494WishlistKeep');
+    busy(clicked,true,bought?'Marcando como comprada…':'Adicionando…');
+    try{
+      const key=canonicalCardIdentityKey(card);
+      let existing=V14.allCards.find(x=>x.binder_id===target.id&&canonicalCardIdentityKey(x)===key);
+      if(existing){
+        if(bought){
+          const {error}=await db.from('pokemon_cards').update({
+            collection_status:'owned',
+            quantity:Math.max(1,+existing.quantity||1),
+            updated_at:new Date().toISOString()
+          }).eq('id',existing.id).eq('user_id',currentUser.id);
+          if(error)throw error;
+        }
+        // Se a carta já existe no Master Set como "Não tenho", manter a linha é
+        // exatamente o comportamento desejado para "ainda quero comprar".
+      }else{
+        const pos=nextPositionForBinderV1494(target);
+        if(pos.page>(+target.pages||1)){
+          const {error:pageError}=await db.from('pokemon_binders').update({pages:pos.page,updated_at:new Date().toISOString()}).eq('id',target.id).eq('user_id',currentUser.id);
+          if(pageError)throw pageError;
+          target.pages=pos.page;
+        }
+        const payload={...card};
+        delete payload.id;delete payload.created_at;delete payload.updated_at;
+        payload.user_id=currentUser.id;
+        payload.binder_id=target.id;
+        payload.binder_page=pos.page;
+        payload.binder_slot=pos.slot;
+        payload.collection_status=bought?'owned':'missing';
+        payload.quantity=bought?1:0;
+        payload.price_processing_at=null;
+        payload.price_pending=!Number(card.price_min||card.price_avg||card.price_max||0);
+        payload.price_requested_at=new Date().toISOString();
+        payload.price_next_retry_at=payload.price_pending?payload.price_requested_at:null;
+        payload.price_attempts=0;
+        payload.price_priority=payload.price_pending?30:0;
+        const {error}=await db.from('pokemon_cards').insert(payload);
+        if(error)throw error;
+      }
+
+      if(bought){
+        const {error}=await db.from('pokemon_cards').delete().eq('id',card.id).eq('user_id',currentUser.id);
+        if(error)throw error;
+      }
+
+      d.close();
+      closeDialog('cardDialog');
+      editingCardId=null;
+      await loadCardsV14(false);
+      toast(bought?'Carta comprada: movida para o fichário e removida da Lista de Desejos.':'Carta colocada no fichário e mantida na Lista de Desejos.');
+    }catch(error){
+      console.error('[Lista de Desejos → fichário]',error);
+      toast('Não consegui concluir a movimentação: '+(error?.message||'erro no banco'));
+    }finally{
+      busy(clicked,false);
+    }
+  }
+
   function wireScanner(){
     const live=byId('btnLiveScan'),mobile=byId('btnMobileScan'),close=byId('btnCloseLiveScan'),manual=byId('btnScanManual'),photo=byId('cardPhoto');
     if(live)live.onclick=startScanner;
@@ -4265,6 +4419,8 @@
     wireScanner();
     wireFastAdd();
     wireSelectionTrayV1493();
+    ensureWishlistTransferUIV1494();
+    syncWishlistTransferButtonV1494();
     if(currentUser){
       try{await loadCardsV14(false)}catch(e){console.error('[V14 init]',e)}
     }
@@ -4280,6 +4436,8 @@
     const cardDialog=byId('cardDialog');
     if(cardDialog)new MutationObserver(()=>{
       wireFastAdd();
+      ensureWishlistTransferUIV1494();
+      syncWishlistTransferButtonV1494();
       if(cardDialog.open)syncSingleCardPriceButton();
     }).observe(cardDialog,{attributes:true,attributeFilter:['open']});
     const summaryActions=document.querySelector('#summaryPanel .action-grid');
