@@ -569,15 +569,16 @@ async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const setCode=(normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5')?'MEW':normalize(setId)==='g1'?'GEN':String(set||'').trim();
   const queries=[...new Set([
+    ...names.map(n=>number?(n+' ('+number+')'):n),
+    ...names.map(n=>[n,number].filter(Boolean).join(' ')),
     [number,setCode].filter(Boolean).join(' '),
     ...names.flatMap(n=>[
-      [n,number].filter(Boolean).join(' '),
       [n,number,setCode].filter(Boolean).join(' '),
       [n,setCode].filter(Boolean).join(' ')
     ]),
     number,
     ...names
-  ].map(x=>String(x||'').trim()).filter(Boolean))].slice(0,10);
+  ].map(x=>String(x||'').trim()).filter(Boolean))].slice(0,12);
 
   const urls=[];
   for(const query of queries){
@@ -931,6 +932,28 @@ module.exports=async function handler(req,res){
   let directLink=safeMypProductUrl(link);
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
+
+  // V15.07: reproduce the search that works on MYP itself:
+  // "Nome (número/total)". This is the first generic discovery step for every
+  // card, before Chromium or long retry queues.
+  if(!directLink&&name&&number){
+    try{
+      const quickCandidates=await readerSearchCandidates({name,nameAliases,number,set,setId});
+      for(const candidate of quickCandidates.slice(0,10)){
+        try{
+          const text=await fetchJina(candidate,6500);
+          const identity=pageIdentity(text);
+          if(matchesWanted(identity,{name,nameAliases,number,set,setId,lang})){
+            directLink=safeMypProductUrl(candidate);
+            if(directLink)break;
+          }
+        }catch{}
+      }
+    }catch(error){
+      console.warn('MYP exact search discovery failed:',error?.message||error);
+    }
+  }
+
   if(directLink
     &&!isCanonicalMewPtBrProductLink(directLink,{setId,lang,number})
     &&!isCanonicalGenerationsProductLink(directLink,{setId,number})){
