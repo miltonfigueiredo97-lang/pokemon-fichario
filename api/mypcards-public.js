@@ -933,6 +933,31 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
+  // V15.12: exact MYP site-style search FIRST: "Name (number/total)".
+  // This avoids spending tens of seconds in Reader/Jina before trying the
+  // search pattern that resolves the card immediately on MYP.
+  if(!directLink&&process.env.APIFY_API_TOKEN){
+    try{
+      const exact=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
+      const exactLink=safeMypProductUrl(exact?.link);
+      if(exactLink)directLink=exactLink;
+      if(exactLink&&hasAnyMarket(exact)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Apify exact-first',mode:'exact-name-number',
+          name,number,edition:set,finish,condition,link:exactLink,
+          min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
+          samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
+          exactVariant:exact.exactVariant===true,
+          variantFallback:exact.variantFallback===true,
+          complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
+          checkedAt:new Date().toISOString()
+        });
+      }
+    }catch(error){
+      console.warn('MYP exact-first Actor:',error?.code||error?.message||error);
+    }
+  }
+
   // V15.07: reproduce the search that works on MYP itself:
   // "Nome (número/total)". This is the first generic discovery step for every
   // card, before Chromium or long retry queues.
