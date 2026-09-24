@@ -941,7 +941,7 @@ module.exports=async function handler(req,res){
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
       const exactBrowser=await Promise.race([
         findAndScrapeMypBrowser('',wanted),
-        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),12000))
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),9000))
       ]);
       const browserLink=safeMypProductUrl(exactBrowser?.link);
       if(browserLink)directLink=browserLink;
@@ -966,7 +966,7 @@ module.exports=async function handler(req,res){
   // V15.12: exact MYP site-style search FIRST: "Name (number/total)".
   // This avoids spending tens of seconds in Reader/Jina before trying the
   // search pattern that resolves the card immediately on MYP.
-  if(!directLink&&process.env.APIFY_API_TOKEN){
+  if(!fast&&!directLink&&process.env.APIFY_API_TOKEN){
     try{
       const exact=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
       const exactLink=safeMypProductUrl(exact?.link);
@@ -991,7 +991,7 @@ module.exports=async function handler(req,res){
   // V15.07: reproduce the search that works on MYP itself:
   // "Nome (número/total)". This is the first generic discovery step for every
   // card, before Chromium or long retry queues.
-  if(!directLink&&name&&number){
+  if(!fast&&!directLink&&name&&number){
     try{
       const quickCandidates=await readerSearchCandidates({name,nameAliases,number,set,setId});
       // V15.10: candidate validation is parallel and bounded. A single bad page
@@ -1186,7 +1186,7 @@ module.exports=async function handler(req,res){
   // Sem link MYP conhecido, tente primeiro o scraper estruturado. Ele já
   // devolve produto + ofertas e evita gastar o orçamento inteiro em Chromium
   // antes de chegar ao fallback capaz de resolver cartas novas/localizadas.
-  if(!directLink&&process.env.APIFY_API_TOKEN){
+  if(!fast&&!directLink&&process.env.APIFY_API_TOKEN){
     try{
       const early=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
       const actorLink=safeMypProductUrl(early?.link);
