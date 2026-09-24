@@ -1097,7 +1097,7 @@ module.exports=async function handler(req,res){
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
       const market=await Promise.race([
         findAndScrapeMypBrowser(directLink,wanted),
-        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),10500))
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),20000))
       ]);
       if(market?.ok&&hasAnyMarket(market)){
         return res.status(200).json({
