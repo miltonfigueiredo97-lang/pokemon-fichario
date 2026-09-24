@@ -1865,7 +1865,7 @@
     }
 
     const processingAt=Date.parse(card.price_processing_at||0);
-    const activelyProcessing=!!(processingAt&&processingAt>Date.now()-5*60_000);
+    const activelyProcessing=!!(processingAt&&processingAt>Date.now()-40_000);
     const hasSavedPrice=Number(card.price_min||card.price_avg||card.price_max||0)>0;
     if(activelyProcessing){
       const tag=document.createElement('span');
@@ -2453,6 +2453,30 @@
       if(V14.bulkPriceWatch===watch)V14.bulkPriceWatch=null;
       setVisiblePriceButtonState({active:false});
     }
+  }
+
+  let v1514StatusPollTimer=0;
+  function startGlobalPriceStatusPollV1514(){
+    if(v1514StatusPollTimer)return;
+    const tick=async()=>{
+      if(!currentUser){v1514StatusPollTimer=setTimeout(tick,2500);return}
+      try{
+        const visible=visiblePriceTargetCards().filter(c=>c.price_pending||c.price_processing_at);
+        const ids=visible.map(c=>c.id).filter(Boolean);
+        if(ids.length){
+          const {data}=await db.from('pokemon_cards')
+            .select('id,price_pending,price_processing_at,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_last_error,price_attempts')
+            .eq('user_id',currentUser.id)
+            .in('id',ids);
+          if(Array.isArray(data)){
+            data.forEach(row=>applyLocalPricePatch(row.id,row));
+            try{renderBinder();renderSummary()}catch{}
+          }
+        }
+      }catch(e){console.warn('[Price status poll]',e)}
+      v1514StatusPollTimer=setTimeout(tick,1800);
+    };
+    v1514StatusPollTimer=setTimeout(tick,400);
   }
 
   function resumeVisiblePriceWatch(){
@@ -4454,6 +4478,7 @@
     wireSelectionTrayV1493();
     ensureWishlistTransferUIV1494();
     syncWishlistTransferButtonV1494();
+    startGlobalPriceStatusPollV1514();
     if(currentUser){
       try{await loadCardsV14(false)}catch(e){console.error('[V14 init]',e)}
     }
