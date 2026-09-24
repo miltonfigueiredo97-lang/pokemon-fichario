@@ -1085,50 +1085,42 @@ module.exports=async function handler(req,res){
   // via Reader por poucos segundos. Se não der, a carta permanece na fila
   // persistente de alta prioridade para o worker do servidor.
   if(fast){
+    // V15.16: with an exact product URL in hand, use a real browser directly
+    // on that page. Jina was the reason correct links still timed out.
     if(!directLink){
       return res.status(200).json({
-        ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'Fast Reader',
-        message:'Sem link MYP conhecido; atualização completa seguirá pela fila prioritária.'
+        ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'Fast exact resolver',
+        message:'A busca rápida ainda não localizou a página exata da impressão.'
       });
     }
     try{
-      const text=await fetchJina(directLink,4500);
-      const identity=pageIdentity(text);
-      const identityOk=matchesWanted(identity,{name,nameAliases,number,set,setId,lang});
-      if(identityOk){
-        let market=await marketAcrossSellerPages(directLink,text,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
-        if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish}))market=sameProductFallbackMarket(identity,finish,condition);
-        if(hasAnyMarket(market)){
-          return res.status(200).json({
-            ok:true,source:'MYP Cards',provider:'Fast Reader',mode:'fast-direct',
-            name:identity.name||name,number:identity.number||number,edition:identity.edition||set,
-            finish,condition,link:directLink,
-            min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
-            samples:market.samples??null,availableQuantity:market.availableQuantity??null,
-            exactVariant:market.exactVariant===true,
-            variantFallback:market.variantFallback===true,
-            complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
-            checkedAt:new Date().toISOString()
-          });
-        }
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true};
+      const market=await Promise.race([
+        findAndScrapeMypBrowser(directLink,wanted),
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),10500))
+      ]);
+      if(market?.ok&&hasAnyMarket(market)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Browser direct exact',mode:market.mode||'browser-direct-known',
+          name,number,edition:market.edition||set,finish,condition,
+          link:safeMypProductUrl(market.link)||directLink,
+          min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+          samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+          exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+          complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+          checkedAt:new Date().toISOString()
+        });
       }
-
       return res.status(200).json({
-        ok:false,
-        error:identityOk?'fast_no_price':'wrong_product',
-        source:'MYP Cards',
-        provider:'Fast Reader',
-        link:directLink,
-        identity:{name:identity?.name||'',number:identity?.number||'',code:identity?.code||'',edition:identity?.edition||''},
-        message:identityOk
-          ?'A página correta foi aberta, mas a variante ainda não apareceu no Reader rápido.'
-          :'O Reader rápido não confirmou a impressão; a fila fará a tentativa completa.'
+        ok:false,error:market?.error||'fast_no_price',
+        source:'MYP Cards',provider:'Browser direct exact',link:directLink,
+        message:'Página exata localizada, mas a leitura rápida não retornou a cotação.'
       });
     }catch(error){
       return res.status(200).json({
         ok:false,error:error?.name==='AbortError'?'fast_timeout':'fast_unavailable',
-        source:'MYP Cards',provider:'Fast Reader',link:directLink,
-        message:'A leitura rápida não concluiu; a fila prioritária continuará no servidor.'
+        source:'MYP Cards',provider:'Browser direct exact',link:directLink,
+        message:String(error?.message||'Falha na leitura direta da página exata.')
       });
     }
   }
