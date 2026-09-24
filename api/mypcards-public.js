@@ -933,6 +933,36 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
+  // V15.13: replicate the human path first: open MYP search with
+  // "Name (number/total)", validate the exact product, then read its offers.
+  // This path is bounded to 12 seconds total.
+  if(!directLink&&name&&number){
+    try{
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
+      const exactBrowser=await Promise.race([
+        findAndScrapeMypBrowser('',wanted),
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),12000))
+      ]);
+      const browserLink=safeMypProductUrl(exactBrowser?.link);
+      if(browserLink)directLink=browserLink;
+      if(exactBrowser?.ok&&hasAnyMarket(exactBrowser)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'Chromium exact search',mode:exactBrowser.mode||'browser-exact-search',
+          name,number,edition:exactBrowser.edition||set,finish,condition,
+          link:browserLink||'',
+          min:Number(exactBrowser.min||0),avg:Number(exactBrowser.avg||0),max:Number(exactBrowser.max||0),
+          samples:exactBrowser.samples??null,availableQuantity:exactBrowser.availableQuantity??null,
+          exactVariant:exactBrowser.exactVariant===true,
+          variantFallback:exactBrowser.variantFallback===true,
+          complete:!!(Number(exactBrowser.min)>0&&Number(exactBrowser.avg)>0&&Number(exactBrowser.max)>0),
+          checkedAt:new Date().toISOString()
+        });
+      }
+    }catch(error){
+      console.warn('MYP exact browser:',error?.message||error);
+    }
+  }
+
   // V15.12: exact MYP site-style search FIRST: "Name (number/total)".
   // This avoids spending tens of seconds in Reader/Jina before trying the
   // search pattern that resolves the card immediately on MYP.
