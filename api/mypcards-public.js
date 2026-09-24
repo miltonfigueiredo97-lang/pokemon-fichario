@@ -490,6 +490,19 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
   const editionUrls=[...new Set([discovered,...derived].filter(Boolean))].slice(0,10);
   if(!editionUrls.length)return[];
 
+  // XY: Generations possui 117 produtos na MYP. Como conhecemos a edição
+  // exata, leia as 3 páginas do catálogo em paralelo e resolva pelo número
+  // antes de gastar tempo com Actor/busca genérica.
+  if(normalize(setId)==='g1'){
+    const editionUrl=discovered||ROOT+'/pokemon/xy-generations';
+    const bodies=await Promise.all([1,2,3].map(page=>collectionPageText(editionUrl,page).catch(()=>'')));
+    for(const body of bodies){
+      if(!body)continue;
+      const urls=collectionProductCandidatesFromText(body,number,[]);
+      if(urls.length)return urls.slice(0,6);
+    }
+  }
+
   const names=[name,...nameAliases].filter(Boolean);
   const scopedQueries=[number,...names.map(n=>[n,number].filter(Boolean).join(' '))]
     .map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
@@ -886,6 +899,10 @@ module.exports=async function handler(req,res){
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
   if(directLink&&!isCanonicalMewPtBrProductLink(directLink,{setId,lang,number})){
     directLink=await canonicalizeKnownProductLink({link:directLink,apiId,setId,set,number,name,nameAliases});
+  }
+  if(!directLink&&normalize(setId)==='g1'){
+    const indexed=await collectionIndexCandidates({apiId,setId,set,number,name,nameAliases}).catch(()=>[]);
+    if(indexed.length)directLink=safeMypProductUrl(indexed[0]);
   }
   const browserSeedLink=directLink;
 
