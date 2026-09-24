@@ -180,6 +180,27 @@ async function searchMypCatalogPublic(name,number,setHint,language,options={}){
     return[];
   }
 }
+async function searchMypRelatedCatalog(name,language,seeds,options={}){
+  const raw=String(name||"").trim();
+  const urls=[...new Set((seeds||[]).map(String).filter(x=>/^https:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\//i.test(x)))].slice(0,3);
+  if(raw.length<2||!urls.length)return[];
+  const live=!!options.live;
+  if(live&&norm(raw).replace(/\s+/g,"").length<4)return[];
+  try{
+    const p=new URLSearchParams({
+      name:raw,
+      lang:language==="all"?"pt-br":language,
+      seeds:urls.join("|")
+    });
+    const rr=await fetch("/api/myp-related-catalog?"+p.toString(),{cache:"no-store"});
+    if(!rr.ok)return[];
+    const j=await rr.json();
+    return j?.ok&&Array.isArray(j.cards)?j.cards:[];
+  }catch(e){
+    console.warn("MYP related catalog",e);
+    return[];
+  }
+}
 function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
 async function searchLimitlessVariants(name,number,cards,language){
   const wanted=numParts(number);
@@ -835,10 +856,16 @@ async function searchCards(options={}){
     if(requestId!==catalogSearchSeq)return;
 
     const mypCards=mypSearch.cards||[];
+    const mypSeeds=[
+      ...mypCards.map(c=>c?.market?.link||c?.mypLink||""),
+      ...mypPublicCards.map(c=>c?.mypLink||c?.market?.link||"")
+    ].filter(Boolean);
+    const mypRelatedCards=raw?await searchMypRelatedCatalog(raw,language,mypSeeds,{live}):[];
+    const safeMypPublicCards=mypPublicCards.filter(c=>c?.number&&cardImage(c));
     const tcgFlat=groups.flat();
     const basePool=language==="ja"&&jpOfficial.length
       ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
-      : [...tcgFlat,...anniversaryCards,...legacyCards,...jpOfficial,...mypCards,...mypPublicCards];
+      : [...tcgFlat,...anniversaryCards,...legacyCards,...jpOfficial,...mypCards,...safeMypPublicCards,...mypRelatedCards];
     const limitlessVariants=number&&raw
       ? await searchLimitlessVariants(raw,number,basePool,language)
       : [];
