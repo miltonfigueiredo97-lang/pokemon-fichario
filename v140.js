@@ -1560,6 +1560,12 @@
     const n=String(entry?.number||'').trim();
     const total=String(entry?.printedTotal||'').trim();
     if(!n)return'';
+    const setId=String(entry?.setId||'').trim().toLowerCase();
+    // Generations possui a Radiant Collection própria RC1–RC32. TCGdex
+    // informa o total principal 83, então sem esta correção o app gravava
+    // RC1/83, RC29/83 etc. e a MYP nunca encontrava a impressão correta.
+    if(setId==='g1'&&/^rc\d+$/i.test(n))return n.toUpperCase()+'/RC32';
+    if(setId==='g1'&&/^rc\d+\/83$/i.test(n))return n.replace(/\/83$/i,'/RC32').toUpperCase();
     if(n.includes('/'))return n;
     return total?n+'/'+total:n;
   }
