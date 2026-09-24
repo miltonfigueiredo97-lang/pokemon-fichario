@@ -2592,6 +2592,10 @@
         <label>Máximo (R$)<input id="v1469ManualMax" inputmode="decimal" placeholder="0,00"></label>
       </div>
       <label>Link MYP Cards<input id="v1469ManualLink" type="url" placeholder="https://mypcards.com/pokemon/produto/..."></label>
+      <div class="v1509-link-fetch-row">
+        <button id="v1509FetchMypLink" class="btn btn-secondary" type="button">↻ Puxar valores deste link</button>
+        <small id="v1509FetchMypStatus" class="muted">Cole o link exato da carta na MYP.</small>
+      </div>
       <div class="dialog-actions">
         <button id="v1469ManualCancel" class="btn btn-secondary" type="button">Cancelar</button>
         <button id="v1469ManualSave" class="btn btn-primary" type="button">Salvar cotação manual</button>
@@ -2601,6 +2605,11 @@
     byId('v1469ManualPriceClose').onclick=()=>d.close();
     byId('v1469ManualCancel').onclick=()=>d.close();
     byId('v1469ManualSave').onclick=saveManualPriceV1469;
+    byId('v1509FetchMypLink').onclick=fetchManualMypLinkV1509;
+    byId('v1469ManualLink').addEventListener('paste',()=>{
+      const s=byId('v1509FetchMypStatus');
+      if(s)s.textContent='Link colado. Clique em “Puxar valores deste link”.';
+    });
     return d;
   }
 
@@ -2631,6 +2640,72 @@
     byId('v1469ManualMax').value=current.max?String(current.max).replace('.',','):'';
     byId('v1469ManualLink').value=card.myp_price_link||(/mypcards\.com/i.test(String(card.price_link||''))?card.price_link:'')||'';
     if(!d.open)d.showModal();
+  }
+
+  async function fetchManualMypLinkV1509(){
+    const card=editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    if(!card)return toast('Abra uma carta já salva para consultar o link.');
+    const link=String(byId('v1469ManualLink')?.value||'').trim();
+    if(!/^https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
+      return toast('Cole um link de produto válido da MYP Cards.');
+    }
+
+    const button=byId('v1509FetchMypLink');
+    const status=byId('v1509FetchMypStatus');
+    busy(button,true,'Consultando link…');
+    if(status)status.textContent='Lendo a página exata da MYP…';
+
+    const params=new URLSearchParams({
+      name:String(card.name||''),
+      number:String(card.number||''),
+      set:String(card.set_name||''),
+      setId:String(card.set_id||''),
+      apiId:String(card.api_id||''),
+      lang:String(card.language_code||'pt-br'),
+      finish:String(card.finish||'Normal'),
+      condition:String(card.condition||'Nova'),
+      link,
+      directBrowser:'1'
+    });
+
+    try{
+      let response=await fetch('/api/mypcards-public?'+params.toString(),{cache:'no-store'});
+      let data=await response.json().catch(()=>({}));
+      let hasPrice=Number(data?.min||0)>0||Number(data?.avg||0)>0||Number(data?.max||0)>0;
+
+      // Se a variante específica não estiver rotulada na MYP, consulte a mesma
+      // página como impressão Normal. O produto continua sendo exatamente o link
+      // informado pelo usuário.
+      if(!hasPrice&&String(card.finish||'Normal').toLowerCase()!=='normal'){
+        params.set('finish','Normal');
+        response=await fetch('/api/mypcards-public?'+params.toString(),{cache:'no-store'});
+        data=await response.json().catch(()=>({}));
+        hasPrice=Number(data?.min||0)>0||Number(data?.avg||0)>0||Number(data?.max||0)>0;
+      }
+
+      if(!response.ok||!hasPrice){
+        if(status)status.textContent='Não consegui ler valores desse link agora.';
+        return toast('O link é válido, mas a MYP não devolveu uma cotação legível agora.');
+      }
+
+      const min=Number(data.min||0),avg=Number(data.avg||0),max=Number(data.max||0);
+      byId('v1469ManualMin').value=min?String(min).replace('.',','):'';
+      byId('v1469ManualAvg').value=avg?String(avg).replace('.',','):'';
+      byId('v1469ManualMax').value=max?String(max).replace('.',','):'';
+      byId('v1469ManualLink').value=data.link||link;
+
+      if(status){
+        const parts=[min&&('mín. '+money(min)),avg&&('méd. '+money(avg)),max&&('máx. '+money(max))].filter(Boolean);
+        status.textContent='Cotação encontrada: '+parts.join(' · ');
+      }
+      toast('Valores carregados diretamente da MYP.');
+    }catch(error){
+      console.error('[MYP link manual]',error);
+      if(status)status.textContent='Falha ao consultar o link.';
+      toast('Não consegui consultar esse link da MYP agora.');
+    }finally{
+      busy(button,false);
+    }
   }
 
   async function saveManualPriceV1469(){
