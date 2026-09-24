@@ -959,22 +959,32 @@
       id:'anniv20-complete',
       label:'Completa 20 Anos',
       coreIds:['g1','xy12'],
-      summaryLabels:['Gerações','Evoluções','Promos XY','selos e Jumbos'],
+      summaryLabels:['Gerações','Evoluções','Promos oficiais 20 anos','extras regionais quando existirem no idioma'],
       series:'20º Aniversário',
       releaseDate:'2016',
       components:[
         {id:'g1',label:'Gerações',required:true},
         {id:'xy12',label:'Evoluções',required:true},
         {
+          id:'xyp',label:'Promos oficiais 20 anos · XY',required:true,
+          only:[
+            'XY110','XY111','XY112','XY113','XY114','XY115','XY116','XY117','XY118','XY119','XY120',
+            'XY121','XY122','XY123','XY124',
+            'XY125','XY126',
+            'XY143','XY148',
+            'XY160','XY161','XY162','XY163',
+            'XY179',
+            'XY202','XY203','XY204','XY205','XY206','XY207','XY208','XY209','XY210'
+          ]
+        },
+        {
           id:'g1',label:'Generations · selos 20th / Toys R Us',lang:'en',all:true,
           only:['8','14','22','26','32','43','50','53'],transform:'stamp20'
         },
         {
-          id:'xyp',label:'XY Black Star Promos · 20º aniversário',lang:'en',all:true,jumbo:true,
-          only:['XY110','XY111','XY112','XY113','XY114','XY115','XY116','XY117','XY118','XY119','XY120',
-            'XY121','XY122','XY123','XY124','XY125','XY126','XY143','XY148','XY160','XY161','XY162','XY163',
-            'XY179','XY202','XY203','XY204','XY205','XY206','XY207','XY208','XY209','XY210'],
-          ensureJumbo:['XY121','XY122','XY123','XY124']
+          id:'xyp',label:'Red & Blue · Jumbos internacionais',lang:'en',all:true,jumbo:true,
+          only:['XY121','XY122','XY123','XY124'],
+          transform:'jumboOnly',ensureJumbo:['XY121','XY122','XY123','XY124']
         }
       ]
     },
@@ -1170,7 +1180,7 @@
       return {ok:true,set:{id:spec.id,name:spec.label||spec.id,languageCode:spec.lang},entries:[],__spec:spec,__excludedByLanguage:true};
     }
     const lang=masterLang;
-    const p=new URLSearchParams({v:'27',lang,set:spec.id,strictLang:'1'});
+    const p=new URLSearchParams({v:'28',lang,set:spec.id,strictLang:'1'});
     if(spec.all)p.set('all','1');
     if(spec.jumbo)p.set('jumbo','1');
     if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
@@ -1335,7 +1345,7 @@
           anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch('/api/master-set?v=27&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetch('/api/master-set?v=28&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
