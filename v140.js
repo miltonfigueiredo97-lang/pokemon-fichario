@@ -4211,11 +4211,11 @@
       '.sheet{min-height:277mm;page-break-after:always;display:flex;flex-direction:column}.sheet:last-child{page-break-after:auto}'+
       'header{height:16mm;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #d8d8d8;margin-bottom:4mm;padding-bottom:2.5mm}'+
       'h1{font-size:15pt;margin:0 0 1mm}header p,.price-mode{margin:0;font-size:8pt;color:#555}.price-mode{font-weight:700;padding-top:1mm}'+
-      '.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3.5mm;flex:1}'+
-      '.slot{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;border:1px solid #e2e2e2;border-radius:3mm;padding:2.2mm;background:#fafafa;overflow:hidden}'+
-      '.slot.empty{background:#fff;border-style:dashed}.card{position:relative;width:43mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:2mm}.card.bw img{filter:grayscale(1) brightness(.55)}'+
+      '.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:1.4mm;flex:1;align-items:start}'+
+      '.slot{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:.7mm;overflow:hidden;background:transparent;border:0;border-radius:0}'+
+      '.slot.empty{background:transparent;border:0}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm}.card.bw img{filter:grayscale(1) brightness(.55)}'+
       '.price{position:absolute;left:2mm;right:2mm;bottom:2mm;background:rgba(0,0,0,.88);color:#fff;border-radius:1.5mm;padding:1.3mm;text-align:center;font-size:8.5pt;font-weight:800}.noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border:1px dashed #bbb;color:#777;font-size:9pt;text-align:center;padding:4mm}'+
-      '.meta{width:100%;display:grid;gap:.6mm;margin-top:1.6mm;text-align:center;line-height:1.15}.meta strong{font-size:7.5pt}.meta span{font-size:6.4pt;color:#555}.meta small{font-size:6pt;color:#777}'+
+      '.meta{width:100%;display:grid;gap:.35mm;margin-top:.8mm;text-align:center;line-height:1.08}.meta strong{font-size:7.2pt}.meta span{font-size:6.1pt;color:#555}.meta small{font-size:5.8pt;color:#777}'+
       '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{break-after:page}.sheet:last-child{break-after:auto}}'+
       '</style></head><body>'+pages.join('')+
       '<script>window.addEventListener("load",function(){var imgs=[].slice.call(document.images);Promise.all(imgs.map(function(i){return i.complete?Promise.resolve():new Promise(function(r){i.onload=i.onerror=r})})).then(function(){setTimeout(function(){window.print()},250)});setTimeout(function(){window.print()},3500)});<\/script>'+
