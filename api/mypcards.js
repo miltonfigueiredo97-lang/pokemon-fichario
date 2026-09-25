@@ -183,8 +183,8 @@ module.exports = async function handler(req, res) {
         maxPrice:null,
         tcgPrice:null,
         availableQuantity:null,
-        imagePt:'/api/image-proxy?url='+encodeURIComponent('https://images.pokemontcg.io/cel25c/21_hires.png'),
-        imageEn:'/api/image-proxy?url='+encodeURIComponent('https://images.pokemontcg.io/cel25c/21_hires.png'),
+        imagePt:'/api/image-proxy?url='+encodeURIComponent('https://tcgplayer-cdn.tcgplayer.com/product/250338_in_1000x1000.jpg'),
+        imageEn:'/api/image-proxy?url='+encodeURIComponent('https://tcgplayer-cdn.tcgplayer.com/product/250338_in_1000x1000.jpg'),
         link:'https://mypcards.com/pokemon/produto/144267/zekrom',
         deckLabels:['Celebrations: Classic Collection','CCC','114/114'],
         matchScore:20000
