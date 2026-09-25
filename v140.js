@@ -1496,6 +1496,15 @@
   }
 
   function masterImage(entry){
+    if(!entry)return'';
+    const apiId=String(entry.apiId||'').trim();
+    const lang=String(entry.languageCode||'en').toLowerCase()==='pt-br'?'pt':String(entry.languageCode||'en').toLowerCase();
+    // V16.02: Master Set image identity is the exact card id, not whatever
+    // asset URL happened to come in the set payload. The resolver already
+    // handles localized scan -> EN same printing -> TCGplayer fallback.
+    if(entry.source==='TCGdex'&&apiId){
+      return '/api/tcgdex-card-image?id='+encodeURIComponent(apiId)+'&lang='+encodeURIComponent(lang);
+    }
     const u=entry.imageUrl||'';
     return u&&u.includes('assets.tcgdex.net')&&!/\.(webp|png|jpe?g)$/i.test(u)?u+'/high.webp':u;
   }
@@ -1521,7 +1530,8 @@
 
   async function masterImageFallbackV1473(entry){
     if(!entry)return'';
-    if(entry.imageUrl)return masterImage(entry);
+    const exact=masterImage(entry);
+    if(exact)return exact;
     if(entry.languageCode==='ja')return japaneseImageFallback({...entry,languageCode:'ja'});
     V14.masterImageFallbackCache=V14.masterImageFallbackCache||new Map();
     const key=[entry.apiId,entry.setId,entry.number,entry.name].join('|');
@@ -1658,7 +1668,7 @@
         const base={
           source:e.source,apiId:e.apiId,name:e.name,languageCode:e.languageCode,language:e.language,
           setName:e.setName,setId:e.setId,number:fullMasterEntryNumberV1450(e),
-          rarity:e.rarity,type:e.type,imageUrl:e.imageUrl
+          rarity:e.rarity,type:e.type,imageUrl:masterImage(e)||e.imageUrl||''
         };
         const payload=cardPayload(base,{page,slot,status:owned?'owned':'missing',quantity:owned?1:0,condition:'Nova',finish:e.finish,finishConfirmed:true,notes:e.variantLabel},{});
         payload.user_id=currentUser.id;
