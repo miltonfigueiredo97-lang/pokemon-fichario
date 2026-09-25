@@ -1122,84 +1122,43 @@ module.exports=async function handler(req,res){
     const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
 
     if(!directLink){
-      let found=null;
-
-      // V16.17: resolve from the MYP edition page itself. This avoids search
-      // engines and Chromium, and is deterministic for cards such as SSP.
+      // V16.19: mirror the exact MYP lookup a person performs:
+      // "Name (collector/total)". One Chromium session, max two exact queries.
       try{
-        const collectionCandidates=await fastCollectionReaderCandidates({
-          name,nameAliases,number,set,setId
-        });
-        if(collectionCandidates.length){
-          const checked=await Promise.all(collectionCandidates.slice(0,4).map(async candidate=>{
-            try{
-              const raw=await fetchText(candidate,5000);
-              const identity=pageIdentity(raw);
-              if(!matchesWanted(identity,wanted))return null;
-              let market=await marketAcrossSellerPages(candidate,raw,identity,wanted,finish,condition);
-              if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
-                market=sameProductFallbackMarket(identity,finish,condition);
-              }
-              return{link:safeMypProductUrl(candidate),identity,market};
-            }catch{return null}
-          }));
-          const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
-          if(hit){
-            if(hasAnyMarket(hit.market)){
-              return res.status(200).json({
-                ok:true,source:'MYP Cards',provider:'MYP edition Reader',mode:'collection-reader-fast',
-                name:hit.identity?.name||name,number:hit.identity?.number||number,
-                edition:hit.identity?.edition||set,finish,condition,link:hit.link,
-                min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
-                samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
-                exactVariant:hit.market.exactVariant===true,variantFallback:hit.market.variantFallback===true,
-                complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
-                checkedAt:new Date().toISOString()
-              });
-            }
-            found={link:hit.link,edition:hit.identity?.edition||set};
-          }
+        const exact=await Promise.race([
+          searchExactMypBrowser({...wanted,quick:true}),
+          new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),19000))
+        ]);
+        const exactLink=safeMypProductUrl(exact?.link);
+        if(exactLink&&exact?.ok&&hasAnyMarket(exact)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'MYP exact browser',mode:exact.mode||'browser-exact-search',
+            name,number,edition:exact.edition||set,finish,condition,link:exactLink,
+            min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
+            samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
+            exactVariant:exact.exactVariant===true,variantFallback:exact.variantFallback===true,
+            complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
+            checkedAt:new Date().toISOString()
+          });
         }
-      }catch(error){
-        console.warn('MYP fast collection reader:',error?.message||error);
-      }
-
-      // One exact Actor query is a secondary fallback when configured.
-      if(!found&&process.env.APIFY_API_TOKEN){
-        try{
-          const actor=await queryMyp({...wanted,maxQueries:1});
-          const actorLink=safeMypProductUrl(actor?.link);
-          if(actorLink){
-            if(hasAnyMarket(actor)){
-              return res.status(200).json({
-                ok:true,source:'MYP Cards',provider:'Apify fast exact',mode:'actor-fast-exact',
-                name,number,edition:set,finish,condition,link:actorLink,
-                min:Number(actor.min||0),avg:Number(actor.avg||0),max:Number(actor.max||0),
-                samples:actor.samples??null,availableQuantity:actor.availableQuantity??null,
-                exactVariant:actor.exactVariant===true,variantFallback:actor.variantFallback===true,
-                complete:!!(Number(actor.min)>0&&Number(actor.avg)>0&&Number(actor.max)>0),
-                checkedAt:new Date().toISOString()
-              });
-            }
-            found={link:actorLink,edition:set};
-          }
-        }catch(error){
-          console.warn('MYP fast actor:',error?.code||error?.message||error);
+        if(exactLink){
+          return res.status(200).json({
+            ok:false,error:'link_resolved',source:'MYP Cards',provider:'MYP exact browser',
+            name,number,edition:exact?.edition||set,finish,condition,link:exactLink,
+            message:'Produto MYP exato localizado; leitura direta necessária.'
+          });
         }
-      }
-
-      if(found?.link){
         return res.status(200).json({
-          ok:false,error:'link_resolved',source:'MYP Cards',provider:'Fast exact resolver',
-          name,number,edition:found.edition||set,finish,condition,link:found.link,
-          message:'Produto MYP exato localizado; leitura direta necessária.'
+          ok:false,error:exact?.error||'fast_link_missing',source:'MYP Cards',provider:'MYP exact browser',
+          message:'A busca exata da MYP não localizou esta impressão.'
+        });
+      }catch(error){
+        return res.status(200).json({
+          ok:false,error:error?.name==='TimeoutError'?'fast_timeout':'fast_link_missing',
+          source:'MYP Cards',provider:'MYP exact browser',
+          message:String(error?.message||'Falha na busca exata da MYP.')
         });
       }
-
-      return res.status(200).json({
-        ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'Fast exact resolver',
-        message:'Nenhuma página MYP exata foi localizada nesta tentativa.'
-      });
     }
 
     // Known-link path: real product page only.
