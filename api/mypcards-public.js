@@ -565,6 +565,37 @@ async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliase
   return[];
 }
 
+async function fastSitemapCandidates(name){
+  const wantedSlug=slugify(name);
+  const wantedCompact=wantedSlug.replace(/[^a-z0-9]/g,'');
+  if(!wantedCompact)return[];
+  const found=[];
+  const accept=url=>{
+    if(!/\/pokemon\/produto\/\d+\//i.test(String(url||'')))return;
+    let slug='';
+    try{slug=new URL(url).pathname.split('/').filter(Boolean).pop()||''}catch{}
+    const compact=slug.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(compact===wantedCompact||compact.includes(wantedCompact)||wantedCompact.includes(compact))found.push(url);
+  };
+  try{
+    const root=await fetchText(ROOT+'/sitemap.xml',6500);
+    const first=xmlLocs(root);
+    first.forEach(accept);
+    if(!found.length){
+      const maps=first.filter(x=>/\.xml(?:\?|$)/i.test(x));
+      const preferred=[
+        ...maps.filter(x=>/pokemon|produto|product|card/i.test(x)),
+        ...maps.filter(x=>!/pokemon|produto|product|card/i.test(x))
+      ].slice(0,12);
+      const bodies=await Promise.all(preferred.map(async mapUrl=>{
+        try{return await fetchText(mapUrl,6500)}catch{return''}
+      }));
+      for(const body of bodies)if(body)xmlLocs(body).forEach(accept);
+    }
+  }catch{}
+  return[...new Set(found)].slice(0,24);
+}
+
 async function externalSearchCandidates({name,nameAliases=[],number,set}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const exact=names[0]||String(name||'').trim();
@@ -963,8 +994,12 @@ module.exports=async function handler(req,res){
   if(fast&&!directLink&&name&&number){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
-      const candidates=await externalSearchCandidates({name,nameAliases,number,set});
-      const checked=await Promise.all(candidates.slice(0,4).map(async candidate=>{
+      const [external,sitemap]=await Promise.all([
+        externalSearchCandidates({name,nameAliases,number,set}),
+        fastSitemapCandidates(name)
+      ]);
+      const candidates=[...new Set([...(external||[]),...(sitemap||[])])];
+      const checked=await Promise.all(candidates.slice(0,10).map(async candidate=>{
         try{
           const raw=await fetchText(candidate,6500);
           const identity=pageIdentity(raw);
