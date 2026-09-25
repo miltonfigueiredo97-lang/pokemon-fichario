@@ -458,22 +458,30 @@ function catalogNameMatches(name,card){
   if(qBase&&cBase&&(cBase===qBase||cBase.startsWith(qBase)||cBase.includes(qBase)||qBase.includes(cBase)))return true;
   return nameSimilarity(q,cn)>=.68||nameSimilarity(qBase,cBase)>=.72;
 }
-function requestedSpecificCatalogCards(name,number,setHint,language){
+function requestedSpecificCatalogCards(name,number,setHint,language,sourceCards=[]){
   const q=norm(name),n=norm(number),s=norm(setHint);
   const out=[];
 
-  // Exact requested card: MYP 144267 — Zekrom 114/114
-  // Celebrations: Classic Collection. Keep PT-BR identity because this is the
-  // marketplace printing the user is adding to the binder.
-  const zekromMatches=!q||q==="zekrom"||q.includes("zekrom");
-  const numberMatches=!n||["114","114 114","114/114","114 25","114/25"].some(x=>norm(x)===n);
-  const setMatches=!s||["celebrations classic collection","celebrations","ccc","cel25c","colecao classica","coleção clássica"].some(x=>{
+  const zekromMatches=q==="zekrom"||q.includes("zekrom");
+  const numberMatches=!n||["114","114 114"].includes(n);
+  const setMatches=!s||["celebrations classic collection","celebrations","ccc","cel25cc","colecao classica"].some(x=>{
     const xx=norm(x);return xx===s||xx.includes(s)||s.includes(xx);
   });
   const languageMatches=language==="all"||language==="pt-br";
 
   if(zekromMatches&&numberMatches&&setMatches&&languageMatches){
+    // Reuse the already-rendering Classic Collection artwork from the live
+    // catalog instead of inventing an image URL.
+    const base=(sourceCards||[]).find(c=>{
+      if(norm(c?.name)!=="zekrom")return false;
+      const set=norm([c?.setName,c?.setTitle,c?.setId].filter(Boolean).join(" "));
+      const num=[c?.number,c?.originalNumber,c?.internalNumber,...(Array.isArray(c?.numberAliases)?c.numberAliases:[])].filter(Boolean).join(" ");
+      return (set.includes("celebrations")&&set.includes("classic")) &&
+        (norm(num).includes("114")||String(c?.apiId||"").toLowerCase().includes("cel25cc"));
+    });
+
     out.push({
+      ...(base||{}),
       source:"MYP Cards",
       apiId:"myp-144267",
       marketInternalCode:144267,
@@ -483,16 +491,17 @@ function requestedSpecificCatalogCards(name,number,setHint,language){
       languageCode:"pt-br",
       language:"Português",
       setName:"Celebrations: Classic Collection",
-      setId:"cel25c",
+      setTitle:"Celebrations: Classic Collection",
+      setId:"cel25cc",
       number:"114/114",
       internalNumber:"114",
       originalNumber:"114/114",
-      numberAliases:["114","114/114","114/25"],
+      numberAliases:["114","114/114","CC021","21/25"],
       printedTotal:"114",
       rarity:"Classic Collection",
-      type:"Elétrico",
-      category:"Pokémon",
-      imageUrl:"/api/tcgdex-card-image?id=cel25c-114_A&lang=en",
+      type:base?.type||"Elétrico",
+      category:base?.category||"Pokémon",
+      imageUrl:cardImage(base)||base?.imageUrl||"",
       mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
       market:{
         source:"MYP Cards",
@@ -918,11 +927,22 @@ async function searchCards(options={}){
     const limitlessVariants=number&&raw
       ? await searchLimitlessVariants(raw,number,basePool,language)
       : [];
-    const specificCards=requestedSpecificCatalogCards(raw,number,setHint,language);
-    const sourcePool=[...specificCards,...basePool,...limitlessVariants];
+    const sourcePool=[...basePool,...limitlessVariants];
     let results=hardFilterCatalog(dedupe(sourcePool),{name:raw,number,setHint,setIds,language});
+
+    // Exact user-requested card: force it into the final result set AFTER all
+    // normal filters. Its artwork is cloned from the working Classic Collection
+    // Zekrom already returned by the catalog, then the PT-BR/MYP identity is applied.
+    const specificCards=requestedSpecificCatalogCards(raw,number,setHint,language,sourcePool);
+    const rankedResults=rank(results,{name:raw,number,setHint,language});
+    for(const special of specificCards){
+      const idx=rankedResults.findIndex(c=>String(c?.apiId||"")==="myp-144267");
+      if(idx>=0)rankedResults.splice(idx,1);
+      rankedResults.unshift(special);
+    }
+
     const maxResults=(setHint||hasGeneration)&&!raw&&!number?400:100;
-    catalogResults=rank(results,{name:raw,number,setHint,language}).slice(0,maxResults);
+    catalogResults=rankedResults.slice(0,maxResults);
     populateRarityFilter();renderCatalog();
 
     // V15.01: imagem é obrigatória no catálogo. Para coleções grandes, não
