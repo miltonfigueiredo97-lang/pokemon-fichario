@@ -631,24 +631,61 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const exact=names[0]||String(name||'').trim();
   if(!exact||!number)return[];
-  const q=['site:mypcards.com/pokemon/produto', '"'+exact+'"', '"'+number+'"', set?('"'+set+'"'):'']
-    .filter(Boolean).join(' ');
+
+  const queries=[...new Set([
+    [exact,number,set,'MYP Cards'].filter(Boolean).join(' '),
+    ['site:mypcards.com/pokemon/produto',exact,number].filter(Boolean).join(' ')
+  ])];
   const urls=[];
-  const searchUrls=[
-    'https://www.google.com/search?q='+encodeURIComponent(q),
-    'https://www.bing.com/search?q='+encodeURIComponent(q)
-  ];
-  const bodies=await Promise.all(searchUrls.map(async u=>{
-    try{return await fetchJina(u,5000)}catch{return''}
+
+  const extract=body=>{
+    const raw=String(body||'')
+      .replace(/&amp;/gi,'&')
+      .replace(/\\u0026/gi,'&');
+    const variants=[raw];
+    try{variants.push(decodeURIComponent(raw))}catch{}
+    for(const text of variants){
+      urls.push(...productUrlsFromText(text,names));
+      for(const m of text.matchAll(/https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\/[a-z0-9-]+/gi))urls.push(m[0]);
+      for(const m of text.matchAll(/https?%3A%2F%2F(?:www\.)?mypcards\.com%2Fpokemon%2Fproduto%2F\d+%2F[a-z0-9-]+/gi)){
+        try{urls.push(decodeURIComponent(m[0]))}catch{}
+      }
+    }
+  };
+
+  // V16.14: hit normal public search HTML first. Jina-wrapped search pages
+  // often timeout in serverless even though the same search resolves instantly
+  // from a browser/search engine.
+  await Promise.all(queries.flatMap(q=>[
+    'https://www.google.com/search?num=10&q='+encodeURIComponent(q),
+    'https://www.bing.com/search?count=10&q='+encodeURIComponent(q)
+  ]).map(async searchUrl=>{
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),4500);
+    try{
+      const rr=await fetch(searchUrl,{
+        headers:{
+          'Accept':'text/html,application/xhtml+xml',
+          'Accept-Language':'pt-BR,pt;q=.9,en;q=.6',
+          'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36'
+        },
+        redirect:'follow',
+        signal:controller.signal
+      });
+      if(rr.ok)extract(await rr.text());
+    }catch{}finally{clearTimeout(timer)}
   }));
-  for(const body of bodies){
-    if(!body)continue;
-    urls.push(...productUrlsFromText(body,names));
-    const raw=[...String(body).matchAll(/https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\/[a-z0-9-]+/gi)]
-      .map(m=>m[0]);
-    urls.push(...raw);
-  }
-  return [...new Set(urls)].slice(0,8);
+
+  if(urls.length)return [...new Set(urls.map(safeMypProductUrl).filter(Boolean))].slice(0,8);
+
+  // Reader fallback only if normal search HTML returned nothing.
+  const fallbackUrls=queries.map(q=>'https://www.bing.com/search?q='+encodeURIComponent(q));
+  const bodies=await Promise.all(fallbackUrls.map(async u=>{
+    try{return await fetchJina(u,4500)}catch{return''}
+  }));
+  bodies.forEach(extract);
+
+  return [...new Set(urls.map(safeMypProductUrl).filter(Boolean))].slice(0,8);
 }
 
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
