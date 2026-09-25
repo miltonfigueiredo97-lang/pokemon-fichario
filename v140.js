@@ -22,7 +22,9 @@
     favoritesOnly:false,
     binderSearchQuery:'',
     binderSearchMatches:[],
-    viewScope:'all'
+    viewScope:'all',
+    rarityFilters:new Set(),
+    priceAuditWatchSeq:0
   };
   window.PB14=V14;
 
@@ -79,7 +81,7 @@
   function binderViewScope(){
     return ['all','owned','missing'].includes(V14.viewScope)?V14.viewScope:'all';
   }
-  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!V14.binderSearchQuery}
+  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!V14.binderSearchQuery&&!(V14.rarityFilters?.size)}
   function binderForCard(card){return V14.binders.find(b=>b.id===card?.binder_id)||null}
   function currentBinderPages(){
     const b=activeBinder();
@@ -167,12 +169,78 @@
     if(scope==='missing')return cards.filter(c=>(c.collection_status||'owned')!=='owned');
     return cards;
   }
+  function rarityFilterTagsV1603(card){
+    const tags=new Map();
+    const add=(key,label)=>{if(key&&label)tags.set(key,label)};
+    const rarity=String(card?.rarity||'').trim();
+    const finish=String(card?.finish||'').trim();
+    if(rarity)add('rarity:'+nrm(rarity),rarity);
+    if(finish)add('finish:'+nrm(finish),finish);
+
+    const f=nrm(finish);
+    const r=nrm(rarity);
+    if(f==='normal'||f==='non holo'||f==='non-holo')add('group:non-holo','Non-Holo / Normal');
+    if((f.includes('holo')||f.includes('foil')||r.includes('holo'))&&!f.includes('reverse'))add('group:holo','Holo / Foil');
+    if(f.includes('reverse'))add('group:reverse','Reverse Holo');
+    return tags;
+  }
+  function cardMatchesRarityFiltersV1603(card){
+    if(!V14.rarityFilters?.size)return true;
+    const tags=rarityFilterTagsV1603(card);
+    for(const key of V14.rarityFilters)if(tags.has(key))return true;
+    return false;
+  }
+  function renderRarityFilterV1603(){
+    const box=byId('v1603RarityOptions');
+    const summary=byId('v1603RaritySummary');
+    if(!box||!summary)return;
+    const options=new Map();
+    for(const card of physicalCollection()){
+      for(const [key,label] of rarityFilterTagsV1603(card))options.set(key,label);
+    }
+    const sorted=[...options.entries()].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR',{sensitivity:'base'}));
+    // Drop selections that no longer exist in the active binder.
+    for(const key of [...V14.rarityFilters])if(!options.has(key))V14.rarityFilters.delete(key);
+    box.innerHTML=sorted.length?sorted.map(([key,label])=>
+      '<label><input type="checkbox" value="'+esc(key)+'" '+(V14.rarityFilters.has(key)?'checked':'')+'><span>'+esc(label)+'</span></label>'
+    ).join(''):'<small>Nenhuma raridade/acabamento cadastrado neste fichário.</small>';
+    summary.textContent=V14.rarityFilters.size?V14.rarityFilters.size+' selecionada'+(V14.rarityFilters.size===1?'':'s'):'Todas';
+    box.querySelectorAll('input[type="checkbox"]').forEach(input=>input.onchange=()=>{
+      if(input.checked)V14.rarityFilters.add(input.value);else V14.rarityFilters.delete(input.value);
+      currentPage=1;
+      renderBinder();
+      renderPagesGrid();
+      renderSummary();
+    });
+    const clear=byId('v1603RarityClear');
+    if(clear)clear.disabled=!V14.rarityFilters.size;
+  }
+  function ensureRarityFilterUIV1603(){
+    if(byId('v1603RarityFilter'))return;
+    const list=document.querySelector('#summaryPanel .status-filter-list');
+    if(!list)return;
+    const details=document.createElement('details');
+    details.id='v1603RarityFilter';
+    details.className='v1603-rarity-filter';
+    details.innerHTML='<summary><span>Raridade / acabamento</span><b id="v1603RaritySummary">Todas</b></summary>'+
+      '<div class="v1603-rarity-body"><div id="v1603RarityOptions" class="v1603-rarity-options"></div>'+
+      '<button id="v1603RarityClear" type="button" class="mini-btn">Limpar seleção</button></div>';
+    list.parentElement.appendChild(details);
+    byId('v1603RarityClear').onclick=()=>{
+      V14.rarityFilters.clear();
+      currentPage=1;
+      renderBinder();renderPagesGrid();renderSummary();
+    };
+    renderRarityFilterV1603();
+  }
+
   function orderedViewCards(){
     const physical=physicalCollection();
     let arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical)];
     if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
       arr=arr.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
     }
+    if(V14.rarityFilters?.size)arr=arr.filter(cardMatchesRarityFiltersV1603);
     const mode=activeSort();
     const direction=mode.endsWith('_desc')?-1:1;
     const baseMode=mode.replace(/_(asc|desc)$/,'');
@@ -422,6 +490,7 @@
         list.parentElement.insertBefore(label,list);
       }
     }
+    ensureRarityFilterUIV1603();
 
     document.querySelectorAll('[data-v14-close]').forEach(b=>b.onclick=()=>{
       const id=b.dataset.v14Close,d=byId(id);
@@ -497,7 +566,7 @@
   }
 
   function physicalManualViewV14(){
-    return !V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly;
+    return !V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size);
   }
   function binderSessionAnchorV14(page,pages=currentBinderPages()){
     pages=Math.max(1,+pages||1);
@@ -750,6 +819,7 @@
     V14.favoritesOnly=isFavorites();
     V14.viewScope='all';
     V14.binderSearchQuery='';
+    V14.rarityFilters.clear();
     currentPage=1;
     try{activeStatusFilter='all'}catch{}
     if(byId('v14BinderSearch'))byId('v14BinderSearch').value='';
@@ -1335,6 +1405,52 @@
     }
   }
 
+  async function generationPromoEntriesV1603(lang,seriesId,selectedSetId){
+    if(!seriesId)return{entries:[],sets:[]};
+    try{
+      const catalogRes=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const catalog=await catalogRes.json();
+      if(!catalog?.ok)return{entries:[],sets:[]};
+      const promoSets=(catalog.sets||[]).filter(s=>s?.isPromo&&String(s.id)!==String(selectedSetId));
+      if(!promoSets.length)return{entries:[],sets:[]};
+
+      const parts=await Promise.all(promoSets.map(async promo=>{
+        try{
+          const p=new URLSearchParams({
+            v:'30',strictLang:'1',all:'1',lang:String(lang||'pt'),set:String(promo.id)
+          });
+          const rr=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
+          const jj=await rr.json();
+          if(!jj?.ok)return null;
+          return{set:promo,entries:(jj.entries||[]).map(entry=>({
+            ...entry,
+            autoPromo:true,
+            promoOriginSetId:promo.id,
+            promoOriginSetName:promo.displayName||promo.name||promo.id
+          }))};
+        }catch(error){
+          console.warn('[Master Set promos]',promo?.id,error);
+          return null;
+        }
+      }));
+
+      const entries=[],seen=new Set(),sets=[];
+      for(const part of parts.filter(Boolean)){
+        sets.push({id:part.set.id,name:part.set.displayName||part.set.name||part.set.id,count:part.entries.length});
+        for(const entry of part.entries){
+          const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+          if(seen.has(key))continue;
+          seen.add(key);
+          entries.push(entry);
+        }
+      }
+      return{entries,sets};
+    }catch(error){
+      console.warn('[Master Set promos da geração]',error);
+      return{entries:[],sets:[]};
+    }
+  }
+
   async function loadMasterPreview(lang,setId){
     const epoch=V14.masterEpoch;
     byId('v14SetStatus').textContent='Carregando cartas e variantes do Master Set…';
@@ -1395,10 +1511,30 @@
           anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch('/api/master-set?v=28&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetch('/api/master-set?v=30&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
+
+        // V16.03: every normal Master Set automatically includes the official
+        // promo collection(s) of the selected generation. Promo sets themselves
+        // are not duplicated, and every entry still obeys the chosen language.
+        if(!j.set?.isPromoSet){
+          const seriesId=byId('v14SeriesSelect')?.value||'';
+          const promos=await generationPromoEntriesV1603(lang,seriesId,setId);
+          if(epoch!==V14.masterEpoch)return;
+          const seen=new Set((j.entries||[]).map(entry=>[entry.apiId,entry.variantKey,entry.languageCode].join('|')));
+          let added=0;
+          for(const entry of promos.entries){
+            const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+            if(seen.has(key))continue;
+            seen.add(key);
+            j.entries.push(entry);
+            added++;
+          }
+          j.autoPromoSets=promos.sets;
+          j.autoPromoEntries=added;
+        }
       }
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
       const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
@@ -1411,7 +1547,7 @@
       const componentBreakdown=complete&&Array.isArray(j.components)
         ?j.components.filter(c=>c.entries>0).map(c=>c.name+': '+c.entries).join(' · ')
         :'';
-      byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,componentText,componentBreakdown,j.entries.length+' entradas/variantes'].filter(Boolean).join(' · ');
+      byId('v14MasterMeta').textContent=[j.set.series,j.set.releaseDate,componentText,componentBreakdown,j.entries.length+' entradas/variantes',(!complete&&j.autoPromoEntries?j.autoPromoEntries+' promo(s) oficial(is) incluída(s) automaticamente':'')].filter(Boolean).join(' · ');
       const notice=byId('v14PromoNotice');
       if(notice){
         if(complete){
@@ -1422,7 +1558,9 @@
         }else if(j.set.isPromoSet){
           notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
         }else{
-          notice.textContent='Promos não são misturadas automaticamente com esta coleção. Para cadastrá-las, escolha a coleção de PROMOS da mesma geração ou adicione depois pela busca, manualmente ou pelo scanner.';
+          notice.textContent=j.autoPromoEntries
+            ?'Este Master Set já inclui automaticamente '+j.autoPromoEntries+' entrada(s) promocional(is) oficial(is) da mesma geração, no idioma selecionado. Você não precisa criar um fichário separado de PROMOS.'
+            :'Não encontrei uma coleção oficial de promos separada nesta geração para acrescentar automaticamente.';
         }
         notice.classList.remove('hidden');
       }
@@ -1976,7 +2114,7 @@
   }
 
   function renderBinderV14(){
-    const physicalManual=!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly;
+    const physicalManual=!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size);
 
     if(physicalManual){
       const pages=Math.max(1,currentBinderPages());
@@ -2082,6 +2220,7 @@
     if(byId('totalValueLabel'))byId('totalValueLabel').textContent='Valor '+priceModeLabel(currentPriceMode())+' · '+scopeLabel;
     if(byId('totalValue'))byId('totalValue').textContent=money(value);
     renderUnpricedAuditV1466();
+    renderRarityFilterV1603();
   }
 
   function setStatusFilterV14(status){
@@ -2612,17 +2751,7 @@
 
   function rewireFilteredPriceButton(){
     const old=byId('v12UpdatePrices');
-    if(!old)return;
-    if(old.dataset.v1477==='1'){
-      resumeVisiblePriceWatch();
-      return;
-    }
-    const b=old.cloneNode(true);
-    b.dataset.v1477='1';
-    b.textContent='↻ Atualizar cotações';
-    old.replaceWith(b);
-    b.addEventListener('click',openPriceScopeDialogV1477);
-    resumeVisiblePriceWatch();
+    if(old){old.hidden=true;old.style.display='none'}
   }
 
   function manualMoneyV1469(value){
@@ -4082,19 +4211,21 @@
     ].some(v=>Number(v||0)>0);
   }
 
+  function priceAuditBinderCardsV1603(binderId='all'){
+    let cards=[...V14.allCards];
+    if(binderId&&binderId!=='all')cards=cards.filter(card=>String(card.binder_id||'')===String(binderId));
+    return uniquePriceCards(cards);
+  }
+
   function unpricedCardsV1466(){
-    let cards;
-    if(isGeneral())cards=[...V14.allCards];
-    else if(isFavorites())cards=V14.allCards.filter(c=>!!c.is_favorite);
-    else cards=V14.allCards.filter(c=>String(c.binder_id||'')===String(V14.activeBinderId||''));
-    return cards
-      .filter(c=>!hasBrazilQuoteV1466(c))
+    return priceAuditBinderCardsV1603('all')
+      .filter(card=>!hasBrazilQuoteV1466(card))
       .sort((a,b)=>{
+        const binder=String(binderForCard(a)?.name||'').localeCompare(String(binderForCard(b)?.name||''),'pt-BR');
+        if(binder)return binder;
         const set=String(a.set_name||'').localeCompare(String(b.set_name||''),'pt-BR');
         if(set)return set;
-        const an=numberValue(a.number),bn=numberValue(b.number);
-        if(an!==bn)return an-bn;
-        return String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
+        return numberValue(a.number)-numberValue(b.number)||String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
       });
   }
 
@@ -4106,67 +4237,29 @@
       const source=pair.length>1?pair.shift():'';
       const code=pair.join(':')||part;
       const label=({
-        timeout:'tempo esgotado',
-        not_found:'não encontrada',
-        product_not_found:'produto não encontrado',
-        wrong_product:'produto/link incorreto',
-        variant_not_found:'acabamento/condição não encontrado',
-        no_price_data:'sem ofertas válidas',
-        price_connector_unavailable:'conector indisponível',
-        cloudflare_blocked:'bloqueio Cloudflare',
-        browser_error:'erro no navegador',
-        upstream_error:'erro na consulta',
-        fast_timeout:'tempo esgotado',
-        fast_unavailable:'consulta indisponível'
+        timeout:'tempo esgotado',not_found:'não encontrada',product_not_found:'produto não encontrado',
+        wrong_product:'produto/link incorreto',variant_not_found:'acabamento/condição não encontrado',
+        no_price_data:'sem ofertas válidas',price_connector_unavailable:'conector indisponível',
+        cloudflare_blocked:'bloqueio Cloudflare',browser_error:'erro no navegador',
+        upstream_error:'erro na consulta',fast_timeout:'tempo esgotado',fast_unavailable:'consulta indisponível'
       })[code]||code.replace(/_/g,' ');
       return (source?source.toUpperCase()+': ':'')+label;
     });
     const history=friendly.length?' · última tentativa: '+friendly.join(' · '):'';
-    const hasSavedQuote=Number(card?.price_min||card?.price_avg||card?.price_max||card?.myp_price_min||card?.myp_price_avg||card?.myp_price_max||card?.liga_price_min||card?.liga_price_avg||card?.liga_price_max||0)>0;
+    const hasSavedQuote=hasBrazilQuoteV1466(card);
     if(!hasSavedQuote&&card?.price_processing_at)return 'ATUALIZANDO'+history;
     if(!hasSavedQuote&&card?.price_pending){
       const hasMyp=/mypcards\.com/i.test(String(card?.myp_price_link||card?.price_br_link||card?.price_link||''));
       return 'NA FILA · '+(hasMyp?'link MYP localizado':'procurando link MYP')+history;
     }
+    if(hasSavedQuote)return 'Cotação salva';
     if(friendly.length)return 'FORA DA FILA · '+friendly.join(' · ');
     if(Number(card?.price_attempts||0)>0)return 'FORA DA FILA · tentativas concluídas sem cotação salva';
     return 'Sem cotação salva no app';
   }
 
-  function ensureUnpricedDialogV1468(){
-    let d=byId('v1468UnpricedDialog');
-    if(d)return d;
-    d=document.createElement('dialog');
-    d.id='v1468UnpricedDialog';
-    d.className='v1468-unpriced-dialog';
-    d.innerHTML=`<div class="v1468-unpriced-shell">
-      <header class="v1468-unpriced-head">
-        <div><p class="kicker">AUDITORIA DE PREÇOS</p><div class="v1468-unpriced-title"><h2>Cartas sem cotação salva</h2><span id="v1468UnpricedTotal">0</span></div><p id="v1468UnpricedSubtitle" class="muted"></p></div>
-        <button id="v1468UnpricedClose" class="icon-only" type="button" aria-label="Fechar">×</button>
-      </header>
-      <div class="v1468-unpriced-tools">
-        <input id="v1468UnpricedSearch" type="search" placeholder="Buscar nome, número ou coleção">
-        <select id="v1468UnpricedProblem">
-          <option value="all">Todos os problemas</option>
-          <option value="timeout">Tempo esgotado</option>
-          <option value="not_found">Não encontrada</option>
-          <option value="variant">Acabamento / condição</option>
-          <option value="queued">Na fila</option>
-          <option value="other">Outros</option>
-        </select>
-      </div>
-      <div id="v1468UnpricedStats" class="v1468-unpriced-stats"></div>
-      <div id="v1468UnpricedList" class="v1468-unpriced-list"></div>
-    </div>`;
-    document.body.appendChild(d);
-    byId('v1468UnpricedClose').onclick=()=>d.close();
-    d.addEventListener('click',e=>{if(e.target===d)d.close()});
-    byId('v1468UnpricedSearch').addEventListener('input',renderUnpricedPopupV1468);
-    byId('v1468UnpricedProblem').addEventListener('change',renderUnpricedPopupV1468);
-    return d;
-  }
-
   function unpricedProblemKindV1468(card){
+    if(hasBrazilQuoteV1466(card))return 'priced';
     if(card?.price_processing_at||card?.price_pending)return 'queued';
     const raw=String(card?.price_last_error||'').toLowerCase();
     if(raw.includes('timeout'))return 'timeout';
@@ -4175,70 +4268,181 @@
     return 'other';
   }
 
-  function renderUnpricedPopupV1468(){
-    const d=ensureUnpricedDialogV1468();
-    const all=unpricedCardsV1466();
-    const query=norm(byId('v1468UnpricedSearch')?.value||'');
-    const problem=byId('v1468UnpricedProblem')?.value||'all';
-    const cards=all.filter(card=>{
-      if(problem!=='all'&&unpricedProblemKindV1468(card)!==problem)return false;
-      if(!query)return true;
-      return norm([card.name,card.number,card.set_name,card.finish,binderForCard(card)?.name,priceProblemTextV1466(card)].filter(Boolean).join(' ')).includes(query);
-    });
+  function ensureUnpricedDialogV1468(){
+    let d=byId('v1468UnpricedDialog');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v1468UnpricedDialog';
+    d.className='v1468-unpriced-dialog v1603-price-audit-dialog';
+    d.innerHTML=`<div class="v1468-unpriced-shell">
+      <header class="v1468-unpriced-head">
+        <div><p class="kicker">COTAÇÕES</p><div class="v1468-unpriced-title"><h2>Cartas para ajustar</h2><span id="v1468UnpricedTotal">0</span></div><p id="v1468UnpricedSubtitle" class="muted"></p></div>
+        <button id="v1468UnpricedClose" class="icon-only" type="button" aria-label="Fechar">×</button>
+      </header>
+      <div class="v1603-price-audit-filters">
+        <label><span>Fichário</span><select id="v1603PriceBinder"></select></label>
+        <label><span>Valores</span><select id="v1603PriceState">
+          <option value="all">Todas as cartas</option>
+          <option value="unpriced" selected>Somente sem valores</option>
+          <option value="priced">Somente com valores</option>
+        </select></label>
+        <label><span>Situação</span><select id="v1468UnpricedProblem">
+          <option value="all">Todas as situações</option>
+          <option value="timeout">Tempo esgotado</option>
+          <option value="not_found">Não encontrada</option>
+          <option value="variant">Acabamento / condição</option>
+          <option value="queued">Na fila / atualizando</option>
+          <option value="other">Outros</option>
+        </select></label>
+        <label class="v1603-price-audit-search"><span>Busca</span><input id="v1468UnpricedSearch" type="search" placeholder="Nome, número ou coleção"></label>
+      </div>
+      <div class="v1603-price-audit-actions">
+        <button id="v1603UpdateFilteredPrices" class="btn btn-primary" type="button">↻ Atualizar conforme filtros</button>
+        <span id="v1603PriceAuditProgress" class="muted"></span>
+      </div>
+      <div id="v1468UnpricedStats" class="v1468-unpriced-stats"></div>
+      <div id="v1468UnpricedList" class="v1468-unpriced-list"></div>
+    </div>`;
+    document.body.appendChild(d);
+    byId('v1468UnpricedClose').onclick=()=>d.close();
+    d.addEventListener('click',e=>{if(e.target===d)d.close()});
+    for(const id of ['v1468UnpricedSearch','v1468UnpricedProblem','v1603PriceBinder','v1603PriceState']){
+      byId(id)?.addEventListener(id==='v1468UnpricedSearch'?'input':'change',renderUnpricedPopupV1468);
+    }
+    byId('v1603UpdateFilteredPrices').onclick=updateFilteredAuditPricesV1603;
+    return d;
+  }
 
-    byId('v1468UnpricedTotal').textContent=String(all.length);
-    byId('v1468UnpricedSubtitle').textContent=all.length
-      ? all.length+' carta'+(all.length===1?'':'s')+' sem cotação salva no app neste fichário.'
-      : 'Todas as cartas deste fichário possuem cotação.';
-    byId('v1468UnpricedStats').textContent=cards.length===all.length?cards.length+' exibidas':cards.length+' de '+all.length+' exibidas';
+  function populatePriceAuditBindersV1603(){
+    const select=byId('v1603PriceBinder');if(!select)return;
+    const old=select.value||'all';
+    select.innerHTML='<option value="all">Todos os fichários</option>'+
+      V14.binders.map(b=>'<option value="'+esc(b.id)+'">'+esc((b.binder_kind==='wishlist'?'Desejos · ':'')+(b.name||'Fichário'))+'</option>').join('');
+    select.value=[...select.options].some(o=>o.value===old)?old:'all';
+  }
+
+  function priceAuditFilteredCardsV1603(){
+    const binderId=byId('v1603PriceBinder')?.value||'all';
+    const state=byId('v1603PriceState')?.value||'unpriced';
+    const problem=byId('v1468UnpricedProblem')?.value||'all';
+    const query=nrm(byId('v1468UnpricedSearch')?.value||'');
+    return priceAuditBinderCardsV1603(binderId).filter(card=>{
+      const priced=hasBrazilQuoteV1466(card);
+      if(state==='unpriced'&&priced)return false;
+      if(state==='priced'&&!priced)return false;
+      if(problem!=='all'&&unpricedProblemKindV1468(card)!==problem)return false;
+      if(query&&!nrm([card.name,card.number,card.set_name,card.finish,card.rarity,binderForCard(card)?.name,priceProblemTextV1466(card)].filter(Boolean).join(' ')).includes(query))return false;
+      return true;
+    }).sort((a,b)=>{
+      const ba=String(binderForCard(a)?.name||''),bb=String(binderForCard(b)?.name||'');
+      return ba.localeCompare(bb,'pt-BR')||String(a.set_name||'').localeCompare(String(b.set_name||''),'pt-BR')||
+        numberValue(a.number)-numberValue(b.number)||String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
+    });
+  }
+
+  function renderUnpricedPopupV1468(){
+    ensureUnpricedDialogV1468();
+    populatePriceAuditBindersV1603();
+    const all=priceAuditBinderCardsV1603(byId('v1603PriceBinder')?.value||'all');
+    const cards=priceAuditFilteredCardsV1603();
+    const unpriced=all.filter(card=>!hasBrazilQuoteV1466(card)).length;
+    const priced=all.length-unpriced;
+
+    byId('v1468UnpricedTotal').textContent=String(cards.length);
+    byId('v1468UnpricedSubtitle').textContent=all.length+' carta(s) no escopo · '+unpriced+' sem valor · '+priced+' com valor.';
+    byId('v1468UnpricedStats').textContent=cards.length+' carta(s) correspondem aos filtros atuais.';
 
     const list=byId('v1468UnpricedList');
     list.innerHTML='';
     if(!cards.length){
-      list.innerHTML='<div class="v1468-unpriced-empty"><strong>Nenhuma carta encontrada</strong><small>Ajuste a busca ou o filtro.</small></div>';
-      return d;
+      list.innerHTML='<div class="v1468-unpriced-empty"><strong>Nenhuma carta encontrada</strong><small>Ajuste os filtros acima.</small></div>';
+      return ensureUnpricedDialogV1468();
     }
 
     for(const card of cards){
       const row=document.createElement('button');
-      row.type='button';
-      row.className='v1468-unpriced-row';
-      const image=cardImage(card);
-      const binder=binderForCard(card);
+      row.type='button';row.className='v1468-unpriced-row';
+      const image=cardImage(card),binder=binderForCard(card);
+      const min=Number(card.price_min||card.myp_price_min||card.liga_price_min||0);
+      const avg=Number(card.price_avg||card.myp_price_avg||card.liga_price_avg||0);
       row.innerHTML=
         '<span class="v1468-unpriced-thumb">'+(image?'<img src="'+esc(image)+'" alt="" loading="lazy">':'?')+'</span>'+
         '<span class="v1468-unpriced-info"><span class="v1468-unpriced-name"><strong>'+esc(card.name||'Carta sem nome')+'</strong><b>'+esc(card.number?'#'+card.number:'Sem número')+'</b></span>'+
-        '<small>'+esc([card.set_name||'Coleção',card.finish||'Normal',isGeneral()&&binder?.name?binder.name:''].filter(Boolean).join(' · '))+'</small>'+
-        '<em>'+esc(priceProblemTextV1466(card))+'</em></span>'+
+        '<small>'+esc([binder?.name||'Fichário',card.set_name||'Coleção',card.finish||'Normal',card.rarity||''].filter(Boolean).join(' · '))+'</small>'+
+        '<em>'+esc(priceProblemTextV1466(card))+(hasBrazilQuoteV1466(card)?' · '+esc(money(min||avg)):'')+'</em></span>'+
         '<span class="v1468-unpriced-open"><small>Conferir</small><b>›</b></span>';
-      row.onclick=()=>{
-        d.close();
-        byId('summaryPanel')?.classList.remove('mobile-open');
-        openExistingCard(card,true);
-      };
+      row.onclick=()=>{ensureUnpricedDialogV1468().close();byId('summaryPanel')?.classList.remove('mobile-open');openExistingCard(card,true)};
       list.appendChild(row);
     }
-    return d;
+    return ensureUnpricedDialogV1468();
+  }
+
+  async function syncPriceAuditRowsV1603(){
+    const ids=V14.allCards.map(c=>c.id).filter(Boolean);
+    if(!ids.length||!currentUser?.id)return;
+    for(let i=0;i<ids.length;i+=180){
+      const {data,error}=await db.from('pokemon_cards')
+        .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error')
+        .eq('user_id',currentUser.id).in('id',ids.slice(i,i+180));
+      if(error)throw error;
+      for(const row of data||[])applyLocalPricePatch(row.id,row);
+    }
+  }
+
+  async function watchAuditPriceBatchV1603(cards){
+    const seq=++V14.priceAuditWatchSeq;
+    const ids=uniquePriceCards(cards).map(c=>c.id).filter(Boolean);
+    const progress=byId('v1603PriceAuditProgress');
+    const started=Date.now();
+    while(seq===V14.priceAuditWatchSeq&&Date.now()-started<10*60_000){
+      const {data}=await db.from('pokemon_cards')
+        .select('id,price_pending,price_processing_at,price_min,price_avg,price_max,myp_price_min,myp_price_avg,myp_price_max,liga_price_min,liga_price_avg,liga_price_max,price_last_error')
+        .eq('user_id',currentUser.id).in('id',ids);
+      if(Array.isArray(data)){
+        data.forEach(row=>applyLocalPricePatch(row.id,row));
+        const pending=data.filter(row=>row.price_pending).length;
+        const priced=data.filter(row=>hasBrazilQuoteV1466(row)).length;
+        if(progress)progress.textContent=pending?pending+' na fila/processando · '+priced+' com valor':'Atualização deste lote concluída.';
+        renderUnpricedPopupV1468();
+        renderUnpricedAuditV1466();
+        if(!pending)break;
+      }
+      await sleep(2200);
+    }
+  }
+
+  async function updateFilteredAuditPricesV1603(){
+    const cards=priceAuditFilteredCardsV1603();
+    if(!cards.length)return toast('Nenhuma carta corresponde aos filtros.');
+    const button=byId('v1603UpdateFilteredPrices');
+    const progress=byId('v1603PriceAuditProgress');
+    busy(button,true,'Colocando '+cards.length+' na fila…');
+    try{
+      const unpricedOnly=(byId('v1603PriceState')?.value||'')==='unpriced';
+      await markCardsForPrice(cards,unpricedOnly?600:250);
+      queueBackgroundPrices(cards,{front:unpricedOnly});
+      kickPriceWorkerNow();
+      setTimeout(kickPriceWorkerNow,1200);
+      if(progress)progress.textContent=cards.length+' carta(s) colocadas na fila.';
+      renderUnpricedPopupV1468();
+      watchAuditPriceBatchV1603(cards).catch(console.warn);
+    }catch(error){
+      console.error('[Auditoria de preços]',error);
+      toast('Não consegui iniciar a atualização deste filtro.');
+    }finally{
+      busy(button,false);
+    }
   }
 
   async function openUnpricedPopupV1468(){
     const d=ensureUnpricedDialogV1468();
+    populatePriceAuditBindersV1603();
+    if(byId('v1603PriceBinder'))byId('v1603PriceBinder').value='all';
+    if(byId('v1603PriceState'))byId('v1603PriceState').value='unpriced';
+    if(byId('v1468UnpricedProblem'))byId('v1468UnpricedProblem').value='all';
     byId('v1468UnpricedStats').textContent='Sincronizando cotações…';
     if(!d.open)d.showModal();
-    try{
-      const ids=V14.allCards.map(c=>c.id).filter(Boolean);
-      if(ids.length&&currentUser?.id){
-        for(let i=0;i<ids.length;i+=180){
-          const {data,error}=await db.from('pokemon_cards')
-            .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error')
-            .eq('user_id',currentUser.id).in('id',ids.slice(i,i+180));
-          if(error)throw error;
-          for(const row of data||[])applyLocalPricePatch(row.id,row);
-        }
-      }
-    }catch(error){
-      console.warn('[Sem cotação · sincronização]',error);
-    }
+    try{await syncPriceAuditRowsV1603()}catch(error){console.warn('[Cotações · sincronização]',error)}
     renderUnpricedAuditV1466();
     renderUnpricedPopupV1468();
     setTimeout(()=>byId('v1468UnpricedSearch')?.focus(),80);
@@ -4247,11 +4451,11 @@
   function renderUnpricedAuditV1466(){
     const details=byId('v1411Group_unpriced');
     if(!details)return;
-    const count=unpricedCardsV1466().length;
+    const count=V14.allCards.filter(card=>!hasBrazilQuoteV1466(card)).length;
     const badge=details.querySelector('[data-v1466-unpriced-count]');
     const hint=details.querySelector('[data-v1466-unpriced-hint]');
     if(badge)badge.textContent=String(count);
-    if(hint)hint.textContent=count===1?'1 carta para conferir':count+' cartas para conferir';
+    if(hint)hint.textContent=count===1?'1 carta sem valor em todos os fichários':count+' cartas sem valor em todos os fichários';
   }
 
   function setCleanBinderModeV1498(enabled){
@@ -4365,6 +4569,9 @@
   function organizeSummaryActionsV14(){
     const root=document.querySelector('#summaryPanel .action-grid');
     if(!root)return;
+    byId('v1411Group_prices')?.remove();
+    const legacyPriceButton=byId('v12UpdatePrices');
+    if(legacyPriceButton){legacyPriceButton.hidden=true;legacyPriceButton.style.display='none'}
     ensureCleanBinderButtonV1498();
     if(!byId('v1500ExportPdf')){
       const pdf=document.createElement('button');
@@ -4377,8 +4584,7 @@
     }
 
     const defs=[
-      {id:'prices',icon:'↻',title:'Preços',hint:'Atualizar cotações',items:['v12UpdatePrices']},
-      {id:'unpriced',icon:'!',title:'Sem cotação salva',hint:'Cartas para conferir',items:[]},
+      {id:'unpriced',icon:'!',title:'Cotações',hint:'Cartas para ajustar e atualizar',items:[]},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
       {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'PDF, CSV e impressão',items:['v1500ExportPdf','btnExport','btnPrint']},
       {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
