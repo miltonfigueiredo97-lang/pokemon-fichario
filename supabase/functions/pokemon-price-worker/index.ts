@@ -474,7 +474,7 @@ Deno.serve(async(req:Request)=>{
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
         price_priority:Math.max(10,Number(card.price_priority||0)-1),
         price_last_error:errorDetail||errorCode||"temporary_error",
-        price_progress:0,price_progress_stage:"queued",price_progress_updated_at:new Date().toISOString()
+        price_progress:0,price_progress_stage:"retry_wait",price_progress_updated_at:new Date().toISOString()
       };
       if(keepMypLink)retryPatch.myp_price_link=keepMypLink;
       const {error}=await db.from("pokemon_cards").update(retryPatch).eq("id",card.id);
@@ -492,7 +492,7 @@ Deno.serve(async(req:Request)=>{
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
         price_priority:Math.max(10,Number(card.price_priority||0)-1),
         price_last_error:message,
-        price_progress:0,price_progress_stage:"queued",price_progress_updated_at:new Date().toISOString()
+        price_progress:0,price_progress_stage:"retry_wait",price_progress_updated_at:new Date().toISOString()
       }).eq("id",card.id);
       retried++;
       return {state:"retry"};

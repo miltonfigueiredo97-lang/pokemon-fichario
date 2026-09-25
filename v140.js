@@ -2471,10 +2471,12 @@
     // Atomic predicates below prevent a second click/tab/device from resetting
     // a queued/processing job (attempts, lock timestamp, stage) while it runs.
     const now=new Date().toISOString();
+    const batchId=(globalThis.crypto?.randomUUID?.()||('price-'+Date.now()+'-'+Math.random().toString(36).slice(2)));
     const patch={
       price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
       price_attempts:0,price_priority:priority,price_last_error:null,
-      price_progress:0,price_progress_stage:'queued',price_progress_updated_at:now
+      price_progress:0,price_progress_stage:'queued',price_progress_updated_at:now,
+      price_batch_id:batchId,price_batch_started_at:now
     };
     const enqueuedIds=new Set();
     for(let i=0;i<list.length;i+=150){
@@ -2495,6 +2497,7 @@
         applyLocalPricePatch(card.id,patch);
       }
     }
+    list.priceBatchId=batchId;
     return list;
   }
 
@@ -2562,7 +2565,7 @@
       const started=Date.now();
       while(!watch.cancelled&&Date.now()-started<8*60_000){
         const {data,error}=await db.from('pokemon_cards')
-          .select('id,price_pending,price_processing_at,price_progress,price_progress_stage,price_progress_updated_at,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_last_error')
+          .select('id,price_pending,price_processing_at,price_progress,price_progress_stage,price_progress_updated_at,price_batch_id,price_batch_started_at,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_last_error')
           .eq('user_id',currentUser.id)
           .in('id',ids);
 
@@ -2594,7 +2597,7 @@
         const ids=visible.map(c=>c.id).filter(Boolean);
         if(ids.length){
           const {data}=await db.from('pokemon_cards')
-            .select('id,price_pending,price_processing_at,price_progress,price_progress_stage,price_progress_updated_at,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_last_error,price_attempts')
+            .select('id,price_pending,price_processing_at,price_progress,price_progress_stage,price_progress_updated_at,price_batch_id,price_batch_started_at,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,price_checked_at,price_last_error,price_attempts')
             .eq('user_id',currentUser.id)
             .in('id',ids);
           if(Array.isArray(data)){
@@ -4244,7 +4247,8 @@
     // Active backend state always wins over an older saved quote. A refresh of
     // an already-priced card must visibly be queued/processing until THIS job ends.
     if(active.has(raw)||card?.price_processing_at)return{key:'processing',rank:0,label:'PROCESSANDO'};
-    if(raw==='queued'||card?.price_pending)return{key:'queued',rank:1,label:'NA FILA'};
+    if(raw==='retry_wait')return{key:'retrying',rank:1,label:'TENTANDO NOVAMENTE'};
+    if(raw==='queued'||card?.price_pending)return{key:'queued',rank:2,label:'NA FILA'};
     if(raw==='failed'&&card?.price_pending===false)return{key:'failed',rank:2,label:'ERRO'};
     if(raw==='complete'&&hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'CONCLUÍDA'};
     if(hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'COM VALOR'};
@@ -4264,18 +4268,21 @@
     const key=priceAuditFilterKeyV1606();
     if(V14.priceAuditBatch?.total)return;
 
-    // V16.13: when there is no explicit update batch, the progress card mirrors
-    // the CURRENT filtered scope. Failed rows remain visible in the denominator
-    // instead of making the UI fall back to the old "empty queue = 100%" case.
-    const ids=(cards||[]).map(card=>card.id).filter(Boolean);
-    const unique=[...new Set(ids)];
+    // V16.15: progress follows the persisted refresh batch, not the mutable
+    // "sem valor" filter. Otherwise every success disappears from the denominator
+    // and the counter can remain at 0 forever.
+    const candidates=(cards||[]).filter(Boolean);
+    const activeBatchCard=candidates.find(card=>card.price_pending&&card.price_batch_id)
+      ||candidates.find(card=>card.price_batch_id)
+      ||V14.allCards.find(card=>card.price_pending&&card.price_batch_id);
+    const batchId=activeBatchCard?.price_batch_id||'';
+    let scope=batchId
+      ?V14.allCards.filter(card=>card.price_batch_id===batchId)
+      :candidates;
+    const ids=[...new Set(scope.map(card=>card.id).filter(Boolean))];
     V14.priceAuditQueueSnapshot={
-      key,
-      ids:unique,
-      total:unique.length,
-      started:V14.priceAuditQueueSnapshot?.key===key
-        ?(V14.priceAuditQueueSnapshot.started||Date.now())
-        :Date.now()
+      key,batchId,ids,total:ids.length,
+      started:activeBatchCard?.price_batch_started_at||V14.priceAuditQueueSnapshot?.started||Date.now()
     };
   }
 
@@ -4285,7 +4292,7 @@
     if(!snapshot?.total)return{total:0,done:0,processing:0,queued:0,priced:0,failed:0,pct:0};
 
     const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
-    let done=0,processing=0,queued=0,priced=0,failed=0;
+    let done=0,processing=0,retrying=0,queued=0,priced=0,failed=0;
     const activeStages=new Set([
       'claimed','resolving_identity','identity_ready','link_ready','querying_sources',
       'discovering_myp_link','searching_myp','myp_link_found','reading_myp',
@@ -4304,6 +4311,7 @@
         failed++;continue;
       }
       if(activeStages.has(stage)||card.price_processing_at){processing++;continue}
+      if(stage==='retry_wait'){retrying++;continue}
       if(card.price_pending||stage==='queued'){queued++;continue}
       queued++;
     }
@@ -4312,7 +4320,7 @@
     // Percentage means "price successfully updated and saved", not merely
     // "worker stopped touching this row". Failed jobs never inflate progress.
     const pct=total?Math.max(0,Math.min(100,Math.round((priced/total)*100))):0;
-    return{total,done:priced,processing,queued,priced,failed,pct};
+    return{total,done:priced,processing,retrying,queued,priced,failed,pct};
   }
 
   function priceAuditCardProgressV1606(card){
@@ -4320,6 +4328,7 @@
     if(hasBrazilQuoteV1466(card)&&stage==='complete')return{pct:100,label:'100%',kind:'priced'};
     if(stage==='failed'&&card?.price_pending===false)return{pct:0,label:'RETRY',kind:'queued'};
     if(card?.price_processing_at||priceAuditStageV1604(card).key==='processing')return{pct:0,label:'PROCESSANDO',kind:'processing'};
+    if(stage==='retry_wait')return{pct:0,label:'NOVA TENTATIVA',kind:'retrying'};
     return{pct:0,label:'0%',kind:'queued'};
   }
 
@@ -4328,6 +4337,7 @@
     const stage=String(card?.price_progress_stage||'').toLowerCase();
     const labels={
       queued:'Aguardando worker',
+      retry_wait:'Aguardando a próxima estratégia de busca',
       claimed:'Worker iniciou esta carta',
       resolving_identity:'Localizando/confirmando a impressão',
       identity_ready:'Impressão identificada',
@@ -4390,7 +4400,8 @@
     meta.textContent=[
       q.priced+'/'+q.total+' atualizadas com valor',
       q.processing+' processando agora',
-      q.queued+' aguardando',
+      q.retrying?q.retrying+' aguardando nova tentativa':'',
+      q.queued+' ainda não iniciadas',
       q.failed?q.failed+' erros':''
     ].filter(Boolean).join(' · ');
   }
@@ -4401,7 +4412,7 @@
     if(!dialog?.open){V14.priceAuditPollTimer=0;return}
     try{
       const {data,error}=await db.from('pokemon_cards')
-        .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error,price_progress,price_progress_stage,price_progress_updated_at')
+        .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error,price_progress,price_progress_stage,price_progress_updated_at,price_batch_id,price_batch_started_at')
         .eq('user_id',currentUser.id);
       if(!error&&Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
@@ -4484,7 +4495,7 @@
     if(!ids.length||!currentUser?.id)return;
     for(let i=0;i<ids.length;i+=180){
       const {data,error}=await db.from('pokemon_cards')
-        .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error,price_progress,price_progress_stage,price_progress_updated_at')
+        .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error,price_progress,price_progress_stage,price_progress_updated_at,price_batch_id,price_batch_started_at')
         .eq('user_id',currentUser.id).in('id',ids.slice(i,i+180));
       if(error)throw error;
       for(const row of data||[])applyLocalPricePatch(row.id,row);
@@ -4501,21 +4512,22 @@
 
     while(seq===V14.priceAuditWatchSeq&&Date.now()-started<15*60_000){
       const {data}=await db.from('pokemon_cards')
-        .select('id,price_pending,price_processing_at,price_progress,price_progress_stage,price_progress_updated_at,price_min,price_avg,price_max,myp_price_min,myp_price_avg,myp_price_max,liga_price_min,liga_price_avg,liga_price_max,price_last_error')
+        .select('id,price_pending,price_processing_at,price_progress,price_progress_stage,price_progress_updated_at,price_batch_id,price_batch_started_at,price_min,price_avg,price_max,myp_price_min,myp_price_avg,myp_price_max,liga_price_min,liga_price_avg,liga_price_max,price_last_error')
         .eq('user_id',currentUser.id).in('id',ids);
       if(Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
         const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())||!!row.price_processing_at).length;
+        const retrying=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='retry_wait').length;
         const queued=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='queued').length;
         const priced=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='complete'&&hasBrazilQuoteV1466(row)).length;
         const failed=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='failed').length;
         const done=priced+failed;
         const pending=Math.max(0,total-done);
 
-        V14.priceAuditBatch={ids,total,done,processing,queued,priced,failed,started};
+        V14.priceAuditBatch={ids,total,done,processing,retrying,queued,priced,failed,started};
         const pct=total?Math.round((priced/total)*100):0;
         if(progress)progress.textContent=pending
-          ?priced+'/'+total+' atualizadas com valor · '+pct+'% · '+processing+' processando · '+queued+' aguardando · '+failed+' erros'
+          ?priced+'/'+total+' atualizadas com valor · '+pct+'% · '+processing+' processando · '+retrying+' tentando novamente · '+queued+' ainda não iniciadas · '+failed+' erros'
           :priced+'/'+total+' atualizadas com valor · '+pct+'% · '+failed+' erros';
 
         renderUnpricedPopupV1468();
@@ -4542,13 +4554,15 @@
     busy(button,true,'Colocando '+cards.length+' na fila…');
     try{
       const unpricedOnly=(byId('v1603PriceState')?.value||'')==='unpriced';
-      await markCardsForPrice(cards,unpricedOnly?600:250);
+      const enqueued=await markCardsForPrice(cards,unpricedOnly?600:250);
       queueBackgroundPrices(cards,{front:unpricedOnly});
       kickPriceWorkerNow();
       setTimeout(kickPriceWorkerNow,1200);
-      const batchIds=[...new Set(cards.map(card=>card.id).filter(Boolean))];
+      const batchId=enqueued.priceBatchId||cards.find(card=>card.price_batch_id)?.price_batch_id||'';
+      const batchCards=batchId?V14.allCards.filter(card=>card.price_batch_id===batchId):cards;
+      const batchIds=[...new Set(batchCards.map(card=>card.id).filter(Boolean))];
       V14.priceAuditQueueSnapshot=null;
-      V14.priceAuditBatch={ids:batchIds,total:batchIds.length,done:0,processing:0,queued:batchIds.length,priced:cards.filter(hasBrazilQuoteV1466).length,started:Date.now()};
+      V14.priceAuditBatch={batchId,ids:batchIds,total:batchIds.length,done:0,processing:0,retrying:0,queued:batchIds.length,priced:0,started:Date.now()};
       if(progress)progress.textContent='0/'+cards.length+' finalizadas · 0% · '+cards.length+' aguardando';
       renderUnpricedPopupV1468();
       watchAuditPriceBatchV1603(cards).catch(console.warn);
