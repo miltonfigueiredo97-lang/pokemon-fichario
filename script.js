@@ -489,7 +489,7 @@ function requestedSpecificCatalogCards(name,number,setHint,language){
     rarity:"Classic Collection",
     type:"Elétrico",
     category:"Pokémon",
-    imageUrl:"/api/image-proxy?url="+encodeURIComponent("https://images.pokemontcg.io/cel25c/21_hires.png"),
+    imageUrl:"/api/image-proxy?url="+encodeURIComponent("https://tcgplayer-cdn.tcgplayer.com/product/250338_in_1000x1000.jpg"),
     mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
     market:{
       source:"MYP Cards",
