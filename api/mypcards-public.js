@@ -1004,7 +1004,7 @@ module.exports=async function handler(req,res){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
       const exact=await Promise.race([
-        fast ? searchWebExactMypBrowser(wanted,'') : searchExactMypBrowser(wanted),
+        searchExactMypBrowser(wanted),
         new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),fast?10500:12000))
       ]);
       const exactLink=safeMypProductUrl(exact?.link);
