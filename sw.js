@@ -1,20 +1,20 @@
-const BUILD_VERSION = '16.12';
-const CACHE_NAME = 'pokemon-binder-v16-12';
+const BUILD_VERSION = '16.13';
+const CACHE_NAME = 'pokemon-binder-v16-13';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/style.css?v=16.12',
-  '/v8.css?v=16.12',
-  '/v11fix.css?v=16.12',
-  '/v12.css?v=16.12',
-  '/v122.css?v=16.12',
-  '/v140.css?v=16.12',
-  '/script.js?v=16.12',
-  '/v8.js?v=16.12',
-  '/v11fix.js?v=16.12',
-  '/v12.js?v=16.12',
-  '/v122.js?v=16.12',
-  '/v140.js?v=16.12',
+  '/style.css?v=16.13',
+  '/v8.css?v=16.13',
+  '/v11fix.css?v=16.13',
+  '/v12.css?v=16.13',
+  '/v122.css?v=16.13',
+  '/v140.css?v=16.13',
+  '/script.js?v=16.13',
+  '/v8.js?v=16.13',
+  '/v11fix.js?v=16.13',
+  '/v12.js?v=16.13',
+  '/v122.js?v=16.13',
+  '/v140.js?v=16.13',
   '/manifest.webmanifest',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg'
