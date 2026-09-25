@@ -30,6 +30,52 @@ function finishKind(v){const n=normalize(v);if(!n||n==='normal'||n.includes('nao
 function lineMatchesFinish(line,finish){const kind=finishKind(finish),n=normalize(line);if(/altered art|altered-art/.test(n)&&kind!=='alteredart')return false;const hasSurface=/masterball|master ball|pokeball|poke ball|reverse foil|reverse holo|\bfoil\b|holo/.test(n);if(kind==='normal')return !hasSurface||/\bnormal\b/.test(n);if(kind==='alteredart')return /altered art|altered-art/.test(n);if(kind==='masterball')return /masterball|master ball/.test(n);if(kind==='pokeball')return /pokeball|poke ball/.test(n);if(kind==='reverse')return /reverse foil|reverse holo/.test(n);if(kind==='foil')return /\bfoil\b|holo/.test(n)&&!/reverse|masterball|master ball|pokeball|poke ball/.test(n);return true}
 function lineMatchesCondition(line,condition){const c=String(condition||'').toUpperCase().trim();if(!c||c==='NOVA')return /\bNM\b|QUASE NOVA|NOVA/.test(String(line||'').toUpperCase())||!/\b(?:NM|SP|MP|HP|DM)\b/.test(String(line||'').toUpperCase());return new RegExp(`\\b${c.replace(/[^A-Z]/g,'')}\\b`).test(String(line||'').toUpperCase())}
 
+
+function compactCollector(value){
+  return String(value||'').toLowerCase().replace(/\s+/g,'').replace(/^0+(?=\d)/,'');
+}
+function officialProductScore(card,{number,set,setId,name}={}){
+  const wantedNumber=compactCollector(number);
+  const wantedSet=normalize(set||setId||'');
+  const wantedName=normalize(name||'');
+  let score=0;
+  const labels=Array.isArray(card?.deck_labels)?card.deck_labels:[];
+  const hayNumber=[card?.card_code,...labels].map(x=>String(x||''));
+  if(wantedNumber&&hayNumber.some(x=>compactCollector(x).includes(wantedNumber)))score+=1800;
+  const edition=normalize([card?.edition_code,card?.edition_pt,card?.edition_en].filter(Boolean).join(' '));
+  if(wantedSet&&edition&&(edition.includes(wantedSet)||wantedSet.includes(edition)))score+=900;
+  const productName=normalize([card?.name_pt,card?.name_en].filter(Boolean).join(' '));
+  if(wantedName&&productName&&(productName.includes(wantedName)||wantedName.includes(productName)))score+=500;
+  if(card?.link&&safeMypProductUrl(card.link))score+=100;
+  return score;
+}
+async function officialMypIdentity({name,number,set,setId}={}){
+  const token=String(process.env.MYPCARDS_API_TOKEN||process.env.MYP_API_TOKEN||'').trim();
+  if(!token||!name)return null;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),3200);
+  try{
+    const url='https://mypcards.com/api/v1/pokemon/carta/'+encodeURIComponent(String(name));
+    const rr=await fetch(url,{
+      headers:{'Accept':'application/json','X-Api-Token':token,'User-Agent':'PokemonBinderBR/16.21'},
+      signal:controller.signal
+    });
+    if(!rr.ok)return null;
+    const body=await rr.json().catch(()=>null);
+    const cards=Array.isArray(body?.cards)?body.cards:[];
+    const ranked=cards
+      .map(card=>({card,score:officialProductScore(card,{number,set,setId,name})}))
+      .sort((a,b)=>b.score-a.score);
+    const best=ranked[0];
+    if(!best||best.score<1800)return null;
+    const link=safeMypProductUrl(best.card?.link);
+    if(!link)return null;
+    return{link,product:best.card,score:best.score,provider:'MYP official API'};
+  }catch{
+    return null;
+  }finally{clearTimeout(timer)}
+}
+
 function hasAnyMarket(m){return !!(m&&(Number(m.min)||Number(m.avg)||Number(m.max)))}
 function completeMarket(m){return !!(m&&Number(m.min)>0&&Number(m.avg)>0&&Number(m.max)>0)}
 function mergeMarket(preferred,fallback){
@@ -1172,7 +1218,17 @@ module.exports=async function handler(req,res){
     const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
 
     if(!directLink){
-      // V16.19: one definitive, non-browser retry cycle. Run the three fast
+      // V16.21: first resolve the exact MYP product identity through the official
+      // API when a token is configured. This avoids Cloudflare/search scraping
+      // entirely for identity and leaves only the finish-specific market read.
+      const official=await officialMypIdentity({name,number,set,setId});
+      if(official?.link){
+        directLink=official.link;
+      }
+    }
+
+    if(!directLink){
+      // V16.19 fallback: one definitive, non-browser retry cycle. Run the three fast
       // indexes in parallel (Reader collection, external search, fast set pages),
       // then validate the strongest product pages in parallel. No second attempt,
       // no requeue.
