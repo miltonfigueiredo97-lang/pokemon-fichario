@@ -3,10 +3,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH = 16;
+const CONCURRENCY = 6;
+const MAX_RUN_MS = 52 * 1000;
 const RETRY_LIMIT = 3;
-const STALE_MS = 2 * 60 * 1000;
-const TERMINAL = new Set(["wrong_product","product_not_found","not_found","no_price_data","variant_not_found","language_not_found","condition_not_found"]);
+const STALE_MS = 75 * 1000;
+const TERMINAL = new Set<string>();
 
 const CORS={
   "Access-Control-Allow-Origin":"*",
@@ -17,6 +18,14 @@ function json(data: unknown, status=200){
   return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Connection":"keep-alive",...CORS}});
 }
 function num(v: unknown){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
+async function setProgress(db:any,id:string,progress:number,stage:string){
+  const value=Math.max(0,Math.min(100,Math.round(Number(progress)||0)));
+  await db.from("pokemon_cards").update({
+    price_progress:value,
+    price_progress_stage:stage,
+    price_progress_updated_at:new Date().toISOString()
+  }).eq("id",id);
+}
 
 async function fetchSource(base:string, card:any, allowSavedLink=true, fast=false){
   const q=new URLSearchParams({
@@ -41,11 +50,11 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const controller=new AbortController();
   // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
   // Só esse caminho ganha orçamento maior; links conhecidos continuam rápidos.
-  const timeoutMs=fast?15000:(base===MYP_API&&!allowSavedLink?60000:38000);
+  const timeoutMs=fast?(base===MYP_API?30000:10000):(base===MYP_API?38000:10000);
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.93"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.19"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -120,7 +129,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/14.93"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.19"},
             signal:controller.signal
           });
           if(r.ok){
@@ -226,9 +235,11 @@ async function learnedMypLink(db:any,card:any){
       if(count>bestCount){bestOffset=offset;bestCount=count}
     }
 
-    // Só aprende uma sequência quando várias páginas já validadas concordam.
-    // Isso evita extrapolar coleções cujo ID da MYP não seja sequencial.
-    if(bestCount>=5&&bestCount>=Math.ceil(usable*.72)){
+    // V15.16: one validated card is enough to generate a SEQUENTIAL CANDIDATE.
+    // This is not blindly trusted: the MYP API validates name/number/set on the
+    // candidate page before accepting any price. A wrong candidate is discarded.
+    // As more anchors appear, the same offset naturally gains confidence.
+    if(bestCount>=1&&bestCount>=Math.ceil(Math.max(1,usable)*.50)){
       learned={offset:bestOffset,anchors:bestCount,expires:Date.now()+30*60_000};
       learnedSetLinkCache.set(key,learned);
     }else{
@@ -254,98 +265,61 @@ function requiresExactMewPtBrVariant(card:any){
 }
 function hasMarketPrice(m:any){return !!(m&&(num(m.min)||num(m.avg)||num(m.max)))}
 function choosePrimary(liga:any,myp:any){
-  if(hasMarketPrice(liga)&&num(liga.avg)>0)return{market:liga,source:"Liga Pokémon"};
+  // V15.06: MYP é a fonte canônica. Liga é apenas fallback.
   if(hasMarketPrice(myp)&&num(myp.avg)>0)return{market:myp,source:"MYP Cards"};
-  if(hasMarketPrice(liga))return{market:liga,source:"Liga Pokémon"};
   if(hasMarketPrice(myp))return{market:myp,source:"MYP Cards"};
+  if(hasMarketPrice(liga)&&num(liga.avg)>0)return{market:liga,source:"Liga Pokémon"};
+  if(hasMarketPrice(liga))return{market:liga,source:"Liga Pokémon"};
   return{market:null,source:"Sem preço BR"};
 }
-async function fetchMarkets(card:any){
+async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promise<void>=async()=>{}){
   let hasMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
     .map((v:any)=>String(v||"").trim()).some((v:string)=>/mypcards\.com/i.test(v));
 
-  const ligaPromise=fetchSource(LIGA_API,card,false)
+  const ligaPromise=fetchSource(LIGA_API,card,false,true)
     .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}));
 
-  let myp:any;
-  if(hasMypLink){
-    const directGenerations=String(card?.set_id||"").trim().toLowerCase()==="g1";
-    if(directGenerations){
-      myp=await fetchSource(MYP_API,card,true,false)
-        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error"),link:card.myp_price_link||""}));
-      console.log("[MYP_GEN_DIRECT]",String(card.id||""),String(card.number||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link}));
-    }else{
-      // Link conhecido = leia a própria página primeiro. A rota fast percorre
-      // também as páginas de vendedores da MYP e evita gastar 58 s redescobrindo
-      // uma carta que já foi identificada por outra variante do mesmo número.
-      myp=await fetchSource(MYP_API,card,true,true)
-        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_error")}));
-      console.log("[MYP_FAST]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode,identity:myp?.identity}));
+  let myp:any={ok:false,error:"not_started"};
 
+  if(!hasMypLink){
+    await onProgress(55,"discovering_myp_link");
+    myp=await fetchSource(MYP_API,card,false,true)
+      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_fast_error")}));
+
+    const foundLink=String(myp?.link||"").trim();
+    if(foundLink&&/mypcards\.com/i.test(foundLink)){
+      card={...card,myp_price_link:foundLink};
+      hasMypLink=true;
+      await onProgress(68,"myp_link_found");
+
+      // V16.11: a resolved identity is not treated as a finished attempt.
+      // Read the exact product immediately in the same worker cycle.
       if(!hasMarketPrice(myp)){
-        const fastError=String(myp?.error||"");
-        const needsHeavyFallback=["fast_timeout","fast_unavailable","fast_no_price","wrong_product","product_not_found","variant_not_found","no_price_data"].includes(fastError);
-        if(needsHeavyFallback){
-          myp=await fetchSource(MYP_API,card,true,false)
-            .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
-          console.log("[MYP_FULL]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({ok:myp?.ok,error:myp?.error,min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link,provider:myp?.provider,mode:myp?.mode}));
-        }
+        await onProgress(74,"reading_myp");
+        myp=await fetchSource(MYP_API,card,true,false)
+          .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"direct_timeout":String(e?.message||"myp_direct_error"),link:foundLink}));
       }
     }
   }else{
-    myp=await fetchSource(MYP_API,card,false,false)
-      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
-
-    // Algumas coleções, como XY: Generations, conseguem localizar o produto
-    // muito mais rápido pelo catálogo do que raspar preço na mesma requisição.
-    // Quando a API devolve apenas o link resolvido, reutilize-o imediatamente
-    // numa leitura direta e preserve-o mesmo se a leitura de preço expirar.
-    if(String(myp?.error||"")==="link_resolved"&&/mypcards\.com/i.test(String(myp?.link||""))){
-      const resolvedLink=String(myp.link);
-      card={...card,myp_price_link:resolvedLink};
-      hasMypLink=true;
-      myp=await fetchSource(MYP_API,card,true,false)
-        .catch((e:any)=>({
-          ok:false,
-          error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error"),
-          link:resolvedLink
-        }));
-    }
+    await onProgress(68,"reading_myp");
+    myp=await fetchSource(MYP_API,card,true,false)
+      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"direct_timeout":String(e?.message||"myp_direct_error"),link:card.myp_price_link||""}));
   }
 
-  // A MYP nem sempre rotula Reverse/Foil nas ofertas da mesma impressão.
-  // Com produto conhecido, tente o mercado padrão da MESMA página: primeiro
-  // Reader rápido; se falhar, faça a consulta completa antes de desistir.
+  await onProgress(82,"myp_returned");
+
   if(!hasMarketPrice(myp)&&hasMypLink&&String(card.finish||"Normal").toLowerCase()!=="normal"&&!requiresExactMewPtBrVariant(card)){
-    const err=String(myp?.error||"");
-    if(["variant_not_found","no_price_data","browser_error","fast_no_price","timeout","fast_timeout","fast_unavailable"].includes(err)){
-      const genericCard={...card,finish:"Normal"};
-      let generic=await fetchSource(MYP_API,genericCard,true,true)
-        .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_generic_error")}));
-      if(!hasMarketPrice(generic)){
-        generic=await fetchSource(MYP_API,genericCard,true,false)
-          .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_generic_error")}));
-      }
-      if(hasMarketPrice(generic)){
-        myp={
-          ...generic,
-          requestedFinish:String(card.finish||""),
-          variantFallback:true,
-          exactVariant:false,
-          mode:String(generic.mode||"")+"-same-product-fallback"
-        };
-        console.log("[MYP_VARIANT_FALLBACK]",String(card.id||""),String(card.number||""),String(card.finish||""),JSON.stringify({min:myp?.min,avg:myp?.avg,max:myp?.max,link:myp?.link}));
-      }
+    await onProgress(86,"checking_variant");
+    const genericCard={...card,finish:"Normal"};
+    const generic=await fetchSource(MYP_API,genericCard,true,true)
+      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_generic_error")}));
+    if(hasMarketPrice(generic)){
+      myp={...generic,requestedFinish:String(card.finish||""),variantFallback:true,exactVariant:false,mode:String(generic.mode||"")+"-same-product-fallback"};
     }
   }
 
   const liga=await ligaPromise;
-  if(["wrong_product","product_not_found","not_found","variant_not_found","browser_error","timeout"].includes(String(myp?.error||""))&&hasMypLink&&String(card?.set_id||"").toLowerCase()!=="g1"){
-    // Link aprendido/salvo pode ter ID correto e slug inválido. Refazer sem
-    // enviar o link força a API a localizar o produto por número + coleção.
-    myp=await fetchSource(MYP_API,{...card,myp_price_link:null,price_br_link:null,price_link:null},false,false)
-      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"myp_error")}));
-  }
+  await onProgress(90,"sources_returned");
   return{myp,liga};
 }
 
@@ -358,37 +332,17 @@ Deno.serve(async(req:Request)=>{
   if(!url||!service)return json({ok:false,error:"missing_supabase_env"},500);
   const db=createClient(url,service,{auth:{persistSession:false}});
 
-  const now=new Date();
-  const nowIso=now.toISOString();
-  const staleIso=new Date(now.getTime()-STALE_MS).toISOString();
-
-  const {data:candidates,error:listError}=await db.from("pokemon_cards")
-    .select("id,user_id,name,number,set_name,set_id,api_id,language_code,finish,condition,liga_price_link,myp_price_link,price_br_link,price_link,price_attempts,price_pending,price_processing_at,price_priority")
-    .eq("price_pending",true)
-    .lte("price_next_retry_at",nowIso)
-    .or("price_processing_at.is.null,price_processing_at.lt."+staleIso)
-    .order("price_priority",{ascending:false})
-    .order("price_attempts",{ascending:true})
-    .order("price_requested_at",{ascending:true})
-    .limit(BATCH);
-
-  if(listError)return json({ok:false,error:"list_failed"},500);
-  if(!candidates?.length)return json({ok:true,claimed:0,updated:0,retried:0,terminal:0});
-
   let claimed=0,updated=0,retried=0,terminal=0;
-  const results=await Promise.allSettled(candidates.map(async(card:any)=>{
-    const attempts=(Number(card.price_attempts)||0)+1;
-    let claim=db.from("pokemon_cards")
-      .update({price_processing_at:nowIso,price_attempts:attempts,price_last_error:null})
-      .eq("id",card.id)
-      .eq("price_pending",true);
-    if(card.price_processing_at)claim=claim.eq("price_processing_at",card.price_processing_at);
-    else claim=claim.is("price_processing_at",null);
-    const {data:claimedRows,error:claimError}=await claim.select("id").limit(1);
-    if(claimError||!claimedRows?.length)return {state:"skipped"};
-    claimed++;
+  const startedAt=Date.now();
+  const states:string[]=[];
 
+  async function processClaimedCard(card:any){
+    // The RPC has already atomically incremented attempts and persisted "claimed".
+    // Never short-circuit because an older quote exists: this job must perform a
+    // real source lookup before it may become complete.
+    const attempts=Math.max(1,Number(card.price_attempts)||1);
     try{
+      await setProgress(db,card.id,20,"resolving_identity");
       // Se a coleção já possui várias páginas MYP validadas com uma sequência
       // consistente, aprenda o padrão automaticamente e use-o como candidato.
       // A API ainda valida a página real antes de aceitar qualquer preço.
@@ -420,19 +374,18 @@ Deno.serve(async(req:Request)=>{
             .eq("id",card.id);
           fetchCard={...card,myp_price_link:siblingLink};
         }else{
-          learnedLink=await learnedMypLink(db,card).catch(()=> "");
-          if(learnedLink){
-            // A sequência só é aceita quando várias páginas validadas concordam.
-            // A API ainda valida a página real antes de aceitar qualquer preço.
-            await db.from("pokemon_cards")
-              .update({myp_price_link:learnedLink})
-              .eq("id",card.id);
-            fetchCard={...card,myp_price_link:learnedLink};
-          }
+          // V16.10: never guess MYP product IDs from a numeric sequence.
+          // MYP product IDs are not reliably sequential inside a set
+          // (e.g. SSP/Fagulhas Impetuosas). With no validated sibling,
+          // the API must discover this exact printing by name + collector number.
+          learnedLink="";
         }
       }
 
-      const markets=await fetchMarkets(fetchCard);
+      await setProgress(db,card.id,40,[fetchCard.myp_price_link,fetchCard.price_br_link,fetchCard.price_link].some((v:any)=>/mypcards\.com/i.test(String(v||"")))?"link_ready":"identity_ready");
+      await setProgress(db,card.id,55,"querying_sources");
+      const markets=await fetchMarkets(fetchCard,(pct,stage)=>setProgress(db,card.id,pct,stage));
+      await setProgress(db,card.id,86,"validating_quote");
       const myp=markets.myp,liga=markets.liga;
       const picked=choosePrimary(liga,myp);
       const market=picked.market;
@@ -447,7 +400,8 @@ Deno.serve(async(req:Request)=>{
           price_source:picked.source,price_link:resolvedLink||"",
           price_br_source:picked.source,price_br_link:resolvedLink||null,
           price_checked_at:checkedAt,price_pending:false,price_processing_at:null,
-          price_next_retry_at:null,price_priority:0,price_last_error:null
+          price_next_retry_at:null,price_priority:0,price_last_error:null,
+          price_progress:100,price_progress_stage:"complete",price_progress_updated_at:new Date().toISOString()
         };
 
         if(hasMarketPrice(liga)){
@@ -466,8 +420,17 @@ Deno.serve(async(req:Request)=>{
         const resolvedNumber=String(liga?.number||myp?.number||"").trim();
         if(/^\d+\/\d+$/.test(resolvedNumber)&&!String(card.number||"").includes("/"))patch.number=resolvedNumber;
 
-        const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
+        await setProgress(db,card.id,92,"saving_quote");
+        const {data:saved,error}=await db.from("pokemon_cards")
+          .update(patch)
+          .eq("id",card.id)
+          .eq("price_pending",true)
+          .select("id,price_pending,price_progress_stage,price_checked_at")
+          .maybeSingle();
         if(error)throw error;
+        if(!saved||saved.price_pending!==false||String(saved.price_progress_stage)!=="complete"){
+          throw new Error("price_save_not_confirmed");
+        }
         updated++;
         return {state:"updated",source:picked.source};
       }
@@ -481,45 +444,62 @@ Deno.serve(async(req:Request)=>{
       const discoveredMypLink=String(myp?.link||"").trim();
       const keepMypLink=discoveredMypLink&&!["wrong_product","product_not_found"].includes(mypError)
         ?discoveredMypLink:"";
+      if(keepMypLink){
+        let linkQuery=db.from("pokemon_cards").update({myp_price_link:keepMypLink}).eq("user_id",card.user_id);
+        if(String(card.set_id||"").trim()&&String(card.number||"").trim()){
+          linkQuery=linkQuery.eq("set_id",card.set_id).eq("number",card.number).eq("language_code",card.language_code||"");
+        }else if(String(card.api_id||"").trim()){
+          linkQuery=linkQuery.eq("api_id",card.api_id).eq("language_code",card.language_code||"");
+        }else{
+          linkQuery=linkQuery.eq("id",card.id);
+        }
+        await linkQuery;
+      }
       const errorDetail=[
         mypError?"myp:"+mypError:"",
         ligaError?"liga:"+ligaError:""
       ].filter(Boolean).join("|")||errorCode;
+
+      // Do not accept an old saved quote as success for this request. A refresh
+      // only completes when the current source lookup is validated and persisted.
       const allTerminal=errors.length>0&&errors.every(e=>TERMINAL.has(e));
 
       if(allTerminal){
-        const clearIdentity=["wrong_product","product_not_found"].includes(mypError);
         const patch:any={
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:errorDetail
+          price_priority:0,price_last_error:errorDetail,
+          price_progress:100,price_progress_stage:"failed",price_progress_updated_at:new Date().toISOString()
         };
-        if(clearIdentity)patch.myp_price_link=null;
-        else if(keepMypLink)patch.myp_price_link=keepMypLink;
+        if(keepMypLink)patch.myp_price_link=keepMypLink;
         const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
         if(error)throw error;
         terminal++;
-        return {state:"terminal"};
+        return {state:"failed_terminal"};
       }
 
       if(attempts>=RETRY_LIMIT){
-        const retryLimitPatch:any={
+        const failedPatch:any={
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:errorDetail||errorCode||"retry_limit"
+          price_priority:0,price_attempts:attempts,
+          price_last_error:errorDetail||errorCode||"retry_limit",
+          price_progress:100,price_progress_stage:"failed",price_progress_updated_at:new Date().toISOString()
         };
-        if(keepMypLink)retryLimitPatch.myp_price_link=keepMypLink;
-        const {error}=await db.from("pokemon_cards").update(retryLimitPatch).eq("id",card.id);
+        if(keepMypLink)failedPatch.myp_price_link=keepMypLink;
+        const {error}=await db.from("pokemon_cards").update(failedPatch).eq("id",card.id);
         if(error)throw error;
         terminal++;
-        return {state:"retry_limit"};
+        return {state:"failed_after_retries"};
       }
 
-      // Fila rápida: 30 s na primeira falha, 60 s na segunda.
-      // O cron roda a cada minuto, então isso evita buracos de 2–4 minutos.
-      const delaySeconds=attempts<=1?30:60;
-      const retryAt=new Date(Date.now()+delaySeconds*1000).toISOString();
+      // V15.08: falhou uma tentativa, a MESMA carta continua elegível imediatamente.
+      // Como o worker processa uma única carta por execução, ela não perde a vez
+      // para outra carta só porque uma fonte demorou ou respondeu temporariamente.
+      const retryAt=new Date(Date.now()+60*1000).toISOString();
       const retryPatch:any={
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
-        price_last_error:errorDetail||errorCode||"temporary_error"
+        price_priority:0,price_requested_at:new Date().toISOString(),
+        price_last_error:errorDetail||errorCode||"temporary_error",
+        price_progress:0,price_progress_stage:"queued",price_progress_updated_at:new Date().toISOString()
       };
       if(keepMypLink)retryPatch.myp_price_link=keepMypLink;
       const {error}=await db.from("pokemon_cards").update(retryPatch).eq("id",card.id);
@@ -531,20 +511,49 @@ Deno.serve(async(req:Request)=>{
       if(attempts>=RETRY_LIMIT){
         await db.from("pokemon_cards").update({
           price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:message
+          price_priority:0,price_attempts:attempts,price_last_error:message,
+          price_progress:100,price_progress_stage:"failed",price_progress_updated_at:new Date().toISOString()
         }).eq("id",card.id);
         terminal++;
-        return {state:"retry_limit"};
+        return {state:"failed_after_retries"};
       }
-      const retryAt=new Date(Date.now()+(attempts<=1?30:60)*1000).toISOString();
+      const retryAt=new Date(Date.now()+60*1000).toISOString();
       await db.from("pokemon_cards").update({
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
-        price_last_error:message
+        price_priority:0,price_requested_at:new Date().toISOString(),
+        price_last_error:message,
+        price_progress:0,price_progress_stage:"queued",price_progress_updated_at:new Date().toISOString()
       }).eq("id",card.id);
       retried++;
       return {state:"retry"};
     }
-  }));
 
-  return json({ok:true,claimed,updated,retried,terminal,results:results.map(r=>r.status==="fulfilled"?r.value?.state:"rejected")});
+  }
+
+  async function claimOne(){
+    const {data,error}=await db.rpc("claim_pokemon_price_card");
+    if(error)throw error;
+    const rows=Array.isArray(data)?data:[];
+    return rows[0]||null;
+  }
+
+  async function lane(){
+    while(Date.now()-startedAt<MAX_RUN_MS){
+      const card=await claimOne();
+      if(!card)return;
+      claimed++;
+      const result=await processClaimedCard(card);
+      states.push(String(result?.state||"unknown"));
+      // As soon as this card clears price_processing_at, this lane immediately
+      // claims the next queued card. No artificial batch barrier.
+    }
+  }
+
+  try{
+    await Promise.all(Array.from({length:CONCURRENCY},()=>lane()));
+  }catch(error:any){
+    return json({ok:false,error:"worker_pool_failed",message:String(error?.message||error),claimed,updated,retried,terminal,states},500);
+  }
+
+  return json({ok:true,claimed,updated,retried,terminal,states});
 });

@@ -1914,3 +1914,88 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
   color:#ffb1b1;background:rgba(255,92,92,.10);border-color:rgba(255,92,92,.28);
 }
 .v1604-stage-failed .v1606-card-progress>i>u{background:#ff6f6f}
+
+
+/* V16.12 — price audit modal: one responsive coordinate system, no clipped shell */
+.v1468-unpriced-dialog.v1603-price-audit-dialog{
+  width:min(1180px,calc(100vw - 32px))!important;
+  max-width:1180px!important;
+  height:min(860px,calc(100dvh - 32px))!important;
+  max-height:calc(100dvh - 32px)!important;
+  margin:auto!important;
+  padding:0!important;
+  overflow:hidden!important;
+  box-sizing:border-box!important;
+}
+.v1603-price-audit-dialog .v1468-unpriced-shell{
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+  height:100%!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+  grid-template-rows:auto auto auto auto auto minmax(0,1fr)!important;
+}
+.v1603-price-audit-dialog .v1468-unpriced-head,
+.v1603-price-audit-dialog .v1603-price-audit-filters,
+.v1603-price-audit-dialog .v1603-price-audit-actions,
+.v1603-price-audit-dialog .v1604-price-progress-card,
+.v1603-price-audit-dialog .v1468-unpriced-stats,
+.v1603-price-audit-dialog .v1468-unpriced-list{
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+.v1603-price-audit-dialog .v1603-price-audit-filters{
+  padding:12px 20px 8px!important;
+  margin:0!important;
+}
+.v1603-price-audit-dialog .v1603-price-audit-actions{
+  padding:0 20px 10px!important;
+  margin:0!important;
+}
+.v1603-price-audit-dialog .v1604-price-progress-card{
+  margin:0 20px 10px!important;
+}
+.v1603-price-audit-dialog .v1468-unpriced-list{
+  width:100%!important;
+  min-height:0!important;
+  overflow:auto!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+.v1603-price-audit-dialog .v1468-unpriced-row{
+  width:100%!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+}
+.v1604-progress-track i{transition:none!important}
+.v1606-card-progress i u{transition:none!important}
+
+@media(max-width:820px){
+  .v1468-unpriced-dialog.v1603-price-audit-dialog{
+    width:calc(100vw - 16px)!important;
+    height:calc(100dvh - 16px)!important;
+    max-height:calc(100dvh - 16px)!important;
+  }
+  .v1603-price-audit-dialog .v1603-price-audit-filters{
+    padding:8px 12px!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  }
+  .v1603-price-audit-dialog .v1603-price-audit-actions{padding:0 12px 8px!important}
+  .v1603-price-audit-dialog .v1604-price-progress-card{margin:0 12px 8px!important}
+  .v1603-price-audit-dialog .v1468-unpriced-stats{padding:7px 12px!important}
+  .v1603-price-audit-dialog .v1468-unpriced-list{
+    grid-template-columns:minmax(0,1fr)!important;
+    padding:8px 12px 14px!important;
+  }
+  .v1603-price-audit-dialog .v1468-unpriced-row{
+    grid-template-columns:52px minmax(0,1fr) 18px!important;
+  }
+}
+@media(max-width:460px){
+  .v1603-price-audit-dialog .v1603-price-audit-filters{grid-template-columns:minmax(0,1fr)!important}
+  .v1603-price-audit-dialog .v1603-price-audit-filters label,
+  .v1603-price-audit-dialog .v1603-price-audit-filters label:first-child,
+  .v1603-price-audit-dialog .v1603-price-audit-search{grid-column:1!important}
+  .v1603-price-audit-dialog .v1468-unpriced-head{padding:14px 12px 10px!important}
+  .v1603-price-audit-dialog .v1468-unpriced-title h2{font-size:19px!important}
+}
