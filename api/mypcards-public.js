@@ -627,6 +627,72 @@ async function fastSitemapCandidates(name){
   return[...new Set(found)].slice(0,24);
 }
 
+async function fastCollectionReaderCandidates({name,nameAliases=[],number,set,setId}){
+  const setSlug=slugify(set||setId||'');
+  const wanted=numberParts(number);
+  if(!setSlug||!wanted.n)return[];
+
+  const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
+  const totalGuess=/^\d+$/.test(wanted.d)?Number(wanted.d):0;
+  const collector=/^\d+$/.test(wanted.n)?Number(wanted.n):0;
+  const pageSize=96;
+  const estimated=collector&&totalGuess?Math.max(1,Math.floor((collector-1)/pageSize)+1):1;
+  const pages=[...new Set([1,estimated,estimated-1,estimated+1].filter(x=>x>=1&&x<=6))];
+  const urls=pages.map(page=>ROOT+'/pokemon/'+setSlug+'?page='+page+'&per-page='+pageSize);
+
+  const bodies=await Promise.all(urls.map(async url=>{
+    try{return await fetchJina(url,6500)}catch{return''}
+  }));
+
+  const candidates=[];
+  const exactToken=String(number||'').replace(/\s+/g,'').toLowerCase();
+
+  for(const body of bodies){
+    if(!body)continue;
+
+    // Reader output typically contains title/number text near the product URL.
+    // Work in local windows around each product URL so repeated collector
+    // numbers from other cards cannot contaminate the match.
+    const text=String(body);
+    const matches=[...text.matchAll(/https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\/[a-z0-9-]+/gi)];
+    for(const m of matches){
+      const url=safeMypProductUrl(m[0]);
+      if(!url)continue;
+      const at=m.index||0;
+      const window=text.slice(Math.max(0,at-500),Math.min(text.length,at+500));
+      const compact=window.replace(/\s+/g,' ').toLowerCase();
+      const found=numberParts(window);
+      if(found.n!==wanted.n)continue;
+      if(wanted.d&&found.d&&found.d!==wanted.d)continue;
+      const normalizedWindow=normalize(window);
+      const nameOk=!names.length||names.some(n=>{
+        const nn=normalize(n);
+        return nn&&(normalizedWindow.includes(nn)||nn.includes(normalize((url.split('/').pop()||'').replace(/-/g,' '))));
+      });
+      if(!nameOk)continue;
+      candidates.push(url);
+    }
+
+    // Fallback for markdown/Reader shapes where the URL and text order is
+    // unusual: find exact collector token and collect nearby product URLs.
+    const low=text.toLowerCase();
+    let pos=0;
+    while((pos=low.indexOf(exactToken,pos))>=0){
+      const window=text.slice(Math.max(0,pos-900),Math.min(text.length,pos+900));
+      const normalizedWindow=normalize(window);
+      if(names.some(n=>normalizedWindow.includes(normalize(n)))){
+        for(const m of window.matchAll(/https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\/[a-z0-9-]+/gi)){
+          const url=safeMypProductUrl(m[0]);
+          if(url)candidates.push(url);
+        }
+      }
+      pos+=exactToken.length||1;
+    }
+  }
+
+  return [...new Set(candidates)].slice(0,8);
+}
+
 async function externalSearchCandidates({name,nameAliases=[],number,set}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const exact=names[0]||String(name||'').trim();
@@ -1058,8 +1124,48 @@ module.exports=async function handler(req,res){
     if(!directLink){
       let found=null;
 
-      // Preferred path: one exact scraper query, bounded to one actor run.
-      if(process.env.APIFY_API_TOKEN){
+      // V16.17: resolve from the MYP edition page itself. This avoids search
+      // engines and Chromium, and is deterministic for cards such as SSP.
+      try{
+        const collectionCandidates=await fastCollectionReaderCandidates({
+          name,nameAliases,number,set,setId
+        });
+        if(collectionCandidates.length){
+          const checked=await Promise.all(collectionCandidates.slice(0,4).map(async candidate=>{
+            try{
+              const raw=await fetchText(candidate,5000);
+              const identity=pageIdentity(raw);
+              if(!matchesWanted(identity,wanted))return null;
+              let market=await marketAcrossSellerPages(candidate,raw,identity,wanted,finish,condition);
+              if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+                market=sameProductFallbackMarket(identity,finish,condition);
+              }
+              return{link:safeMypProductUrl(candidate),identity,market};
+            }catch{return null}
+          }));
+          const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
+          if(hit){
+            if(hasAnyMarket(hit.market)){
+              return res.status(200).json({
+                ok:true,source:'MYP Cards',provider:'MYP edition Reader',mode:'collection-reader-fast',
+                name:hit.identity?.name||name,number:hit.identity?.number||number,
+                edition:hit.identity?.edition||set,finish,condition,link:hit.link,
+                min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
+                samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
+                exactVariant:hit.market.exactVariant===true,variantFallback:hit.market.variantFallback===true,
+                complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
+                checkedAt:new Date().toISOString()
+              });
+            }
+            found={link:hit.link,edition:hit.identity?.edition||set};
+          }
+        }
+      }catch(error){
+        console.warn('MYP fast collection reader:',error?.message||error);
+      }
+
+      // One exact Actor query is a secondary fallback when configured.
+      if(!found&&process.env.APIFY_API_TOKEN){
         try{
           const actor=await queryMyp({...wanted,maxQueries:1});
           const actorLink=safeMypProductUrl(actor?.link);
@@ -1080,46 +1186,6 @@ module.exports=async function handler(req,res){
         }catch(error){
           console.warn('MYP fast actor:',error?.code||error?.message||error);
         }
-      }
-
-      // Secondary path: public search HTML, no browser/Chromium.
-      if(!found){
-        try{
-          const candidates=await Promise.race([
-            externalSearchCandidates({name,nameAliases,number,set}),
-            new Promise(resolve=>setTimeout(()=>resolve([]),5000))
-          ]);
-          if(Array.isArray(candidates)&&candidates.length){
-            const checked=await Promise.all(candidates.slice(0,3).map(async candidate=>{
-              try{
-                const raw=await fetchText(candidate,4200);
-                const identity=pageIdentity(raw);
-                if(!matchesWanted(identity,wanted))return null;
-                let market=await marketAcrossSellerPages(candidate,raw,identity,wanted,finish,condition);
-                if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
-                  market=sameProductFallbackMarket(identity,finish,condition);
-                }
-                return{link:safeMypProductUrl(candidate),identity,market};
-              }catch{return null}
-            }));
-            const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
-            if(hit){
-              if(hasAnyMarket(hit.market)){
-                return res.status(200).json({
-                  ok:true,source:'MYP Cards',provider:'Public search fast',mode:'public-search-fast',
-                  name:hit.identity?.name||name,number:hit.identity?.number||number,
-                  edition:hit.identity?.edition||set,finish,condition,link:hit.link,
-                  min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
-                  samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
-                  exactVariant:hit.market.exactVariant===true,variantFallback:hit.market.variantFallback===true,
-                  complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
-                  checkedAt:new Date().toISOString()
-                });
-              }
-              found={link:hit.link,edition:hit.identity?.edition||set};
-            }
-          }
-        }catch{}
       }
 
       if(found?.link){
