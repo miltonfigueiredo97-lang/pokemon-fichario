@@ -4365,7 +4365,7 @@
   function priceAuditStageV1604(card){
     if(hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'COM VALOR'};
     const raw=String(card?.price_progress_stage||'').trim().toLowerCase();
-    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','sources_returned','saving_quote']);
+    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','searching_myp','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
     if(active.has(raw))return{key:'processing',rank:0,label:'ATUALIZANDO'};
     if(raw==='failed')return{key:'failed',rank:2,label:'FALHOU'};
     if(raw==='queued'||card?.price_pending)return{key:'queued',rank:1,label:'NA FILA'};
@@ -4414,7 +4414,7 @@
 
       const stage=String(card.price_progress_stage||'').toLowerCase();
       if(stage==='failed'){done++;failed++;continue}
-      if(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','sources_returned','saving_quote'].includes(stage)){
+      if(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','searching_myp','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(stage)){
         processing++;continue;
       }
       if(card.price_pending||stage==='queued'){queued++;continue}
@@ -4446,8 +4446,13 @@
       resolving_identity:'Localizando/confirmando a impressão',
       identity_ready:'Impressão identificada',
       link_ready:'Página MYP identificada',
-      querying_sources:'Consultando MYP/Liga',
-      sources_returned:'Fontes responderam; validando resultado',
+      querying_sources:'Preparando consultas de preço',
+      searching_myp:'Procurando a página exata na MYP',
+      reading_myp:'Lendo a página MYP já identificada',
+      myp_returned:'MYP respondeu',
+      checking_variant:'Conferindo acabamento/variante',
+      sources_returned:'MYP/Liga responderam',
+      validating_quote:'Validando a cotação recebida',
       saving_quote:'Salvando cotação no fichário',
       complete:'Cotação salva',
       failed:'Tentativa encerrada sem cotação'
@@ -4611,7 +4616,7 @@
         .eq('user_id',currentUser.id).in('id',ids);
       if(Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
-        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','sources_returned','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())).length;
+        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','searching_myp','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())).length;
         const queued=data.filter(row=>row.price_pending&&String(row.price_progress_stage||'').toLowerCase()==='queued').length;
         const priced=data.filter(row=>hasBrazilQuoteV1466(row)).length;
         const failed=data.filter(row=>String(row.price_progress_stage||'').toLowerCase()==='failed').length;
