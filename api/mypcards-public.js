@@ -1,6 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
-const { findAndScrapeMypBrowser, searchExactMypBrowser, searchCollectionExactMypBrowser, searchFastSetPageMypBrowser, searchWebExactMypBrowser } = require('../lib/myp-browser');
+const { findAndScrapeMypBrowser, searchExactMypBrowser, searchCollectionExactMypBrowser, searchFastSetPageMypBrowser, searchWebExactMypBrowser, scanSetCatalogMypBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -1109,7 +1109,17 @@ module.exports=async function handler(req,res){
   const finish=String(req.query.finish||'Normal').trim();
   const condition=String(req.query.condition||'NM').trim();
   const fast=String(req.query.fast||'')==='1';
-  if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
+  const catalog=String(req.query.catalog||'')==='1';
+  if(fast||catalog)res.setHeader('Cache-Control','no-store, max-age=0');
+
+  if(catalog){
+    const result=await Promise.race([
+      scanSetCatalogMypBrowser({set,setName:set,setId,lang}),
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'set_catalog_timeout',items:[]}),9500))
+    ]);
+    return res.status(200).json(result);
+  }
+
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
   let directLink=safeMypProductUrl(link);
