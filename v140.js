@@ -4365,7 +4365,7 @@
   function priceAuditStageV1604(card){
     if(hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'COM VALOR'};
     const raw=String(card?.price_progress_stage||'').trim().toLowerCase();
-    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','searching_myp','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
+    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
     if(active.has(raw))return{key:'processing',rank:0,label:'ATUALIZANDO'};
     if(raw==='failed')return{key:'failed',rank:2,label:'FALHOU'};
     if(raw==='queued'||card?.price_pending)return{key:'queued',rank:1,label:'NA FILA'};
@@ -4405,26 +4405,39 @@
     if(!snapshot?.total)return{total:0,done:0,processing:0,queued:0,priced:0,failed:0,pct:100};
 
     const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
-    let done=0,processing=0,queued=0,priced=0,failed=0;
+    let done=0,processing=0,queued=0,priced=0,failed=0,progressSum=0;
+    const activeStages=new Set([
+      'claimed','resolving_identity','identity_ready','link_ready','querying_sources',
+      'discovering_myp_link','searching_myp','myp_link_found','reading_myp',
+      'myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'
+    ]);
 
     for(const id of snapshot.ids||[]){
       const card=byIdMap.get(id);
-      if(!card){done++;continue}
-      if(hasBrazilQuoteV1466(card)){done++;priced++;continue}
+      if(!card){done++;progressSum+=100;continue}
 
       const stage=String(card.price_progress_stage||'').toLowerCase();
-      if(stage==='failed'){done++;failed++;continue}
-      if(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','searching_myp','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(stage)){
-        processing++;continue;
-      }
-      if(card.price_pending||stage==='queued'){queued++;continue}
+      const realProgress=Math.max(0,Math.min(100,Number(card.price_progress||0)));
 
-      if(Number(card.price_progress||0)>=100){done++;failed++;continue}
+      if(hasBrazilQuoteV1466(card)){
+        done++;priced++;progressSum+=100;continue;
+      }
+      if(stage==='failed'){
+        done++;failed++;progressSum+=100;continue;
+      }
+
+      // This number comes from the server worker's persisted stage updates.
+      // No timers or elapsed-time animation are used.
+      progressSum+=realProgress;
+
+      if(activeStages.has(stage)){processing++;continue}
+      if(card.price_pending||stage==='queued'){queued++;continue}
+      if(realProgress>=100){done++;failed++;continue}
       queued++;
     }
 
     const total=Number(snapshot.total)||0;
-    const pct=total?Math.max(0,Math.min(100,Math.round(done/total*100))):100;
+    const pct=total?Math.max(0,Math.min(100,Math.round(progressSum/total))):100;
     return{total,done,processing,queued,priced,failed,pct};
   }
 
@@ -4447,7 +4460,9 @@
       identity_ready:'Impressão identificada',
       link_ready:'Página MYP identificada',
       querying_sources:'Preparando consultas de preço',
+      discovering_myp_link:'Localizando a página exata na MYP',
       searching_myp:'Procurando a página exata na MYP',
+      myp_link_found:'Página MYP localizada',
       reading_myp:'Lendo a página MYP já identificada',
       myp_returned:'MYP respondeu',
       checking_variant:'Conferindo acabamento/variante',
@@ -4462,8 +4477,10 @@
       const avg=Number(card.price_avg||card.myp_price_avg||card.liga_price_avg||0);
       return 'Cotação salva · '+money(min||avg);
     }
-    if(stage==='failed'&&rawError)return (labels.failed||'Falhou')+' · '+rawError.replace(/_/g,' ');
-    return labels[stage]||priceProblemTextV1466(card);
+    const attempt=Number(card?.price_attempts||0);
+    const suffix=attempt?' · tentativa '+Math.min(attempt,3)+'/3':'';
+    if(stage==='failed'&&rawError)return (labels.failed||'Falhou')+' · '+rawError.replace(/_/g,' ')+suffix;
+    return (labels[stage]||priceProblemTextV1466(card))+suffix;
   }
 
   function priceAuditScopeStatsV1604(){
@@ -4616,7 +4633,7 @@
         .eq('user_id',currentUser.id).in('id',ids);
       if(Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
-        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','searching_myp','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())).length;
+        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())).length;
         const queued=data.filter(row=>row.price_pending&&String(row.price_progress_stage||'').toLowerCase()==='queued').length;
         const priced=data.filter(row=>hasBrazilQuoteV1466(row)).length;
         const failed=data.filter(row=>String(row.price_progress_stage||'').toLowerCase()==='failed').length;
@@ -4624,9 +4641,14 @@
         const pending=Math.max(0,total-done);
 
         V14.priceAuditBatch={ids,total,done,processing,queued,priced,failed,started};
-        const pct=total?Math.round(done/total*100):100;
+        let progressSum=0;
+        for(const row of data||[]){
+          if(hasBrazilQuoteV1466(row)||String(row.price_progress_stage||'').toLowerCase()==='failed')progressSum+=100;
+          else progressSum+=Math.max(0,Math.min(100,Number(row.price_progress||0)));
+        }
+        const pct=total?Math.round(progressSum/total):100;
         if(progress)progress.textContent=pending
-          ?pct+'% concluído · '+processing+' atualizando · '+queued+' na fila'
+          ?pct+'% executado · '+processing+' atualizando · '+queued+' na fila'
           :'100% processado · '+priced+' com valor · '+failed+' sem cotação';
 
         renderUnpricedPopupV1468();
