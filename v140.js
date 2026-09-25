@@ -26,7 +26,8 @@
     rarityFilters:new Set(),
     priceAuditWatchSeq:0,
     priceAuditBatch:null,
-    priceAuditPollTimer:0
+    priceAuditPollTimer:0,
+    priceAuditQueueSnapshot:null
   };
   window.PB14=V14;
 
@@ -4341,7 +4342,11 @@
     });
     d.addEventListener('click',e=>{if(e.target===d)d.close()});
     for(const id of ['v1468UnpricedSearch','v1468UnpricedProblem','v1603PriceBinder','v1603PriceState']){
-      byId(id)?.addEventListener(id==='v1468UnpricedSearch'?'input':'change',renderUnpricedPopupV1468);
+      byId(id)?.addEventListener(id==='v1468UnpricedSearch'?'input':'change',()=>{
+        V14.priceAuditQueueSnapshot=null;
+        if(!V14.priceAuditBatch?.total)V14.priceAuditBatch=null;
+        renderUnpricedPopupV1468();
+      });
     }
     byId('v1603UpdateFilteredPrices').onclick=updateFilteredAuditPricesV1603;
     return d;
@@ -4362,6 +4367,87 @@
     if(freshProcessing)return{key:'processing',rank:0,label:'ATUALIZANDO'};
     if(card?.price_pending)return{key:'queued',rank:1,label:'NA FILA'};
     return{key:'waiting',rank:2,label:'AGUARDANDO AJUSTE'};
+  }
+
+  function priceAuditFilterKeyV1606(){
+    return [
+      byId('v1603PriceBinder')?.value||'all',
+      byId('v1603PriceState')?.value||'unpriced',
+      byId('v1468UnpricedProblem')?.value||'all',
+      nrm(byId('v1468UnpricedSearch')?.value||'')
+    ].join('|');
+  }
+
+  function ensurePriceQueueSnapshotV1606(cards){
+    const key=priceAuditFilterKeyV1606();
+    if(V14.priceAuditBatch?.total)return;
+    const current=V14.priceAuditQueueSnapshot;
+    if(current?.key===key)return;
+
+    const ids=(cards||[])
+      .filter(card=>!hasBrazilQuoteV1466(card)&&(card.price_pending||card.price_processing_at))
+      .map(card=>card.id).filter(Boolean);
+
+    V14.priceAuditQueueSnapshot={
+      key,
+      ids:[...new Set(ids)],
+      total:[...new Set(ids)].length,
+      started:Date.now()
+    };
+  }
+
+  function priceAuditQueueProgressV1606(){
+    const batch=V14.priceAuditBatch;
+    const snapshot=batch?.total?batch:V14.priceAuditQueueSnapshot;
+    if(!snapshot?.total)return{total:0,done:0,processing:0,queued:0,priced:0,failed:0,pct:100};
+
+    const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
+    let done=0,processing=0,queued=0,priced=0,failed=0;
+    const now=Date.now();
+
+    for(const id of snapshot.ids||[]){
+      const card=byIdMap.get(id);
+      if(!card){done++;continue}
+      if(hasBrazilQuoteV1466(card)){done++;priced++;continue}
+      const t=Date.parse(card.price_processing_at||0)||0;
+      if(t&&t>now-60_000){processing++;continue}
+      if(card.price_pending){queued++;continue}
+      done++;failed++;
+    }
+
+    const total=Number(snapshot.total)||0;
+    const pct=total?Math.max(0,Math.min(100,Math.round(done/total*100))):100;
+    return{total,done,processing,queued,priced,failed,pct};
+  }
+
+  function priceAuditCardProgressV1606(card){
+    if(hasBrazilQuoteV1466(card))return{pct:100,label:'100%',kind:'priced'};
+    const t=Date.parse(card?.price_processing_at||0)||0;
+    if(t&&t>Date.now()-60_000){
+      const elapsed=Math.max(0,Date.now()-t);
+      // The automatic MYP pass is bounded around ~24s. This is an ETA-style
+      // preview, not a claim that the remote request exposes exact substeps.
+      const pct=Math.max(6,Math.min(95,Math.round(6+(elapsed/24000)*89)));
+      return{pct,label:pct+'%',kind:'processing'};
+    }
+    if(card?.price_pending)return{pct:0,label:'0%',kind:'queued'};
+    return{pct:100,label:'100%',kind:'finished'};
+  }
+
+  function priceAuditDetailTextV1606(card){
+    const raw=String(card?.price_last_error||'').trim();
+    const stage=priceAuditStageV1604(card).key;
+    if(stage==='processing')return raw?'Tentativa em andamento · '+raw.replace(/_/g,' '):'Consultando cotação…';
+    if(stage==='queued'){
+      const hasMyp=/mypcards\.com/i.test(String(card?.myp_price_link||card?.price_br_link||card?.price_link||''));
+      return hasMyp?'Link MYP localizado · aguardando processamento':'Procurando link MYP';
+    }
+    if(stage==='priced'){
+      const min=Number(card.price_min||card.myp_price_min||card.liga_price_min||0);
+      const avg=Number(card.price_avg||card.myp_price_avg||card.liga_price_avg||0);
+      return 'Cotação salva · '+money(min||avg);
+    }
+    return raw?'Tentativa concluída · '+raw.replace(/_/g,' '):'Tentativa concluída sem cotação';
   }
 
   function priceAuditScopeStatsV1604(){
@@ -4385,33 +4471,23 @@
     const meta=byId('v1604PriceProgressMeta');
     if(!title||!pctEl||!bar||!meta)return;
 
-    const batch=V14.priceAuditBatch;
-    if(batch?.total){
-      const done=Math.max(0,Math.min(batch.total,Number(batch.done||0)));
-      const pct=Math.round(done/batch.total*100);
-      title.textContent='Lote em atualização';
-      pctEl.textContent=pct+'%';
-      bar.style.width=pct+'%';
-      meta.textContent=[
-        done+' de '+batch.total+' processadas',
-        (batch.processing||0)+' atualizando agora',
-        (batch.queued||0)+' na fila',
-        (batch.priced||0)+' com valor'
-      ].join(' · ');
+    const q=priceAuditQueueProgressV1606();
+    title.textContent='Progresso da fila';
+    pctEl.textContent=q.pct+'%';
+    bar.style.width=q.pct+'%';
+
+    if(!q.total){
+      meta.textContent='Nenhuma carta em fila neste filtro.';
       return;
     }
 
-    const stats=priceAuditScopeStatsV1604();
-    const pct=stats.total?Math.round(stats.priced/stats.total*100):100;
-    title.textContent='Cobertura de preços no escopo';
-    pctEl.textContent=pct+'%';
-    bar.style.width=pct+'%';
     meta.textContent=[
-      stats.priced+' com valor',
-      stats.processing+' atualizando agora',
-      stats.queued+' na fila',
-      stats.waiting+' aguardando ajuste'
-    ].join(' · ');
+      q.done+' de '+q.total+' processadas',
+      q.processing+' atualizando agora',
+      q.queued+' aguardando na fila',
+      q.priced+' com valor',
+      q.failed?q.failed+' concluídas sem valor':''
+    ].filter(Boolean).join(' · ');
   }
 
   async function pollPriceAuditV1604(){
@@ -4469,6 +4545,7 @@
     byId('v1468UnpricedTotal').textContent=String(cards.length);
     byId('v1468UnpricedSubtitle').textContent=all.length+' carta(s) no escopo · '+unpriced+' sem valor · '+priced+' com valor.';
     byId('v1468UnpricedStats').textContent=cards.length+' carta(s) correspondem aos filtros atuais.';
+    ensurePriceQueueSnapshotV1606(cards);
     renderPriceAuditProgressV1604();
 
     const list=byId('v1468UnpricedList');
@@ -4483,13 +4560,13 @@
       const stage=priceAuditStageV1604(card);
       row.type='button';row.className='v1468-unpriced-row v1604-stage-'+stage.key;
       const image=cardImage(card),binder=binderForCard(card);
-      const min=Number(card.price_min||card.myp_price_min||card.liga_price_min||0);
-      const avg=Number(card.price_avg||card.myp_price_avg||card.liga_price_avg||0);
+      const cardProgress=priceAuditCardProgressV1606(card);
       row.innerHTML=
         '<span class="v1468-unpriced-thumb">'+(image?'<img src="'+esc(image)+'" alt="" loading="lazy">':'?')+'</span>'+
         '<span class="v1468-unpriced-info"><span class="v1468-unpriced-name"><strong>'+esc(card.name||'Carta sem nome')+'</strong><b>'+esc(card.number?'#'+card.number:'Sem número')+'</b></span>'+
         '<small>'+esc([binder?.name||'Fichário',card.set_name||'Coleção',card.finish||'Normal',card.rarity||''].filter(Boolean).join(' · '))+'</small>'+
-        '<em><b class="v1604-stage-chip">'+esc(stage.label)+'</b><span>'+esc(priceProblemTextV1466(card))+(hasBrazilQuoteV1466(card)?' · '+esc(money(min||avg)):'')+'</span></em></span>'+
+        '<div class="v1606-card-progress"><span><b class="v1604-stage-chip">'+esc(stage.label)+'</b><strong>'+esc(cardProgress.label)+'</strong></span><i><u style="width:'+cardProgress.pct+'%"></u></i></div>'+
+        '<em>'+esc(priceAuditDetailTextV1606(card))+'</em></span>'+
         '<span class="v1468-unpriced-open"><small>Conferir</small><b>›</b></span>';
       row.onclick=()=>{ensureUnpricedDialogV1468().close();byId('summaryPanel')?.classList.remove('mobile-open');openExistingCard(card,true)};
       list.appendChild(row);
@@ -4567,7 +4644,9 @@
       queueBackgroundPrices(cards,{front:unpricedOnly});
       kickPriceWorkerNow();
       setTimeout(kickPriceWorkerNow,1200);
-      V14.priceAuditBatch={ids:cards.map(card=>card.id).filter(Boolean),total:cards.length,done:0,processing:0,queued:cards.length,priced:cards.filter(hasBrazilQuoteV1466).length,started:Date.now()};
+      const batchIds=[...new Set(cards.map(card=>card.id).filter(Boolean))];
+      V14.priceAuditQueueSnapshot=null;
+      V14.priceAuditBatch={ids:batchIds,total:batchIds.length,done:0,processing:0,queued:batchIds.length,priced:cards.filter(hasBrazilQuoteV1466).length,started:Date.now()};
       if(progress)progress.textContent='0% concluído · '+cards.length+' na fila';
       renderUnpricedPopupV1468();
       watchAuditPriceBatchV1603(cards).catch(console.warn);
@@ -4585,6 +4664,8 @@
     if(byId('v1603PriceBinder'))byId('v1603PriceBinder').value='all';
     if(byId('v1603PriceState'))byId('v1603PriceState').value='unpriced';
     if(byId('v1468UnpricedProblem'))byId('v1468UnpricedProblem').value='all';
+    V14.priceAuditBatch=null;
+    V14.priceAuditQueueSnapshot=null;
     byId('v1468UnpricedStats').textContent='Sincronizando cotações…';
     if(!d.open)d.showModal();
     try{await syncPriceAuditRowsV1603()}catch(error){console.warn('[Cotações · sincronização]',error)}
