@@ -1999,3 +1999,73 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
   .v1603-price-audit-dialog .v1468-unpriced-head{padding:14px 12px 10px!important}
   .v1603-price-audit-dialog .v1468-unpriced-title h2{font-size:19px!important}
 }
+
+
+/* V16.13 — price audit cards: prevent desktop row collapse and clipped content */
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-list{
+  align-content:start!important;
+  grid-auto-rows:minmax(96px,auto)!important;
+  gap:10px!important;
+  padding:14px 20px 22px!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-row{
+  min-height:96px!important;
+  height:auto!important;
+  max-height:none!important;
+  padding:10px!important;
+  grid-template-columns:58px minmax(0,1fr) 24px!important;
+  gap:11px!important;
+  align-items:center!important;
+  overflow:hidden!important;
+  line-height:normal!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-thumb{
+  width:58px!important;
+  height:80px!important;
+  min-width:58px!important;
+  min-height:80px!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-info{
+  min-width:0!important;
+  min-height:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  gap:5px!important;
+  overflow:visible!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-name strong{
+  font-size:12px!important;
+  line-height:1.2!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-name b{
+  font-size:9px!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-info small,
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-info em{
+  font-size:9px!important;
+  line-height:1.25!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1606-card-progress{
+  min-height:25px!important;
+  gap:4px!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1606-card-progress>span{
+  min-height:18px!important;
+}
+.v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-open{
+  min-width:18px!important;
+  justify-content:flex-end!important;
+}
+
+@media(max-width:820px){
+  .v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-list{
+    grid-auto-rows:minmax(96px,auto)!important;
+    padding:8px 12px 16px!important;
+  }
+  .v1468-unpriced-dialog.v1603-price-audit-dialog .v1468-unpriced-row{
+    min-height:96px!important;
+    grid-template-columns:58px minmax(0,1fr) 18px!important;
+    padding:8px!important;
+  }
+}
