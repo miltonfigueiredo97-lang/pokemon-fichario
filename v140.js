@@ -2150,6 +2150,31 @@
     return{finish,condition};
   }
 
+  // V15.28: when Add was opened from a specific empty pocket, the first
+  // selected card MUST go to that exact pocket. Additional cards continue
+  // forward from there, skipping occupied pockets and never jumping back to
+  // earlier empty slots.
+  function positionsFromClickedPocketV1528(count){
+    const wanted=Math.max(1,Number(count)||1);
+    const startPage=Math.max(1,Number(pendingPosition?.page)||Number(currentPage)||1);
+    const startSlot=Math.min(9,Math.max(1,Number(pendingPosition?.slot)||1));
+    const out=[];
+    let pages=Math.max(currentBinderPages(),startPage);
+
+    for(let p=startPage;p<=pages&&out.length<wanted;p++){
+      const first=p===startPage?startSlot:1;
+      for(let s=first;s<=9&&out.length<wanted;s++){
+        if(!getCardAt(p,s))out.push({page:p,slot:s});
+      }
+    }
+
+    while(out.length<wanted){
+      pages++;
+      for(let s=1;s<=9&&out.length<wanted;s++)out.push({page:pages,slot:s});
+    }
+    return out;
+  }
+
   async function addSelectedFast(){
     let cards=[];try{cards=[...catalogSelection.entries()]}catch{}
     if(!cards.length)return;
@@ -2163,7 +2188,7 @@
     busy(button,true,'Adicionando…');
     const saved=[];
     try{
-      const positions=freePositions(pendingPosition?.page||currentPage,cards.length);
+      const positions=positionsFromClickedPocketV1528(cards.length);
       const maxPage=Math.max(...positions.map(p=>p.page));
       if(maxPage>currentBinderPages())await updateSettings({binder_pages:maxPage},true);
 
