@@ -957,21 +957,22 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
-  // V15.15: automatic fast path uses a real browser against the MYP search,
-  // with the exact same identity pattern: "Name (number/total)".
-  // It does NOT enter collection crawling, sitemap or multi-minute fallbacks.
+  // V16.10: for the worker's fast no-link path, mirror the search that
+  // reliably finds MYP pages externally: "site:mypcards.com/pokemon/produto
+  // Name number". The native MYP search remains the normal/manual fallback.
   if(!directLink&&name&&number){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
       const exact=await Promise.race([
-        searchExactMypBrowser(wanted),
-        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),10500))
+        fast ? searchWebExactMypBrowser(wanted,'') : searchExactMypBrowser(wanted),
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'exact_browser_timeout'}),fast?10500:12000))
       ]);
       const exactLink=safeMypProductUrl(exact?.link);
       if(exactLink)directLink=exactLink;
       if(exact?.ok&&hasAnyMarket(exact)){
         return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Browser exact search',mode:exact.mode||'browser-exact-only',
+          ok:true,source:'MYP Cards',provider:fast?'External exact search':'Browser exact search',
+          mode:exact.mode||(fast?'browser-web-search-exact':'browser-exact-only'),
           name,number,edition:exact.edition||set,finish,condition,link:exactLink||'',
           min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
           samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
@@ -981,7 +982,7 @@ module.exports=async function handler(req,res){
         });
       }
     }catch(error){
-      console.warn('MYP exact browser:',error?.message||error);
+      console.warn('MYP exact discovery:',error?.message||error);
     }
   }
 
