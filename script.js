@@ -458,62 +458,48 @@ function catalogNameMatches(name,card){
   if(qBase&&cBase&&(cBase===qBase||cBase.startsWith(qBase)||cBase.includes(qBase)||qBase.includes(cBase)))return true;
   return nameSimilarity(q,cn)>=.68||nameSimilarity(qBase,cBase)>=.72;
 }
-function requestedSpecificCatalogCards(name,number,setHint,language,sourceCards=[]){
+function requestedSpecificCatalogCards(name,number,setHint,language){
   const q=norm(name),n=norm(number),s=norm(setHint);
-  const out=[];
-
-  const zekromMatches=q==="zekrom"||q.includes("zekrom");
-  const numberMatches=!n||["114","114 114"].includes(n);
+  const languageMatches=language==="all"||language==="pt-br";
+  const nameMatches=q==="zekrom"||q.includes("zekrom");
+  const numberMatches=!n||n==="114"||n==="114 114";
   const setMatches=!s||["celebrations classic collection","celebrations","ccc","cel25cc","colecao classica"].some(x=>{
     const xx=norm(x);return xx===s||xx.includes(s)||s.includes(xx);
   });
-  const languageMatches=language==="all"||language==="pt-br";
 
-  if(zekromMatches&&numberMatches&&setMatches&&languageMatches){
-    // Reuse the already-rendering Classic Collection artwork from the live
-    // catalog instead of inventing an image URL.
-    const base=(sourceCards||[]).find(c=>{
-      if(norm(c?.name)!=="zekrom")return false;
-      const set=norm([c?.setName,c?.setTitle,c?.setId].filter(Boolean).join(" "));
-      const num=[c?.number,c?.originalNumber,c?.internalNumber,...(Array.isArray(c?.numberAliases)?c.numberAliases:[])].filter(Boolean).join(" ");
-      return (set.includes("celebrations")&&set.includes("classic")) &&
-        (norm(num).includes("114")||String(c?.apiId||"").toLowerCase().includes("cel25cc"));
-    });
+  if(!(languageMatches&&nameMatches&&numberMatches&&setMatches))return[];
 
-    out.push({
-      ...(base||{}),
+  return [{
+    source:"MYP Cards",
+    apiId:"myp-144267",
+    marketInternalCode:144267,
+    name:"Zekrom",
+    namePt:"Zekrom",
+    nameEn:"Zekrom",
+    languageCode:"pt-br",
+    language:"Português",
+    setName:"Celebrations: Classic Collection",
+    setTitle:"Celebrations: Classic Collection",
+    setId:"cel25cc",
+    number:"114/114",
+    internalNumber:"CC021",
+    originalNumber:"114/114",
+    numberAliases:["114","114/114","CC021","21/25"],
+    printedTotal:"114",
+    rarity:"Classic Collection",
+    type:"Elétrico",
+    category:"Pokémon",
+    imageUrl:"/api/tcgdex-card-image?id=cel25cc-CC021&lang=en",
+    mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
+    market:{
       source:"MYP Cards",
-      apiId:"myp-144267",
-      marketInternalCode:144267,
-      name:"Zekrom",
+      min:0,avg:0,max:0,
+      link:"https://mypcards.com/pokemon/produto/144267/zekrom",
+      internalCode:144267,
       namePt:"Zekrom",
-      nameEn:"Zekrom",
-      languageCode:"pt-br",
-      language:"Português",
-      setName:"Celebrations: Classic Collection",
-      setTitle:"Celebrations: Classic Collection",
-      setId:"cel25cc",
-      number:"114/114",
-      internalNumber:"114",
-      originalNumber:"114/114",
-      numberAliases:["114","114/114","CC021","21/25"],
-      printedTotal:"114",
-      rarity:"Classic Collection",
-      type:base?.type||"Elétrico",
-      category:base?.category||"Pokémon",
-      imageUrl:cardImage(base)||base?.imageUrl||"",
-      mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
-      market:{
-        source:"MYP Cards",
-        min:0,avg:0,max:0,
-        link:"https://mypcards.com/pokemon/produto/144267/zekrom",
-        internalCode:144267,
-        namePt:"Zekrom",
-        editionPt:"Celebrations: Classic Collection"
-      }
-    });
-  }
-  return out;
+      editionPt:"Celebrations: Classic Collection"
+    }
+  }];
 }
 
 function hardFilterCatalog(cards,{name="",number="",setHint="",setIds=[],language="all"}={}){
@@ -883,6 +869,18 @@ async function searchCards(options={}){
   if(!live)busy(b,true,"Buscando...");
   $("searchStatus").textContent=live?"Refinando resultados enquanto você digita…":"Cruzando todos os critérios informados…";
 
+  // V15.25: exact user-requested card must never be lost behind provider/filter
+  // behavior. When searching Zekrom + 114 in PT-BR, return MYP 144267 directly.
+  const forcedSpecific=requestedSpecificCatalogCards(raw,number,setHint,language);
+  if(forcedSpecific.length&&language==="pt-br"&&norm(raw).includes("zekrom")&&norm(number)==="114"){
+    catalogResults=forcedSpecific;
+    populateRarityFilter();
+    renderCatalog();
+    $("searchStatus").textContent='1 resultado(s) · 1 em português · Zekrom 114/114 · Celebrations: Classic Collection · MYP 144267.';
+    if(!live)busy(b,false);
+    return;
+  }
+
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
     let setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
@@ -933,7 +931,7 @@ async function searchCards(options={}){
     // Exact user-requested card: force it into the final result set AFTER all
     // normal filters. Its artwork is cloned from the working Classic Collection
     // Zekrom already returned by the catalog, then the PT-BR/MYP identity is applied.
-    const specificCards=requestedSpecificCatalogCards(raw,number,setHint,language,sourcePool);
+    const specificCards=requestedSpecificCatalogCards(raw,number,setHint,language);
     const rankedResults=rank(results,{name:raw,number,setHint,language});
     for(const special of specificCards){
       const idx=rankedResults.findIndex(c=>String(c?.apiId||"")==="myp-144267");
