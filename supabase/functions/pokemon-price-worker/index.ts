@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const CONCURRENCY = 6;\nconst MAX_RUN_MS = 52 * 1000;
+const CONCURRENCY = 6;
+const MAX_RUN_MS = 52 * 1000;
 const RETRY_LIMIT = 3;
 const STALE_MS = 75 * 1000;
 const TERMINAL = new Set<string>();
