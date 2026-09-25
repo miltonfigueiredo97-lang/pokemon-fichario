@@ -1096,12 +1096,12 @@ module.exports=async function handler(req,res){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
       const market=await Promise.race([
-        searchWebExactMypBrowser(wanted,directLink),
+        findAndScrapeMypBrowser(directLink,wanted),
         new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),20000))
       ]);
       if(market?.ok&&hasAnyMarket(market)){
         return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Browser direct exact',mode:market.mode||'browser-direct-known',
+          ok:true,source:'MYP Cards',provider:'Direct MYP product page',mode:market.mode||'browser-direct-known',
           name,number,edition:market.edition||set,finish,condition,
           link:safeMypProductUrl(market.link)||directLink,
           min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
@@ -1113,13 +1113,13 @@ module.exports=async function handler(req,res){
       }
       return res.status(200).json({
         ok:false,error:market?.error||'fast_no_price',
-        source:'MYP Cards',provider:'Browser direct exact',link:directLink,
+        source:'MYP Cards',provider:'Direct MYP product page',link:directLink,
         message:'Página exata localizada, mas a leitura rápida não retornou a cotação.'
       });
     }catch(error){
       return res.status(200).json({
         ok:false,error:error?.name==='AbortError'?'fast_timeout':'fast_unavailable',
-        source:'MYP Cards',provider:'Browser direct exact',link:directLink,
+        source:'MYP Cards',provider:'Direct MYP product page',link:directLink,
         message:String(error?.message||'Falha na leitura direta da página exata.')
       });
     }
