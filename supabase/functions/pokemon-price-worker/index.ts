@@ -486,11 +486,9 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Resolve product identities once per set for the whole ten-card batch.
-      // This avoids launching ten independent searches for cards from the same
-      // collection and gives each card a direct MYP product URL before pricing.
-      await hydrateBatchMypLinks(db,batch);
-
+      // Fixed batch barrier: all ten are claimed together and each one runs
+      // the same one-shot exact resolver in parallel. No card is requeued.
+      // The next ten are not claimed until every member of this batch ended.
       // Fixed batch barrier: all ten are claimed together, processed together,
       // and the next ten are not claimed until every member of this batch ended.
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
