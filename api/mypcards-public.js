@@ -1219,14 +1219,62 @@ module.exports=async function handler(req,res){
   // via Reader por poucos segundos. Se não der, a carta permanece na fila
   // persistente de alta prioridade para o worker do servidor.
   if(fast){
+    const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
+
+    // V16.11: "fast" can no longer mean "give up when there is no saved link".
+    // That was the reason hundreds of queued cards looped forever as
+    // fast_link_missing. Do one real bounded identity lookup first.
     if(!directLink){
+      let discovered=null;
+      try{
+        discovered=await Promise.race([
+          searchFastSetPageMypBrowser(wanted),
+          new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_discovery_timeout'}),14000))
+        ]);
+      }catch(error){
+        discovered={ok:false,error:error?.message||'fast_discovery_error'};
+      }
+
+      // If the set-page route misses, use the same web-search style route that
+      // resolves a single card manually, still inside the fast request budget.
+      if(!safeMypProductUrl(discovered?.link)){
+        try{
+          const webFound=await Promise.race([
+            searchWebExactMypBrowser(wanted,''),
+            new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_web_timeout'}),8000))
+          ]);
+          if(safeMypProductUrl(webFound?.link))discovered=webFound;
+        }catch{}
+      }
+
+      const discoveredLink=safeMypProductUrl(discovered?.link);
+      if(discoveredLink){
+        directLink=discoveredLink;
+        if(discovered?.ok&&hasAnyMarket(discovered)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'Fast exact discovery',mode:discovered.mode||'fast-discovery',
+            name,number,edition:discovered.edition||set,finish,condition,link:directLink,
+            min:Number(discovered.min||0),avg:Number(discovered.avg||0),max:Number(discovered.max||0),
+            samples:discovered.samples??null,availableQuantity:discovered.availableQuantity??null,
+            exactVariant:discovered.exactVariant===true,variantFallback:discovered.variantFallback===true,
+            complete:!!(Number(discovered.min)>0&&Number(discovered.avg)>0&&Number(discovered.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+        // Identity resolution is useful even if the seller rows still need a
+        // direct product read. The worker persists this link and continues.
+        return res.status(200).json({
+          ok:false,error:'link_resolved',source:'MYP Cards',provider:'Fast exact discovery',
+          name,number,edition:discovered?.edition||set,finish,condition,link:directLink,
+          message:'Produto MYP exato localizado; leitura direta necessária.'
+        });
+      }
+
       return res.status(200).json({
-        ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'Fast exact resolver',
-        message:'A busca rápida ainda não localizou a página exata da impressão.'
+        ok:false,error:discovered?.error||'fast_link_missing',source:'MYP Cards',provider:'Fast exact discovery',
+        message:'A busca rápida não localizou a página exata desta impressão.'
       });
     }
-
-    const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
 
     // V16.08: known MYP product links are read as HTML/text first. This is the
     // same real product page, but avoids launching Chromium for every queued card.
