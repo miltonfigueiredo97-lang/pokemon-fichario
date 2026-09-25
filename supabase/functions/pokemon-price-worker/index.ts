@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH = 10;
+const CONCURRENCY = 6;\nconst MAX_RUN_MS = 52 * 1000;
 const RETRY_LIMIT = 3;
 const STALE_MS = 75 * 1000;
 const TERMINAL = new Set<string>();
@@ -331,51 +331,15 @@ Deno.serve(async(req:Request)=>{
   if(!url||!service)return json({ok:false,error:"missing_supabase_env"},500);
   const db=createClient(url,service,{auth:{persistSession:false}});
 
-  const now=new Date();
-  const nowIso=now.toISOString();
-  const staleIso=new Date(now.getTime()-STALE_MS).toISOString();
-
-  const {data:candidates,error:listError}=await db.from("pokemon_cards")
-    .select("id,user_id,name,number,set_name,set_id,api_id,language_code,finish,condition,liga_price_link,myp_price_link,price_br_link,price_link,price_min,price_avg,price_max,myp_price_min,myp_price_avg,myp_price_max,liga_price_min,liga_price_avg,liga_price_max,price_attempts,price_pending,price_processing_at,price_priority,price_progress,price_progress_stage")
-    .eq("price_pending",true)
-    .lte("price_next_retry_at",nowIso)
-    .or("price_processing_at.is.null,price_processing_at.lt."+staleIso)
-    .order("price_priority",{ascending:false})
-    .order("price_requested_at",{ascending:true})
-    .order("created_at",{ascending:true})
-    .limit(BATCH);
-
-  if(listError)return json({ok:false,error:"list_failed"},500);
-  if(!candidates?.length)return json({ok:true,claimed:0,updated:0,retried:0,terminal:0});
-
   let claimed=0,updated=0,retried=0,terminal=0;
-  const results=await Promise.allSettled(candidates.map(async(card:any)=>{
-    const savedQuote=num(card.price_min)||num(card.price_avg)||num(card.price_max)
-      ||num(card.myp_price_min)||num(card.myp_price_avg)||num(card.myp_price_max)
-      ||num(card.liga_price_min)||num(card.liga_price_avg)||num(card.liga_price_max);
-    if(savedQuote){
-      await db.from("pokemon_cards").update({
-        price_pending:false,price_processing_at:null,price_next_retry_at:null,
-        price_priority:0,price_last_error:null,
-        price_progress:100,price_progress_stage:"complete",price_progress_updated_at:new Date().toISOString()
-      }).eq("id",card.id);
-      return {state:"already_priced"};
-    }
+  const startedAt=Date.now();
+  const states:string[]=[];
 
-    const attempts=(Number(card.price_attempts)||0)+1;
-    let claim=db.from("pokemon_cards")
-      .update({
-        price_processing_at:nowIso,price_attempts:attempts,price_last_error:null,
-        price_progress:10,price_progress_stage:"claimed",price_progress_updated_at:nowIso
-      })
-      .eq("id",card.id)
-      .eq("price_pending",true);
-    if(card.price_processing_at)claim=claim.eq("price_processing_at",card.price_processing_at);
-    else claim=claim.is("price_processing_at",null);
-    const {data:claimedRows,error:claimError}=await claim.select("id").limit(1);
-    if(claimError||!claimedRows?.length)return {state:"skipped"};
-    claimed++;
-
+  async function processClaimedCard(card:any){
+    // The RPC has already atomically incremented attempts and persisted "claimed".
+    // Never short-circuit because an older quote exists: this job must perform a
+    // real source lookup before it may become complete.
+    const attempts=Math.max(1,Number(card.price_attempts)||1);
     try{
       await setProgress(db,card.id,20,"resolving_identity");
       // Se a coleção já possui várias páginas MYP validadas com uma sequência
@@ -455,26 +419,17 @@ Deno.serve(async(req:Request)=>{
         const resolvedNumber=String(liga?.number||myp?.number||"").trim();
         if(/^\d+\/\d+$/.test(resolvedNumber)&&!String(card.number||"").includes("/"))patch.number=resolvedNumber;
 
-        let updateQuery=db.from("pokemon_cards").update(patch).eq("user_id",card.user_id);
-        if(String(card.set_id||"").trim()&&String(card.number||"").trim()){
-          updateQuery=updateQuery
-            .eq("set_id",card.set_id)
-            .eq("number",card.number)
-            .eq("language_code",card.language_code||"")
-            .eq("finish",card.finish||"Normal")
-            .eq("condition",card.condition||"Nova");
-        }else if(String(card.api_id||"").trim()){
-          updateQuery=updateQuery
-            .eq("api_id",card.api_id)
-            .eq("language_code",card.language_code||"")
-            .eq("finish",card.finish||"Normal")
-            .eq("condition",card.condition||"Nova");
-        }else{
-          updateQuery=updateQuery.eq("id",card.id);
-        }
         await setProgress(db,card.id,92,"saving_quote");
-        const {error}=await updateQuery;
+        const {data:saved,error}=await db.from("pokemon_cards")
+          .update(patch)
+          .eq("id",card.id)
+          .eq("price_pending",true)
+          .select("id,price_pending,price_progress_stage,price_checked_at")
+          .maybeSingle();
         if(error)throw error;
+        if(!saved||saved.price_pending!==false||String(saved.price_progress_stage)!=="complete"){
+          throw new Error("price_save_not_confirmed");
+        }
         updated++;
         return {state:"updated",source:picked.source};
       }
@@ -504,23 +459,8 @@ Deno.serve(async(req:Request)=>{
         ligaError?"liga:"+ligaError:""
       ].filter(Boolean).join("|")||errorCode;
 
-      const {data:latest}=await db.from("pokemon_cards")
-        .select("price_min,price_avg,price_max,myp_price_min,myp_price_avg,myp_price_max,liga_price_min,liga_price_avg,liga_price_max")
-        .eq("id",card.id).maybeSingle();
-      const quoteSavedMeanwhile=latest&&(
-        num(latest.price_min)||num(latest.price_avg)||num(latest.price_max)
-        ||num(latest.myp_price_min)||num(latest.myp_price_avg)||num(latest.myp_price_max)
-        ||num(latest.liga_price_min)||num(latest.liga_price_avg)||num(latest.liga_price_max)
-      );
-      if(quoteSavedMeanwhile){
-        await db.from("pokemon_cards").update({
-          price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:null,
-          price_progress:100,price_progress_stage:"complete",price_progress_updated_at:new Date().toISOString()
-        }).eq("id",card.id);
-        return {state:"priced_by_parallel_run"};
-      }
-
+      // Do not accept an old saved quote as success for this request. A refresh
+      // only completes when the current source lookup is validated and persisted.
       const allTerminal=errors.length>0&&errors.every(e=>TERMINAL.has(e));
 
       if(allTerminal){
@@ -586,7 +526,36 @@ Deno.serve(async(req:Request)=>{
       retried++;
       return {state:"retry"};
     }
-  }));
+
+  }
+
+  async function claimOne(){
+    const {data,error}=await db.rpc("claim_pokemon_price_card");
+    if(error)throw error;
+    const rows=Array.isArray(data)?data:[];
+    return rows[0]||null;
+  }
+
+  async function lane(){
+    while(Date.now()-startedAt<MAX_RUN_MS){
+      const card=await claimOne();
+      if(!card)return;
+      claimed++;
+      const result=await processClaimedCard(card);
+      states.push(String(result?.state||"unknown"));
+      // As soon as this card clears price_processing_at, this lane immediately
+      // claims the next queued card. No artificial batch barrier.
+    }
+  }
+
+  try{
+    await Promise.all(Array.from({length:CONCURRENCY},()=>lane()));
+  }catch(error:any){
+    return json({ok:false,error:"worker_pool_failed",message:String(error?.message||error),claimed,updated,retried,terminal,states},500);
+  }
+
+  return json({ok:true,claimed,updated,retried,terminal,states});
+});
 
   return json({ok:true,claimed,updated,retried,terminal,results:results.map(r=>r.status==="fulfilled"?r.value?.state:"rejected")});
 });
