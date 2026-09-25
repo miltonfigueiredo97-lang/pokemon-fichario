@@ -39,7 +39,10 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
     condition:String(card.condition||"Nova")
   });
   if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
-  if(base===MYP_API&&fast)q.set("fast","1");
+  if(base===MYP_API&&fast){
+    q.set("fast","1");
+    q.set("attempt",String(Math.max(1,Number(card.price_attempts)||1)));
+  }
   if(base===MYP_API&&allowSavedLink){
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
     if(link&&/mypcards\.com/i.test(link)){
@@ -462,42 +465,14 @@ Deno.serve(async(req:Request)=>{
 
       // Do not accept an old saved quote as success for this request. A refresh
       // only completes when the current source lookup is validated and persisted.
-      const allTerminal=errors.length>0&&errors.every(e=>TERMINAL.has(e));
-
-      if(allTerminal){
-        const patch:any={
-          price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_last_error:errorDetail,
-          price_progress:100,price_progress_stage:"failed",price_progress_updated_at:new Date().toISOString()
-        };
-        if(keepMypLink)patch.myp_price_link=keepMypLink;
-        const {error}=await db.from("pokemon_cards").update(patch).eq("id",card.id);
-        if(error)throw error;
-        terminal++;
-        return {state:"failed_terminal"};
-      }
-
-      if(attempts>=RETRY_LIMIT){
-        const failedPatch:any={
-          price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_attempts:attempts,
-          price_last_error:errorDetail||errorCode||"retry_limit",
-          price_progress:100,price_progress_stage:"failed",price_progress_updated_at:new Date().toISOString()
-        };
-        if(keepMypLink)failedPatch.myp_price_link=keepMypLink;
-        const {error}=await db.from("pokemon_cards").update(failedPatch).eq("id",card.id);
-        if(error)throw error;
-        terminal++;
-        return {state:"failed_after_retries"};
-      }
-
-      // V15.08: falhou uma tentativa, a MESMA carta continua elegível imediatamente.
-      // Como o worker processa uma única carta por execução, ela não perde a vez
-      // para outra carta só porque uma fonte demorou ou respondeu temporariamente.
-      const retryAt=new Date(Date.now()+60*1000).toISOString();
+      // V16.14: source/discovery misses are not terminal card errors. "Not found"
+      // means only that THIS route did not confirm the page. Keep the persisted
+      // job queued and let later attempts use different discovery strategies.
+      const retryDelayMs=attempts<=2?15_000:attempts<=5?45_000:attempts<=10?2*60_000:5*60_000;
+      const retryAt=new Date(Date.now()+retryDelayMs).toISOString();
       const retryPatch:any={
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
-        price_priority:0,price_requested_at:new Date().toISOString(),
+        price_priority:Math.max(10,Number(card.price_priority||0)-1),
         price_last_error:errorDetail||errorCode||"temporary_error",
         price_progress:0,price_progress_stage:"queued",price_progress_updated_at:new Date().toISOString()
       };
@@ -508,19 +483,14 @@ Deno.serve(async(req:Request)=>{
       return {state:"retry"};
     }catch(error:any){
       const message=error?.name==="AbortError"?"timeout":String(error?.message||error||"worker_error");
-      if(attempts>=RETRY_LIMIT){
-        await db.from("pokemon_cards").update({
-          price_pending:false,price_processing_at:null,price_next_retry_at:null,
-          price_priority:0,price_attempts:attempts,price_last_error:message,
-          price_progress:100,price_progress_stage:"failed",price_progress_updated_at:new Date().toISOString()
-        }).eq("id",card.id);
-        terminal++;
-        return {state:"failed_after_retries"};
-      }
-      const retryAt=new Date(Date.now()+60*1000).toISOString();
+      // Infrastructure/browser failures also remain retryable. Never turn a
+      // missing quote into a permanent "failed" state just because a request
+      // timed out or a discovery endpoint temporarily missed the product.
+      const retryDelayMs=attempts<=2?15_000:attempts<=5?45_000:attempts<=10?2*60_000:5*60_000;
+      const retryAt=new Date(Date.now()+retryDelayMs).toISOString();
       await db.from("pokemon_cards").update({
         price_pending:true,price_processing_at:null,price_next_retry_at:retryAt,
-        price_priority:0,price_requested_at:new Date().toISOString(),
+        price_priority:Math.max(10,Number(card.price_priority||0)-1),
         price_last_error:message,
         price_progress:0,price_progress_stage:"queued",price_progress_updated_at:new Date().toISOString()
       }).eq("id",card.id);

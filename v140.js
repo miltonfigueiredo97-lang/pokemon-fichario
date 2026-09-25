@@ -4318,7 +4318,7 @@
   function priceAuditCardProgressV1606(card){
     const stage=String(card?.price_progress_stage||'').toLowerCase();
     if(hasBrazilQuoteV1466(card)&&stage==='complete')return{pct:100,label:'100%',kind:'priced'};
-    if(stage==='failed'&&card?.price_pending===false)return{pct:0,label:'ERRO',kind:'failed'};
+    if(stage==='failed'&&card?.price_pending===false)return{pct:0,label:'RETRY',kind:'queued'};
     if(card?.price_processing_at||priceAuditStageV1604(card).key==='processing')return{pct:0,label:'PROCESSANDO',kind:'processing'};
     return{pct:0,label:'0%',kind:'queued'};
   }
@@ -4343,7 +4343,7 @@
       validating_quote:'Validando a cotação recebida',
       saving_quote:'Salvando cotação no fichário',
       complete:'Cotação salva',
-      failed:'Tentativa encerrada sem cotação'
+      failed:'Cotação pendente de nova tentativa'
     };
     if(stage==='complete'&&card?.price_pending===false&&hasBrazilQuoteV1466(card)){
       const min=Number(card.price_min||card.myp_price_min||card.liga_price_min||0);
@@ -4351,7 +4351,7 @@
       return 'Cotação salva e confirmada · '+money(min||avg);
     }
     const attempt=Number(card?.price_attempts||0);
-    const suffix=attempt?' · tentativa '+Math.min(attempt,3)+'/3':'';
+    const suffix=attempt?' · tentativa '+attempt:'';
     if(stage==='failed'&&rawError)return (labels.failed||'Falhou')+' · '+rawError.replace(/_/g,' ')+suffix;
     return (labels[stage]||priceProblemTextV1466(card))+suffix;
   }
