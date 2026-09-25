@@ -555,7 +555,4 @@ Deno.serve(async(req:Request)=>{
   }
 
   return json({ok:true,claimed,updated,retried,terminal,states});
-});
-
-  return json({ok:true,claimed,updated,retried,terminal,results:results.map(r=>r.status==="fulfilled"?r.value?.state:"rejected")});
-});
+});\n
