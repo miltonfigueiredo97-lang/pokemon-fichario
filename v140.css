@@ -1907,3 +1907,10 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
     font-size:7.5px!important;
   }
 }
+
+/* V16.07 — real worker progress states */
+.v1468-unpriced-row.v1604-stage-failed{border-color:rgba(255,92,92,.34)}
+.v1604-stage-failed .v1604-stage-chip{
+  color:#ffb1b1;background:rgba(255,92,92,.10);border-color:rgba(255,92,92,.28);
+}
+.v1604-stage-failed .v1606-card-progress>i>u{background:#ff6f6f}
