@@ -1109,7 +1109,6 @@ module.exports=async function handler(req,res){
   const finish=String(req.query.finish||'Normal').trim();
   const condition=String(req.query.condition||'NM').trim();
   const fast=String(req.query.fast||'')==='1';
-  const workerAttempt=Math.max(1,Number(req.query.attempt||1)||1);
   if(fast)res.setHeader('Cache-Control','no-store, max-age=0');
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
 
@@ -1123,82 +1122,63 @@ module.exports=async function handler(req,res){
     const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
 
     if(!directLink){
-      // V16.14: "not found" from one search route is NOT a terminal result.
-      // Each worker attempt uses a different real discovery path. This matters
-      // for sets such as SSP/Fagulhas Impetuosas, whose MYP pages are indexed
-      // correctly but were frequently missed by the site's own search page.
-      const discovered=[];
-      const run=async(label,fn,budget)=>{
+      // V16.16: one definitive lookup. A queued card gets exactly one discovery
+      // cycle: web index by exact name+collector, then (if a product link was
+      // found without a usable finish quote) the same product page is read
+      // immediately. No cross-request retry loop.
+      let exact={ok:false,error:'not_started'};
+      try{
+        exact=await Promise.race([
+          searchWebExactMypBrowser({...wanted,quick:true}),
+          new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'one_shot_timeout'}),8500))
+        ]);
+      }catch(error){
+        exact={ok:false,error:'web_exact_error',message:String(error?.message||error||'')};
+      }
+
+      const exactLink=safeMypProductUrl(exact?.link);
+      if(exactLink&&exact?.ok&&hasAnyMarket(exact)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'MYP one-shot exact',mode:exact.mode||'browser-web-search-exact',
+          name,number,edition:exact.edition||set,finish,condition,link:exactLink,
+          min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
+          samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
+          exactVariant:exact.exactVariant===true,variantFallback:exact.variantFallback===true,
+          complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
+          checkedAt:new Date().toISOString()
+        });
+      }
+
+      if(exactLink){
         try{
-          const result=await Promise.race([
-            fn(),
-            new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:label+'_timeout'}),budget))
-          ]);
-          discovered.push({label,result});
-          return result;
+          const raw=await fetchText(exactLink,2500);
+          const identity=pageIdentity(raw);
+          if(matchesWanted(identity,wanted)){
+            let market=await marketAcrossSellerPages(exactLink,raw,identity,wanted,finish,condition);
+            if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+              market=sameProductFallbackMarket(identity,finish,condition);
+            }
+            if(hasAnyMarket(market)){
+              return res.status(200).json({
+                ok:true,source:'MYP Cards',provider:'MYP one-shot direct',mode:'one-shot-exact-direct',
+                name:identity?.name||name,number:identity?.number||number,edition:identity?.edition||set,
+                finish,condition,link:exactLink,
+                min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+                samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+                exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+                complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+                checkedAt:new Date().toISOString()
+              });
+            }
+          }
         }catch(error){
-          const result={ok:false,error:label+'_error',message:String(error?.message||error||'')};
-          discovered.push({label,result});
-          return result;
+          console.warn('MYP one-shot direct:',error?.message||error);
         }
-      };
-      const emit=(found,provider)=>{
-        const foundLink=safeMypProductUrl(found?.link);
-        if(foundLink&&found?.ok&&hasAnyMarket(found)){
-          return res.status(200).json({
-            ok:true,source:'MYP Cards',provider,mode:found.mode||'browser-discovery',
-            name,number,edition:found.edition||set,finish,condition,link:foundLink,
-            min:Number(found.min||0),avg:Number(found.avg||0),max:Number(found.max||0),
-            samples:found.samples??null,availableQuantity:found.availableQuantity??null,
-            exactVariant:found.exactVariant===true,variantFallback:found.variantFallback===true,
-            complete:!!(Number(found.min)>0&&Number(found.avg)>0&&Number(found.max)>0),
-            checkedAt:new Date().toISOString()
-          });
-        }
-        if(foundLink){
-          return res.status(200).json({
-            ok:false,error:'link_resolved',source:'MYP Cards',provider,
-            name,number,edition:found?.edition||set,finish,condition,link:foundLink,
-            message:'Produto MYP exato localizado; leitura direta necessária.'
-          });
-        }
-        return null;
-      };
-
-      // Attempt 1 prioritizes external index discovery because it reliably finds
-      // exact public product pages by name + collector number. Later attempts
-      // deliberately switch routes instead of repeating the same failed request.
-      if(workerAttempt%3===1){
-        const web=await run('web_exact',()=>searchWebExactMypBrowser({...wanted,quick:true}),9000);
-        const webResponse=emit(web,'MYP web exact');
-        if(webResponse)return webResponse;
-
-        const exact=await run('exact_browser',()=>searchExactMypBrowser({...wanted,quick:false}),15000);
-        const exactResponse=emit(exact,'MYP exact browser');
-        if(exactResponse)return exactResponse;
-      }else if(workerAttempt%3===2){
-        const collection=await run('collection_exact',()=>searchCollectionExactMypBrowser({...wanted,quick:true}),18000);
-        const collectionResponse=emit(collection,'MYP collection exact');
-        if(collectionResponse)return collectionResponse;
-
-        const fastSet=await run('fast_set_page',()=>searchFastSetPageMypBrowser({...wanted,quick:true}),9000);
-        const fastSetResponse=emit(fastSet,'MYP set page');
-        if(fastSetResponse)return fastSetResponse;
-      }else{
-        const exact=await run('exact_browser',()=>searchExactMypBrowser({...wanted,quick:false}),15000);
-        const exactResponse=emit(exact,'MYP exact browser');
-        if(exactResponse)return exactResponse;
-
-        const web=await run('web_exact',()=>searchWebExactMypBrowser({...wanted,quick:true}),9000);
-        const webResponse=emit(web,'MYP web exact');
-        if(webResponse)return webResponse;
       }
 
       return res.status(200).json({
-        ok:false,error:'discovery_retry_needed',source:'MYP Cards',provider:'MYP multi-route discovery',
-        attempt:workerAttempt,
-        diagnostics:discovered.map(x=>({route:x.label,error:x.result?.error||'',link:safeMypProductUrl(x.result?.link)})),
-        message:'Nenhuma rota confirmou a impressão nesta tentativa; o worker deve tentar outra estratégia.'
+        ok:false,error:'one_shot_no_quote',source:'MYP Cards',provider:'MYP one-shot exact',
+        link:exactLink||'',message:'A tentativa única não retornou cotação compatível.'
       });
     }
 
