@@ -1,6 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
-const { findAndScrapeMypBrowser, searchExactMypBrowser, searchWebExactMypBrowser } = require('../lib/myp-browser');
+const { findAndScrapeMypBrowser, searchExactMypBrowser, searchCollectionExactMypBrowser, searchWebExactMypBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -987,6 +987,33 @@ module.exports=async function handler(req,res){
   let directLink=safeMypProductUrl(link);
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
+
+  // V16.14: when the collection is known, resolve the exact card directly
+  // from the MYP collection pages. This avoids relying on search-engine indexing.
+  if(fast&&!directLink&&name&&number&&set){
+    try{
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
+      const exact=await Promise.race([
+        searchCollectionExactMypBrowser(wanted),
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'collection_timeout'}),14000))
+      ]);
+      const exactLink=safeMypProductUrl(exact?.link);
+      if(exactLink)directLink=exactLink;
+      if(exact?.ok&&hasAnyMarket(exact)){
+        return res.status(200).json({
+          ok:true,source:'MYP Cards',provider:'MYP collection exact',mode:exact.mode||'browser-collection-exact',
+          name,number,edition:exact.edition||set,finish,condition,link:exactLink||'',
+          min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
+          samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
+          exactVariant:exact.exactVariant===true,variantFallback:exact.variantFallback===true,
+          complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
+          checkedAt:new Date().toISOString()
+        });
+      }
+    }catch(error){
+      console.warn('MYP collection exact:',error?.message||error);
+    }
+  }
 
   // V16.11: cheap exact discovery first. Search-engine result pages are read
   // through Reader, then every MYP candidate is validated by name + collector
