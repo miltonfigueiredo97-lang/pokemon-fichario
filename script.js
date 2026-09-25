@@ -462,7 +462,7 @@ function requestedSpecificCatalogCards(name,number,setHint,language){
   const q=norm(name),n=norm(number),s=norm(setHint);
   const languageMatches=language==="all"||language==="pt-br";
   const nameMatches=q==="zekrom"||q.includes("zekrom");
-  const numberMatches=!n||n==="114"||n==="114 114";
+  const numberMatches=!n||["114","114 114","21","21 25"].includes(n);
   const setMatches=!s||["celebrations classic collection","celebrations","ccc","cel25cc","colecao classica"].some(x=>{
     const xx=norm(x);return xx===s||xx.includes(s)||s.includes(xx);
   });
@@ -484,12 +484,12 @@ function requestedSpecificCatalogCards(name,number,setHint,language){
     number:"114/114",
     internalNumber:"CC021",
     originalNumber:"114/114",
-    numberAliases:["114","114/114","CC021","21/25"],
+    numberAliases:["114","114/114","21","21/25","CC021"],
     printedTotal:"114",
     rarity:"Classic Collection",
     type:"Elétrico",
     category:"Pokémon",
-    imageUrl:"/api/tcgdex-card-image?id=cel25cc-CC021&lang=en",
+    imageUrl:"/api/image-proxy?url="+encodeURIComponent("https://images.pokemontcg.io/cel25c/21_hires.png"),
     mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
     market:{
       source:"MYP Cards",
@@ -872,7 +872,7 @@ async function searchCards(options={}){
   // V15.25: exact user-requested card must never be lost behind provider/filter
   // behavior. When searching Zekrom + 114 in PT-BR, return MYP 144267 directly.
   const forcedSpecific=requestedSpecificCatalogCards(raw,number,setHint,language);
-  if(forcedSpecific.length&&language==="pt-br"&&norm(raw).includes("zekrom")&&norm(number)==="114"){
+  if(forcedSpecific.length&&language==="pt-br"&&norm(raw).includes("zekrom")&&["114","114 114","21","21 25"].includes(norm(number))){
     catalogResults=forcedSpecific;
     populateRarityFilter();
     renderCatalog();
