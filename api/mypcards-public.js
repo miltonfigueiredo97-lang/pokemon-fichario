@@ -1227,24 +1227,26 @@ module.exports=async function handler(req,res){
     if(!directLink){
       let discovered=null;
       try{
-        discovered=await Promise.race([
+        // V16.12: run the two real discovery routes in PARALLEL.
+        // The old sequential 14s + 8s chain regularly hit the worker's 24s
+        // deadline and every card went back to the queue.
+        const discovery=Promise.allSettled([
           searchFastSetPageMypBrowser(wanted),
-          new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_discovery_timeout'}),14000))
+          searchWebExactMypBrowser(wanted,'')
         ]);
+        const settled=await Promise.race([
+          discovery,
+          new Promise(resolve=>setTimeout(()=>resolve([]),13500))
+        ]);
+        const rows=Array.isArray(settled)
+          ? settled.filter(x=>x?.status==='fulfilled').map(x=>x.value)
+          : [];
+        discovered=
+          rows.find(x=>x?.ok&&hasAnyMarket(x))||
+          rows.find(x=>safeMypProductUrl(x?.link))||
+          {ok:false,error:'fast_discovery_timeout'};
       }catch(error){
         discovered={ok:false,error:error?.message||'fast_discovery_error'};
-      }
-
-      // If the set-page route misses, use the same web-search style route that
-      // resolves a single card manually, still inside the fast request budget.
-      if(!safeMypProductUrl(discovered?.link)){
-        try{
-          const webFound=await Promise.race([
-            searchWebExactMypBrowser(wanted,''),
-            new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_web_timeout'}),8000))
-          ]);
-          if(safeMypProductUrl(webFound?.link))discovered=webFound;
-        }catch{}
       }
 
       const discoveredLink=safeMypProductUrl(discovered?.link);
