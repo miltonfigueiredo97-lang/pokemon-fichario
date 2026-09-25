@@ -1475,3 +1475,53 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
     width:100%;
   }
 }
+
+
+/* V16.03 — filtros compostos + auditoria de preços */
+.v1603-rarity-filter{
+  margin-top:10px;border:1px solid var(--line,#2b3138);border-radius:10px;background:rgba(255,255,255,.018);
+}
+.v1603-rarity-filter>summary{
+  list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding:10px 11px;font-size:12px;font-weight:800;
+}
+.v1603-rarity-filter>summary::-webkit-details-marker{display:none}
+.v1603-rarity-filter>summary b{
+  font-size:10px;font-weight:800;color:var(--accent,#ff654f);background:rgba(255,101,79,.10);
+  border:1px solid rgba(255,101,79,.24);border-radius:999px;padding:3px 7px;
+}
+.v1603-rarity-body{padding:0 10px 10px}
+.v1603-rarity-options{
+  display:grid;grid-template-columns:1fr;gap:4px;max-height:220px;overflow:auto;padding:3px 0 7px;
+}
+.v1603-rarity-options label{
+  display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;
+  border:1px solid transparent;cursor:pointer;font-size:11px;
+}
+.v1603-rarity-options label:hover{background:rgba(255,255,255,.035);border-color:var(--line,#2b3138)}
+.v1603-rarity-options input{accent-color:var(--accent,#ff654f)}
+#v1603RarityClear{width:100%}
+
+.v1603-price-audit-dialog .v1468-unpriced-shell{width:min(1040px,94vw)}
+.v1603-price-audit-filters{
+  display:grid;grid-template-columns:1.15fr 1fr 1fr 1.6fr;gap:9px;margin:10px 0;
+}
+.v1603-price-audit-filters label{display:grid;gap:5px}
+.v1603-price-audit-filters label>span{
+  font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:var(--muted,#8f979f);
+}
+.v1603-price-audit-filters select,.v1603-price-audit-filters input{
+  width:100%;min-width:0;background:#0e1215;color:var(--text,#f5f5f5);
+  border:1px solid var(--line,#2b3138);border-radius:9px;padding:9px 10px;
+}
+.v1603-price-audit-actions{
+  display:flex;align-items:center;gap:12px;margin:8px 0 10px;
+}
+.v1603-price-audit-actions .btn{min-width:230px}
+#v1603PriceAuditProgress{font-size:11px}
+@media(max-width:820px){
+  .v1603-price-audit-filters{grid-template-columns:1fr 1fr}
+  .v1603-price-audit-search{grid-column:1/-1}
+  .v1603-price-audit-actions{align-items:stretch;flex-direction:column}
+  .v1603-price-audit-actions .btn{width:100%;min-width:0}
+}
