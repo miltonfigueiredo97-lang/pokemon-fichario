@@ -957,6 +957,46 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
+  // V16.11: cheap exact discovery first. Search-engine result pages are read
+  // through Reader, then every MYP candidate is validated by name + collector
+  // number before we accept its URL or price.
+  if(fast&&!directLink&&name&&number){
+    try{
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
+      const candidates=await externalSearchCandidates({name,nameAliases,number,set});
+      const checked=await Promise.all(candidates.slice(0,4).map(async candidate=>{
+        try{
+          const raw=await fetchText(candidate,6500);
+          const identity=pageIdentity(raw);
+          if(!matchesWanted(identity,wanted))return null;
+          let market=await marketAcrossSellerPages(candidate,raw,identity,wanted,finish,condition);
+          if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+            market=sameProductFallbackMarket(identity,finish,condition);
+          }
+          return{candidate,identity,market};
+        }catch{return null}
+      }));
+      const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
+      if(hit){
+        directLink=safeMypProductUrl(hit.candidate);
+        if(hasAnyMarket(hit.market)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'External exact Reader',mode:'external-exact-reader',
+            name:hit.identity?.name||name,number:hit.identity?.number||number,
+            edition:hit.identity?.edition||set,finish,condition,link:directLink,
+            min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
+            samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
+            exactVariant:hit.market.exactVariant===true,variantFallback:hit.market.variantFallback===true,
+            complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+      }
+    }catch(error){
+      console.warn('MYP external exact Reader:',error?.message||error);
+    }
+  }
+
   // V16.10: for the worker's fast no-link path, mirror the search that
   // reliably finds MYP pages externally: "site:mypcards.com/pokemon/produto
   // Name number". The native MYP search remains the normal/manual fallback.
