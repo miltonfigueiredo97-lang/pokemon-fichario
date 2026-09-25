@@ -24,7 +24,9 @@
     binderSearchMatches:[],
     viewScope:'all',
     rarityFilters:new Set(),
-    priceAuditWatchSeq:0
+    priceAuditWatchSeq:0,
+    priceAuditBatch:null,
+    priceAuditPollTimer:0
   };
   window.PB14=V14;
 
@@ -4300,11 +4302,22 @@
         <button id="v1603UpdateFilteredPrices" class="btn btn-primary" type="button">↻ Atualizar conforme filtros</button>
         <span id="v1603PriceAuditProgress" class="muted"></span>
       </div>
+      <div id="v1604PriceProgressCard" class="v1604-price-progress-card">
+        <div class="v1604-progress-copy">
+          <strong id="v1604PriceProgressTitle">Progresso das cotações</strong>
+          <span id="v1604PriceProgressPct">0%</span>
+        </div>
+        <div class="v1604-progress-track"><i id="v1604PriceProgressBar"></i></div>
+        <div id="v1604PriceProgressMeta" class="v1604-progress-meta"></div>
+      </div>
       <div id="v1468UnpricedStats" class="v1468-unpriced-stats"></div>
       <div id="v1468UnpricedList" class="v1468-unpriced-list"></div>
     </div>`;
     document.body.appendChild(d);
     byId('v1468UnpricedClose').onclick=()=>d.close();
+    d.addEventListener('close',()=>{
+      if(V14.priceAuditPollTimer){clearTimeout(V14.priceAuditPollTimer);V14.priceAuditPollTimer=0}
+    });
     d.addEventListener('click',e=>{if(e.target===d)d.close()});
     for(const id of ['v1468UnpricedSearch','v1468UnpricedProblem','v1603PriceBinder','v1603PriceState']){
       byId(id)?.addEventListener(id==='v1468UnpricedSearch'?'input':'change',renderUnpricedPopupV1468);
@@ -4321,6 +4334,84 @@
     select.value=[...select.options].some(o=>o.value===old)?old:'all';
   }
 
+  function priceAuditStageV1604(card){
+    if(hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'COM VALOR'};
+    const processingAt=Date.parse(card?.price_processing_at||0)||0;
+    const freshProcessing=processingAt&&processingAt>Date.now()-60_000;
+    if(freshProcessing)return{key:'processing',rank:0,label:'ATUALIZANDO'};
+    if(card?.price_pending)return{key:'queued',rank:1,label:'NA FILA'};
+    return{key:'waiting',rank:2,label:'AGUARDANDO AJUSTE'};
+  }
+
+  function priceAuditScopeStatsV1604(){
+    const binderId=byId('v1603PriceBinder')?.value||'all';
+    const all=priceAuditBinderCardsV1603(binderId);
+    const counts={total:all.length,priced:0,processing:0,queued:0,waiting:0};
+    for(const card of all){
+      const stage=priceAuditStageV1604(card).key;
+      if(stage==='priced')counts.priced++;
+      else if(stage==='processing')counts.processing++;
+      else if(stage==='queued')counts.queued++;
+      else counts.waiting++;
+    }
+    return counts;
+  }
+
+  function renderPriceAuditProgressV1604(){
+    const title=byId('v1604PriceProgressTitle');
+    const pctEl=byId('v1604PriceProgressPct');
+    const bar=byId('v1604PriceProgressBar');
+    const meta=byId('v1604PriceProgressMeta');
+    if(!title||!pctEl||!bar||!meta)return;
+
+    const batch=V14.priceAuditBatch;
+    if(batch?.total){
+      const done=Math.max(0,Math.min(batch.total,Number(batch.done||0)));
+      const pct=Math.round(done/batch.total*100);
+      title.textContent='Lote em atualização';
+      pctEl.textContent=pct+'%';
+      bar.style.width=pct+'%';
+      meta.textContent=[
+        done+' de '+batch.total+' processadas',
+        (batch.processing||0)+' atualizando agora',
+        (batch.queued||0)+' na fila',
+        (batch.priced||0)+' com valor'
+      ].join(' · ');
+      return;
+    }
+
+    const stats=priceAuditScopeStatsV1604();
+    const pct=stats.total?Math.round(stats.priced/stats.total*100):100;
+    title.textContent='Cobertura de preços no escopo';
+    pctEl.textContent=pct+'%';
+    bar.style.width=pct+'%';
+    meta.textContent=[
+      stats.priced+' com valor',
+      stats.processing+' atualizando agora',
+      stats.queued+' na fila',
+      stats.waiting+' aguardando ajuste'
+    ].join(' · ');
+  }
+
+  async function pollPriceAuditV1604(){
+    if(V14.priceAuditPollTimer)clearTimeout(V14.priceAuditPollTimer);
+    const dialog=byId('v1468UnpricedDialog');
+    if(!dialog?.open){V14.priceAuditPollTimer=0;return}
+    try{
+      const {data,error}=await db.from('pokemon_cards')
+        .select('id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_min,liga_price_avg,liga_price_max,price_checked_at,price_pending,price_processing_at,price_attempts,price_last_error')
+        .eq('user_id',currentUser.id);
+      if(!error&&Array.isArray(data)){
+        data.forEach(row=>applyLocalPricePatch(row.id,row));
+        renderUnpricedPopupV1468();
+        renderUnpricedAuditV1466();
+      }
+    }catch(error){
+      console.warn('[Cotações · atualização ao vivo]',error);
+    }
+    V14.priceAuditPollTimer=setTimeout(pollPriceAuditV1604,4200);
+  }
+
   function priceAuditFilteredCardsV1603(){
     const binderId=byId('v1603PriceBinder')?.value||'all';
     const state=byId('v1603PriceState')?.value||'unpriced';
@@ -4334,6 +4425,12 @@
       if(query&&!nrm([card.name,card.number,card.set_name,card.finish,card.rarity,binderForCard(card)?.name,priceProblemTextV1466(card)].filter(Boolean).join(' ')).includes(query))return false;
       return true;
     }).sort((a,b)=>{
+      const sa=priceAuditStageV1604(a),sb=priceAuditStageV1604(b);
+      if(sa.rank!==sb.rank)return sa.rank-sb.rank;
+      if(sa.key==='processing'){
+        const at=Date.parse(a.price_processing_at||0)||0,bt=Date.parse(b.price_processing_at||0)||0;
+        if(at!==bt)return bt-at;
+      }
       const ba=String(binderForCard(a)?.name||''),bb=String(binderForCard(b)?.name||'');
       return ba.localeCompare(bb,'pt-BR')||String(a.set_name||'').localeCompare(String(b.set_name||''),'pt-BR')||
         numberValue(a.number)-numberValue(b.number)||String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
@@ -4351,6 +4448,7 @@
     byId('v1468UnpricedTotal').textContent=String(cards.length);
     byId('v1468UnpricedSubtitle').textContent=all.length+' carta(s) no escopo · '+unpriced+' sem valor · '+priced+' com valor.';
     byId('v1468UnpricedStats').textContent=cards.length+' carta(s) correspondem aos filtros atuais.';
+    renderPriceAuditProgressV1604();
 
     const list=byId('v1468UnpricedList');
     list.innerHTML='';
@@ -4361,7 +4459,8 @@
 
     for(const card of cards){
       const row=document.createElement('button');
-      row.type='button';row.className='v1468-unpriced-row';
+      const stage=priceAuditStageV1604(card);
+      row.type='button';row.className='v1468-unpriced-row v1604-stage-'+stage.key;
       const image=cardImage(card),binder=binderForCard(card);
       const min=Number(card.price_min||card.myp_price_min||card.liga_price_min||0);
       const avg=Number(card.price_avg||card.myp_price_avg||card.liga_price_avg||0);
@@ -4369,7 +4468,7 @@
         '<span class="v1468-unpriced-thumb">'+(image?'<img src="'+esc(image)+'" alt="" loading="lazy">':'?')+'</span>'+
         '<span class="v1468-unpriced-info"><span class="v1468-unpriced-name"><strong>'+esc(card.name||'Carta sem nome')+'</strong><b>'+esc(card.number?'#'+card.number:'Sem número')+'</b></span>'+
         '<small>'+esc([binder?.name||'Fichário',card.set_name||'Coleção',card.finish||'Normal',card.rarity||''].filter(Boolean).join(' · '))+'</small>'+
-        '<em>'+esc(priceProblemTextV1466(card))+(hasBrazilQuoteV1466(card)?' · '+esc(money(min||avg)):'')+'</em></span>'+
+        '<em><b class="v1604-stage-chip">'+esc(stage.label)+'</b><span>'+esc(priceProblemTextV1466(card))+(hasBrazilQuoteV1466(card)?' · '+esc(money(min||avg)):'')+'</span></em></span>'+
         '<span class="v1468-unpriced-open"><small>Conferir</small><b>›</b></span>';
       row.onclick=()=>{ensureUnpricedDialogV1468().close();byId('summaryPanel')?.classList.remove('mobile-open');openExistingCard(card,true)};
       list.appendChild(row);
@@ -4392,20 +4491,44 @@
   async function watchAuditPriceBatchV1603(cards){
     const seq=++V14.priceAuditWatchSeq;
     const ids=uniquePriceCards(cards).map(c=>c.id).filter(Boolean);
+    const total=ids.length;
     const progress=byId('v1603PriceAuditProgress');
     const started=Date.now();
-    while(seq===V14.priceAuditWatchSeq&&Date.now()-started<10*60_000){
+    V14.priceAuditBatch={ids,total,done:0,processing:0,queued:total,priced:0,started};
+
+    while(seq===V14.priceAuditWatchSeq&&Date.now()-started<15*60_000){
       const {data}=await db.from('pokemon_cards')
         .select('id,price_pending,price_processing_at,price_min,price_avg,price_max,myp_price_min,myp_price_avg,myp_price_max,liga_price_min,liga_price_avg,liga_price_max,price_last_error')
         .eq('user_id',currentUser.id).in('id',ids);
       if(Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
-        const pending=data.filter(row=>row.price_pending).length;
+        const now=Date.now();
+        const processing=data.filter(row=>{
+          const t=Date.parse(row.price_processing_at||0)||0;
+          return !hasBrazilQuoteV1466(row)&&t&&t>now-60_000;
+        }).length;
+        const queued=data.filter(row=>!hasBrazilQuoteV1466(row)&&row.price_pending).length-processing;
         const priced=data.filter(row=>hasBrazilQuoteV1466(row)).length;
-        if(progress)progress.textContent=pending?pending+' na fila/processando · '+priced+' com valor':'Atualização deste lote concluída.';
+        const pending=data.filter(row=>row.price_pending).length;
+        const done=Math.max(0,total-pending);
+
+        V14.priceAuditBatch={ids,total,done,processing:Math.max(0,processing),queued:Math.max(0,queued),priced,started};
+        const pct=total?Math.round(done/total*100):100;
+        if(progress)progress.textContent=pending
+          ?pct+'% concluído · '+processing+' atualizando · '+Math.max(0,queued)+' na fila'
+          :'100% processado · '+priced+' com valor neste lote';
+
         renderUnpricedPopupV1468();
         renderUnpricedAuditV1466();
-        if(!pending)break;
+        if(!pending){
+          V14.priceAuditBatch={...V14.priceAuditBatch,done:total,processing:0,queued:0};
+          renderPriceAuditProgressV1604();
+          setTimeout(()=>{
+            if(V14.priceAuditBatch?.ids===ids)V14.priceAuditBatch=null;
+            renderPriceAuditProgressV1604();
+          },3500);
+          break;
+        }
       }
       await sleep(2200);
     }
@@ -4423,7 +4546,8 @@
       queueBackgroundPrices(cards,{front:unpricedOnly});
       kickPriceWorkerNow();
       setTimeout(kickPriceWorkerNow,1200);
-      if(progress)progress.textContent=cards.length+' carta(s) colocadas na fila.';
+      V14.priceAuditBatch={ids:cards.map(card=>card.id).filter(Boolean),total:cards.length,done:0,processing:0,queued:cards.length,priced:cards.filter(hasBrazilQuoteV1466).length,started:Date.now()};
+      if(progress)progress.textContent='0% concluído · '+cards.length+' na fila';
       renderUnpricedPopupV1468();
       watchAuditPriceBatchV1603(cards).catch(console.warn);
     }catch(error){
@@ -4445,6 +4569,7 @@
     try{await syncPriceAuditRowsV1603()}catch(error){console.warn('[Cotações · sincronização]',error)}
     renderUnpricedAuditV1466();
     renderUnpricedPopupV1468();
+    if(!V14.priceAuditPollTimer)V14.priceAuditPollTimer=setTimeout(pollPriceAuditV1604,1200);
     setTimeout(()=>byId('v1468UnpricedSearch')?.focus(),80);
   }
 
