@@ -1429,21 +1429,53 @@
     }
   }
 
+  const RELATED_MASTER_PROMOS_V1612={
+    // Scarlet & Violet—151 product promos. Exact SVP collector numbers, not the
+    // entire Scarlet & Violet promo set. These are the promos distributed in
+    // 151-branded products (Poster, Zapdos, Alakazam, ETB and UPC).
+    'sv03.5':[{set:'svp',only:['046','047','048','049','050','051','052','053'],relation:'151 products'}],
+    'sv3.5': [{set:'svp',only:['046','047','048','049','050','051','052','053'],relation:'151 products'}]
+  };
+
   async function generationPromoEntriesV1603(lang,seriesId,selectedSetId){
-    // V16.12: a série/geração NÃO é uma relação entre um set normal e todos os
-    // promo sets daquela geração. O catálogo TCGdex usado aqui expõe setId/serie,
-    // mas não expõe uma relação produto→set que prove que uma promo pertence ao
-    // set normal selecionado. Portanto não fazemos associação heurística.
-    //
-    // Promos entram apenas quando:
-    // 1) o próprio set selecionado é um promo set; ou
-    // 2) uma coleção composta explícita (20/25/30 anos) lista o promo set/produto
-    //    como componente estruturado em completeAnniversaryForCatalog().
-    //
-    // Quando uma fonte estruturada de relação for adicionada, esta função pode
-    // consumir somente esses IDs comprovados — nunca "todas as promos da série".
-    void lang; void seriesId; void selectedSetId;
-    return{entries:[],sets:[]};
+    // V16.12: generation membership alone is NEVER sufficient evidence.
+    // Only explicit set/product relationships are allowed here.
+    void seriesId;
+    const specs=RELATED_MASTER_PROMOS_V1612[String(selectedSetId||'').toLowerCase()]||[];
+    if(!specs.length)return{entries:[],sets:[]};
+
+    const parts=await Promise.all(specs.map(async spec=>{
+      try{
+        const p=new URLSearchParams({
+          v:'30',strictLang:'1',all:'1',lang:String(lang||'pt'),
+          set:String(spec.set),only:spec.only.join(',')
+        });
+        const rr=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
+        const jj=await rr.json();
+        if(!jj?.ok)return null;
+        return{
+          set:{id:spec.set,name:spec.relation},
+          entries:(jj.entries||[]).map(entry=>({
+            ...entry,autoPromo:true,promoOriginSetId:spec.set,
+            promoOriginSetName:spec.relation,promoRelation:'explicit_product_map'
+          }))
+        };
+      }catch(error){
+        console.warn('[Master Set promo relation]',selectedSetId,spec.set,error);
+        return null;
+      }
+    }));
+
+    const entries=[],sets=[],seen=new Set();
+    for(const part of parts.filter(Boolean)){
+      sets.push({id:part.set.id,name:part.set.name,count:part.entries.length});
+      for(const entry of part.entries){
+        const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+        if(seen.has(key))continue;
+        seen.add(key);entries.push(entry);
+      }
+    }
+    return{entries,sets};
   }
 
   async function loadMasterPreview(lang,setId){
@@ -1511,11 +1543,24 @@
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
 
-        // V16.12: regular Master Sets are strictly scoped to the selected set.
-        // Do not merge generation-wide promo sets. Explicit anniversary products
-        // are handled above by their deterministic component definitions.
-        j.autoPromoSets=[];
-        j.autoPromoEntries=0;
+        // V16.12: regular Master Sets may receive promos only from an explicit
+        // structured set/product relationship. Never merge every promo in a series.
+        if(!j.set?.isPromoSet){
+          const seriesId=byId('v14SeriesSelect')?.value||'';
+          const promos=await generationPromoEntriesV1603(lang,seriesId,setId);
+          if(epoch!==V14.masterEpoch)return;
+          const seen=new Set((j.entries||[]).map(entry=>[entry.apiId,entry.variantKey,entry.languageCode].join('|')));
+          let added=0;
+          for(const entry of promos.entries){
+            const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
+            if(seen.has(key))continue;
+            seen.add(key);j.entries.push(entry);added++;
+          }
+          j.autoPromoSets=promos.sets;
+          j.autoPromoEntries=added;
+        }else{
+          j.autoPromoSets=[];j.autoPromoEntries=0;
+        }
       }
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
       const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
@@ -1539,7 +1584,9 @@
         }else if(j.set.isPromoSet){
           notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
         }else{
-          notice.textContent='Este Master Set contém somente cartas e variantes do set selecionado. Promos só entram quando existe uma relação estruturada de produto/set (como nas coleções completas de aniversário), nunca por pertencerem apenas à mesma geração.';
+          notice.textContent=j.autoPromoEntries
+            ?'Este Master Set inclui '+j.autoPromoEntries+' entrada(s) promocional(is) ligadas explicitamente a produtos desta coleção. Promos da mesma geração sem relação comprovada não entram.'
+            :'Este Master Set contém somente cartas e variantes do set selecionado. Não há promo relacionada cadastrada de forma estruturada para esta coleção; promos da mesma geração não são adicionadas por aproximação.';
         }
         notice.classList.remove('hidden');
       }
