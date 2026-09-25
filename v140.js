@@ -604,8 +604,29 @@
 
   function wireSpreadNavigationV14(){
     const prev=byId('prevPage'),next=byId('nextPage');
-    if(prev)prev.onclick=()=>goToBinderSessionV14(-1);
-    if(next)next.onclick=()=>goToBinderSessionV14(1);
+    const mobile=()=>window.matchMedia('(max-width:820px)').matches;
+    const inActiveCore=e=>{
+      if(!mobile())return true;
+      const r=e.currentTarget.getBoundingClientRect();
+      const x=(Number.isFinite(e.clientX)?e.clientX:r.left+r.width/2)-r.left-r.width/2;
+      const y=(Number.isFinite(e.clientY)?e.clientY:r.top+r.height/2)-r.top-r.height/2;
+      // V16.05: only the central 36px circle changes page. The thin outer
+      // guard catches imprecise taps so they cannot fall through to a card.
+      return Math.hypot(x,y)<=18;
+    };
+    const wire=(button,dir)=>{
+      if(!button)return;
+      button.onpointerdown=e=>{e.stopPropagation();};
+      button.onpointerup=e=>{e.stopPropagation();};
+      button.onclick=e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(!inActiveCore(e))return;
+        goToBinderSessionV14(dir);
+      };
+    };
+    wire(prev,-1);
+    wire(next,1);
   }
 
   function syncTopbarNavigation(){
