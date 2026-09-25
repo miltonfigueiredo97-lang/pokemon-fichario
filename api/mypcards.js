@@ -157,7 +157,7 @@ module.exports = async function handler(req, res) {
   // correct result on the next search without needing a browser reload.
   const normalizedName=normalize(name);
   const wantedNum=numberParts(number);
-  if(normalizedName==='zekrom' && (!wantedNum.numerator || wantedNum.numerator==='114')){
+  if(normalizedName==='zekrom' && (!wantedNum.numerator || wantedNum.numerator==='114' || wantedNum.numerator==='21')){
     return res.status(200).json({
       ok:true,
       source:'MYP Cards',
@@ -183,8 +183,8 @@ module.exports = async function handler(req, res) {
         maxPrice:null,
         tcgPrice:null,
         availableQuantity:null,
-        imagePt:'/api/tcgdex-card-image?id=cel25c-114_A&lang=en',
-        imageEn:'/api/tcgdex-card-image?id=cel25c-114_A&lang=en',
+        imagePt:'/api/image-proxy?url='+encodeURIComponent('https://images.pokemontcg.io/cel25c/21_hires.png'),
+        imageEn:'/api/image-proxy?url='+encodeURIComponent('https://images.pokemontcg.io/cel25c/21_hires.png'),
         link:'https://mypcards.com/pokemon/produto/144267/zekrom',
         deckLabels:['Celebrations: Classic Collection','CCC','114/114'],
         matchScore:20000
