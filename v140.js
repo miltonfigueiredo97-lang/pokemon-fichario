@@ -4249,8 +4249,9 @@
     if(active.has(raw)||card?.price_processing_at)return{key:'processing',rank:0,label:'PROCESSANDO'};
     if(raw==='retry_wait')return{key:'retrying',rank:1,label:'TENTANDO NOVAMENTE'};
     if(raw==='queued'||card?.price_pending)return{key:'queued',rank:2,label:'NA FILA'};
-    if(raw==='failed'&&card?.price_pending===false)return{key:'failed',rank:2,label:'ERRO'};
-    if(raw==='complete'&&hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'CONCLUÍDA'};
+    if(raw==='no_quote'&&card?.price_pending===false)return{key:'noquote',rank:3,label:'SEM COTAÇÃO'};
+    if(raw==='failed'&&card?.price_pending===false)return{key:'failed',rank:3,label:'ERRO'};
+    if(raw==='complete'&&hasBrazilQuoteV1466(card))return{key:'priced',rank:4,label:'CONCLUÍDA'};
     if(hasBrazilQuoteV1466(card))return{key:'priced',rank:3,label:'COM VALOR'};
     return{key:'waiting',rank:2,label:'AGUARDANDO AJUSTE'};
   }
@@ -4292,7 +4293,7 @@
     if(!snapshot?.total)return{total:0,done:0,processing:0,queued:0,priced:0,failed:0,pct:0};
 
     const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
-    let done=0,processing=0,retrying=0,queued=0,priced=0,failed=0;
+    let done=0,processing=0,retrying=0,queued=0,priced=0,noQuote=0,failed=0;
     const activeStages=new Set([
       'claimed','resolving_identity','identity_ready','link_ready','querying_sources',
       'discovering_myp_link','searching_myp','myp_link_found','reading_myp',
@@ -4307,6 +4308,9 @@
       if(hasBrazilQuoteV1466(card)&&stage==='complete'&&card.price_pending===false){
         done++;priced++;continue;
       }
+      if(stage==='no_quote'&&card.price_pending===false){
+        noQuote++;continue;
+      }
       if(stage==='failed'&&card.price_pending===false){
         failed++;continue;
       }
@@ -4320,7 +4324,7 @@
     // Percentage means "price successfully updated and saved", not merely
     // "worker stopped touching this row". Failed jobs never inflate progress.
     const pct=total?Math.max(0,Math.min(100,Math.round((priced/total)*100))):0;
-    return{total,done:priced,processing,retrying,queued,priced,failed,pct};
+    return{total,done:priced,processing,retrying,queued,priced,noQuote,failed,pct};
   }
 
   function priceAuditCardProgressV1606(card){
@@ -4353,7 +4357,8 @@
       validating_quote:'Validando a cotação recebida',
       saving_quote:'Salvando cotação no fichário',
       complete:'Cotação salva',
-      failed:'Cotação pendente de nova tentativa'
+      failed:'Falha ao atualizar',
+      no_quote:'Consulta concluída sem cotação válida'
     };
     if(stage==='complete'&&card?.price_pending===false&&hasBrazilQuoteV1466(card)){
       const min=Number(card.price_min||card.myp_price_min||card.liga_price_min||0);
@@ -4399,9 +4404,10 @@
 
     meta.textContent=[
       q.priced+'/'+q.total+' atualizadas com valor',
-      q.processing+' processando agora',
+      q.processing+' processando neste lote',
       q.retrying?q.retrying+' aguardando nova tentativa':'',
-      q.queued+' ainda não iniciadas',
+      q.queued+' aguardando próximo lote',
+      q.noQuote?q.noQuote+' sem cotação':'',
       q.failed?q.failed+' erros':''
     ].filter(Boolean).join(' · ');
   }
@@ -4527,7 +4533,7 @@
         V14.priceAuditBatch={ids,total,done,processing,retrying,queued,priced,failed,started};
         const pct=total?Math.round((priced/total)*100):0;
         if(progress)progress.textContent=pending
-          ?priced+'/'+total+' atualizadas com valor · '+pct+'% · '+processing+' processando · '+retrying+' tentando novamente · '+queued+' ainda não iniciadas · '+failed+' erros'
+          ?priced+'/'+total+' atualizadas com valor · '+pct+'% · '+processing+' processando · '+retrying+' tentando novamente · '+queued+' aguardando próximo lote · '+failed+' erros'
           :priced+'/'+total+' atualizadas com valor · '+pct+'% · '+failed+' erros';
 
         renderUnpricedPopupV1468();
