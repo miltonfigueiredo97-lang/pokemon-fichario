@@ -71,6 +71,60 @@ function mypProductId(value:unknown){
   const m=String(value||"").match(/mypcards\.com\/pokemon\/produto\/([0-9]+)\//i);
   return m?Number(m[1]):0;
 }
+
+function catalogNumberKey(value:unknown){
+  return String(value||"").toUpperCase().replace(/\s+/g,"");
+}
+
+async function hydrateBatchMypLinks(db:any,batch:any[]){
+  const groups=new Map<string,any[]>();
+  for(const card of batch){
+    const existing=[card.myp_price_link,card.price_br_link,card.price_link]
+      .map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v));
+    if(existing)continue;
+    const setId=String(card.set_id||"").trim();
+    const setName=String(card.set_name||"").trim();
+    if(!setId&&!setName)continue;
+    const key=setId+"|"+setName;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key)!.push(card);
+  }
+
+  for(const cards of groups.values()){
+    const sample=cards[0];
+    const q=new URLSearchParams({
+      catalog:"1",
+      set:String(sample.set_name||""),
+      setId:String(sample.set_id||""),
+      lang:String(sample.language_code||"")
+    });
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),10500);
+    let payload:any=null;
+    try{
+      const rr=await fetch(MYP_API+"?"+q.toString(),{
+        headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.17"},
+        signal:controller.signal
+      });
+      if(rr.ok)payload=await rr.json().catch(()=>null);
+    }catch{}
+    finally{clearTimeout(timer)}
+
+    const map=new Map<string,string>();
+    for(const item of Array.isArray(payload?.items)?payload.items:[]){
+      const key=catalogNumberKey(item?.number);
+      const link=String(item?.link||"").trim();
+      if(key&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link))map.set(key,link);
+    }
+
+    for(const card of cards){
+      const link=map.get(catalogNumberKey(card.number))||"";
+      if(!link)continue;
+      card.myp_price_link=link;
+      await db.from("pokemon_cards").update({myp_price_link:link}).eq("id",card.id);
+    }
+  }
+}
 const learnedSetLinkCache=new Map<string,{offset:number,anchors:number,expires:number}|null>();
 
 const siblingLinkCache=new Map<string,{link:string,expires:number}>();
@@ -433,6 +487,11 @@ Deno.serve(async(req:Request)=>{
       const batch=await claimBatch();
       if(!batch.length)break;
       claimed+=batch.length;
+
+      // Resolve product identities once per set for the whole ten-card batch.
+      // This avoids launching ten independent searches for cards from the same
+      // collection and gives each card a direct MYP product URL before pricing.
+      await hydrateBatchMypLinks(db,batch);
 
       // Fixed batch barrier: all ten are claimed together, processed together,
       // and the next ten are not claimed until every member of this batch ended.
