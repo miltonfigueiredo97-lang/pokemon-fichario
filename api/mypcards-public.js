@@ -988,30 +988,46 @@ module.exports=async function handler(req,res){
   let catalogResolvedLink=false;
   const nameAliases=fast&&directLink?[name]:await resolveNameAliases(name,apiId);
 
-  // V16.14: when the collection is known, resolve the exact card directly
-  // from the MYP collection pages. This avoids relying on search-engine indexing.
+  // V16.15: resolve no-link cards from the MYP collection index through
+  // Reader first. This is cheaper than launching Chromium and still validates
+  // the exact name + collector number before accepting a product URL.
   if(fast&&!directLink&&name&&number&&set){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
-      const exact=await Promise.race([
-        searchCollectionExactMypBrowser(wanted),
-        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'collection_timeout'}),14000))
+      const candidates=await Promise.race([
+        collectionIndexCandidates(wanted),
+        new Promise(resolve=>setTimeout(()=>resolve([]),13000))
       ]);
-      const exactLink=safeMypProductUrl(exact?.link);
-      if(exactLink)directLink=exactLink;
-      if(exact?.ok&&hasAnyMarket(exact)){
-        return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'MYP collection exact',mode:exact.mode||'browser-collection-exact',
-          name,number,edition:exact.edition||set,finish,condition,link:exactLink||'',
-          min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
-          samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
-          exactVariant:exact.exactVariant===true,variantFallback:exact.variantFallback===true,
-          complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
-          checkedAt:new Date().toISOString()
-        });
+      const checked=await Promise.all((candidates||[]).slice(0,5).map(async candidate=>{
+        try{
+          const raw=await fetchText(candidate,6000);
+          const identity=pageIdentity(raw);
+          if(!matchesWanted(identity,wanted))return null;
+          let market=await marketAcrossSellerPages(candidate,raw,identity,wanted,finish,condition);
+          if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+            market=sameProductFallbackMarket(identity,finish,condition);
+          }
+          return{candidate,identity,market};
+        }catch{return null}
+      }));
+      const hit=checked.find(x=>x&&hasAnyMarket(x.market))||checked.find(Boolean);
+      if(hit){
+        directLink=safeMypProductUrl(hit.candidate);
+        if(hasAnyMarket(hit.market)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'MYP collection Reader',mode:'collection-reader-exact',
+            name:hit.identity?.name||name,number:hit.identity?.number||number,
+            edition:hit.identity?.edition||set,finish,condition,link:directLink,
+            min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
+            samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
+            exactVariant:hit.market.exactVariant===true,variantFallback:hit.market.variantFallback===true,
+            complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
       }
     }catch(error){
-      console.warn('MYP collection exact:',error?.message||error);
+      console.warn('MYP collection Reader:',error?.message||error);
     }
   }
 
