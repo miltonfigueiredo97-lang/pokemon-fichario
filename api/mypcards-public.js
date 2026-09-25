@@ -1085,23 +1085,51 @@ module.exports=async function handler(req,res){
   // via Reader por poucos segundos. Se não der, a carta permanece na fila
   // persistente de alta prioridade para o worker do servidor.
   if(fast){
-    // V15.16: with an exact product URL in hand, use a real browser directly
-    // on that page. Jina was the reason correct links still timed out.
     if(!directLink){
       return res.status(200).json({
         ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'Fast exact resolver',
         message:'A busca rápida ainda não localizou a página exata da impressão.'
       });
     }
+
+    const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
+
+    // V16.08: known MYP product links are read as HTML/text first. This is the
+    // same real product page, but avoids launching Chromium for every queued card.
     try{
-      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
+      const raw=await fetchText(directLink,10000);
+      const identity=pageIdentity(raw);
+      if(matchesWanted(identity,wanted)){
+        let market=await marketAcrossSellerPages(directLink,raw,identity,wanted,finish,condition);
+        if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+          market=sameProductFallbackMarket(identity,finish,condition);
+        }
+        if(hasAnyMarket(market)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'Direct MYP HTML',mode:'direct-known-product',
+            name:identity?.name||name,number:identity?.number||number,edition:identity?.edition||set,
+            finish,condition,link:directLink,
+            min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+            samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+            exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+            complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+      }
+    }catch(error){
+      console.warn('MYP direct HTML:',error?.message||error);
+    }
+
+    // Browser is only the fallback now, not the default path.
+    try{
       const market=await Promise.race([
         findAndScrapeMypBrowser(directLink,wanted),
-        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),20000))
+        new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'fast_timeout',link:directLink}),12000))
       ]);
       if(market?.ok&&hasAnyMarket(market)){
         return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Direct MYP product page',mode:market.mode||'browser-direct-known',
+          ok:true,source:'MYP Cards',provider:'Direct MYP browser fallback',mode:market.mode||'browser-direct-known',
           name,number,edition:market.edition||set,finish,condition,
           link:safeMypProductUrl(market.link)||directLink,
           min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
@@ -1113,13 +1141,13 @@ module.exports=async function handler(req,res){
       }
       return res.status(200).json({
         ok:false,error:market?.error||'fast_no_price',
-        source:'MYP Cards',provider:'Direct MYP product page',link:directLink,
-        message:'Página exata localizada, mas a leitura rápida não retornou a cotação.'
+        source:'MYP Cards',provider:'Direct MYP browser fallback',link:directLink,
+        message:'A página exata foi localizada, mas não retornou uma cotação compatível.'
       });
     }catch(error){
       return res.status(200).json({
         ok:false,error:error?.name==='AbortError'?'fast_timeout':'fast_unavailable',
-        source:'MYP Cards',provider:'Direct MYP product page',link:directLink,
+        source:'MYP Cards',provider:'Direct MYP browser fallback',link:directLink,
         message:String(error?.message||'Falha na leitura direta da página exata.')
       });
     }
