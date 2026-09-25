@@ -639,9 +639,7 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
   const urls=[];
 
   const extract=body=>{
-    const raw=String(body||'')
-      .replace(/&amp;/gi,'&')
-      .replace(/\\u0026/gi,'&');
+    const raw=String(body||'').replace(/&amp;/gi,'&').replace(/\\u0026/gi,'&');
     const variants=[raw];
     try{variants.push(decodeURIComponent(raw))}catch{}
     for(const text of variants){
@@ -650,18 +648,23 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
       for(const m of text.matchAll(/https?%3A%2F%2F(?:www\.)?mypcards\.com%2Fpokemon%2Fproduto%2F\d+%2F[a-z0-9-]+/gi)){
         try{urls.push(decodeURIComponent(m[0]))}catch{}
       }
+      for(const m of text.matchAll(/[?&]uddg=([^&"'<>\s]+)/gi)){
+        try{
+          const target=decodeURIComponent(m[1]);
+          if(/mypcards\.com\/pokemon\/produto\/\d+\//i.test(target))urls.push(target);
+        }catch{}
+      }
     }
   };
 
-  // V16.14: hit normal public search HTML first. Jina-wrapped search pages
-  // often timeout in serverless even though the same search resolves instantly
-  // from a browser/search engine.
-  await Promise.all(queries.flatMap(q=>[
-    'https://www.google.com/search?num=10&q='+encodeURIComponent(q),
+  const searchUrls=queries.flatMap(q=>[
+    'https://html.duckduckgo.com/html/?q='+encodeURIComponent(q),
     'https://www.bing.com/search?count=10&q='+encodeURIComponent(q)
-  ]).map(async searchUrl=>{
+  ]);
+
+  await Promise.all(searchUrls.map(async searchUrl=>{
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),4500);
+    const timer=setTimeout(()=>controller.abort(),3800);
     try{
       const rr=await fetch(searchUrl,{
         headers:{
@@ -675,15 +678,6 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
       if(rr.ok)extract(await rr.text());
     }catch{}finally{clearTimeout(timer)}
   }));
-
-  if(urls.length)return [...new Set(urls.map(safeMypProductUrl).filter(Boolean))].slice(0,8);
-
-  // Reader fallback only if normal search HTML returned nothing.
-  const fallbackUrls=queries.map(q=>'https://www.bing.com/search?q='+encodeURIComponent(q));
-  const bodies=await Promise.all(fallbackUrls.map(async u=>{
-    try{return await fetchJina(u,4500)}catch{return''}
-  }));
-  bodies.forEach(extract);
 
   return [...new Set(urls.map(safeMypProductUrl).filter(Boolean))].slice(0,8);
 }
