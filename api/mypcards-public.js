@@ -1146,63 +1146,58 @@ module.exports=async function handler(req,res){
     const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true,quick:true};
 
     if(!directLink){
-      // V16.16: one definitive lookup. A queued card gets exactly one discovery
-      // cycle: web index by exact name+collector, then (if a product link was
-      // found without a usable finish quote) the same product page is read
-      // immediately. No cross-request retry loop.
-      let exact={ok:false,error:'not_started'};
-      try{
-        exact=await Promise.race([
-          searchWebExactMypBrowser({...wanted,quick:true}),
-          new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'one_shot_timeout'}),8500))
-        ]);
-      }catch(error){
-        exact={ok:false,error:'web_exact_error',message:String(error?.message||error||'')};
-      }
+      // V16.19: one definitive, non-browser retry cycle. Run the three fast
+      // indexes in parallel (Reader collection, external search, fast set pages),
+      // then validate the strongest product pages in parallel. No second attempt,
+      // no requeue.
+      const candidates=await Promise.race([
+        Promise.all([
+          fastCollectionReaderCandidates({name,nameAliases,number,set,setId}).catch(()=>[]),
+          externalSearchCandidates({name,nameAliases,number,set}).catch(()=>[]),
+          fastSetPageCandidates({apiId,setId,set,number,name,nameAliases}).catch(()=>[])
+        ]).then(groups=>[...new Set(groups.flat().map(safeMypProductUrl).filter(Boolean))].slice(0,8)),
+        new Promise(resolve=>setTimeout(()=>resolve([]),6500))
+      ]);
 
-      const exactLink=safeMypProductUrl(exact?.link);
-      if(exactLink&&exact?.ok&&hasAnyMarket(exact)){
-        return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'MYP one-shot exact',mode:exact.mode||'browser-web-search-exact',
-          name,number,edition:exact.edition||set,finish,condition,link:exactLink,
-          min:Number(exact.min||0),avg:Number(exact.avg||0),max:Number(exact.max||0),
-          samples:exact.samples??null,availableQuantity:exact.availableQuantity??null,
-          exactVariant:exact.exactVariant===true,variantFallback:exact.variantFallback===true,
-          complete:!!(Number(exact.min)>0&&Number(exact.avg)>0&&Number(exact.max)>0),
-          checkedAt:new Date().toISOString()
-        });
-      }
-
-      if(exactLink){
-        try{
-          const raw=await fetchText(exactLink,2500);
-          const identity=pageIdentity(raw);
-          if(matchesWanted(identity,wanted)){
-            let market=await marketAcrossSellerPages(exactLink,raw,identity,wanted,finish,condition);
+      if(candidates.length){
+        const inspected=await Promise.all(candidates.slice(0,6).map(async candidate=>{
+          try{
+            const raw=await fetchJina(candidate,4200);
+            const identity=pageIdentity(raw);
+            if(!matchesWanted(identity,{name,nameAliases,number,set,setId,lang}))return null;
+            let market=await marketAcrossSellerPages(candidate,raw,identity,{name,nameAliases,number,set,setId,lang},finish,condition);
             if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
               market=sameProductFallbackMarket(identity,finish,condition);
             }
-            if(hasAnyMarket(market)){
-              return res.status(200).json({
-                ok:true,source:'MYP Cards',provider:'MYP one-shot direct',mode:'one-shot-exact-direct',
-                name:identity?.name||name,number:identity?.number||number,edition:identity?.edition||set,
-                finish,condition,link:exactLink,
-                min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
-                samples:market.samples??null,availableQuantity:market.availableQuantity??null,
-                exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
-                complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
-                checkedAt:new Date().toISOString()
-              });
-            }
-          }
-        }catch(error){
-          console.warn('MYP one-shot direct:',error?.message||error);
+            return{candidate,identity,market};
+          }catch{return null}
+        }));
+        const hit=inspected.find(x=>x&&hasAnyMarket(x.market))
+          ||inspected.find(Boolean);
+        if(hit&&hasAnyMarket(hit.market)){
+          return res.status(200).json({
+            ok:true,source:'MYP Cards',provider:'MYP fast reader one-shot',mode:'reader-parallel-exact',
+            name:hit.identity?.name||name,number:hit.identity?.number||number,
+            edition:hit.identity?.edition||set,finish,condition,link:hit.candidate,
+            min:Number(hit.market.min||0),avg:Number(hit.market.avg||0),max:Number(hit.market.max||0),
+            samples:hit.market.samples??null,availableQuantity:hit.market.availableQuantity??null,
+            exactVariant:hit.market.exactVariant===true,variantFallback:hit.market.variantFallback===true,
+            complete:!!(Number(hit.market.min)>0&&Number(hit.market.avg)>0&&Number(hit.market.max)>0),
+            checkedAt:new Date().toISOString()
+          });
+        }
+        if(hit?.candidate){
+          return res.status(200).json({
+            ok:false,error:'fast_no_price',source:'MYP Cards',provider:'MYP fast reader one-shot',
+            name,number,edition:hit.identity?.edition||set,finish,condition,link:hit.candidate,
+            message:'Produto exato localizado, mas sem oferta compatível para este acabamento.'
+          });
         }
       }
 
       return res.status(200).json({
-        ok:false,error:'one_shot_no_quote',source:'MYP Cards',provider:'MYP one-shot exact',
-        link:exactLink||'',message:'A tentativa única não retornou cotação compatível.'
+        ok:false,error:'one_shot_no_quote',source:'MYP Cards',provider:'MYP fast reader one-shot',
+        link:'',message:'A tentativa única não localizou uma cotação compatível.'
       });
     }
 
