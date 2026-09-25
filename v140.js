@@ -1430,49 +1430,20 @@
   }
 
   async function generationPromoEntriesV1603(lang,seriesId,selectedSetId){
-    if(!seriesId)return{entries:[],sets:[]};
-    try{
-      const catalogRes=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
-      const catalog=await catalogRes.json();
-      if(!catalog?.ok)return{entries:[],sets:[]};
-      const promoSets=(catalog.sets||[]).filter(s=>s?.isPromo&&String(s.id)!==String(selectedSetId));
-      if(!promoSets.length)return{entries:[],sets:[]};
-
-      const parts=await Promise.all(promoSets.map(async promo=>{
-        try{
-          const p=new URLSearchParams({
-            v:'30',strictLang:'1',all:'1',lang:String(lang||'pt'),set:String(promo.id)
-          });
-          const rr=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
-          const jj=await rr.json();
-          if(!jj?.ok)return null;
-          return{set:promo,entries:(jj.entries||[]).map(entry=>({
-            ...entry,
-            autoPromo:true,
-            promoOriginSetId:promo.id,
-            promoOriginSetName:promo.displayName||promo.name||promo.id
-          }))};
-        }catch(error){
-          console.warn('[Master Set promos]',promo?.id,error);
-          return null;
-        }
-      }));
-
-      const entries=[],seen=new Set(),sets=[];
-      for(const part of parts.filter(Boolean)){
-        sets.push({id:part.set.id,name:part.set.displayName||part.set.name||part.set.id,count:part.entries.length});
-        for(const entry of part.entries){
-          const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
-          if(seen.has(key))continue;
-          seen.add(key);
-          entries.push(entry);
-        }
-      }
-      return{entries,sets};
-    }catch(error){
-      console.warn('[Master Set promos da geração]',error);
-      return{entries:[],sets:[]};
-    }
+    // V16.12: a série/geração NÃO é uma relação entre um set normal e todos os
+    // promo sets daquela geração. O catálogo TCGdex usado aqui expõe setId/serie,
+    // mas não expõe uma relação produto→set que prove que uma promo pertence ao
+    // set normal selecionado. Portanto não fazemos associação heurística.
+    //
+    // Promos entram apenas quando:
+    // 1) o próprio set selecionado é um promo set; ou
+    // 2) uma coleção composta explícita (20/25/30 anos) lista o promo set/produto
+    //    como componente estruturado em completeAnniversaryForCatalog().
+    //
+    // Quando uma fonte estruturada de relação for adicionada, esta função pode
+    // consumir somente esses IDs comprovados — nunca "todas as promos da série".
+    void lang; void seriesId; void selectedSetId;
+    return{entries:[],sets:[]};
   }
 
   async function loadMasterPreview(lang,setId){
@@ -1540,25 +1511,11 @@
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
 
-        // V16.03: every normal Master Set automatically includes the official
-        // promo collection(s) of the selected generation. Promo sets themselves
-        // are not duplicated, and every entry still obeys the chosen language.
-        if(!j.set?.isPromoSet){
-          const seriesId=byId('v14SeriesSelect')?.value||'';
-          const promos=await generationPromoEntriesV1603(lang,seriesId,setId);
-          if(epoch!==V14.masterEpoch)return;
-          const seen=new Set((j.entries||[]).map(entry=>[entry.apiId,entry.variantKey,entry.languageCode].join('|')));
-          let added=0;
-          for(const entry of promos.entries){
-            const key=[entry.apiId,entry.variantKey,entry.languageCode].join('|');
-            if(seen.has(key))continue;
-            seen.add(key);
-            j.entries.push(entry);
-            added++;
-          }
-          j.autoPromoSets=promos.sets;
-          j.autoPromoEntries=added;
-        }
+        // V16.12: regular Master Sets are strictly scoped to the selected set.
+        // Do not merge generation-wide promo sets. Explicit anniversary products
+        // are handled above by their deterministic component definitions.
+        j.autoPromoSets=[];
+        j.autoPromoEntries=0;
       }
       if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
       const selectedLabel=(byId('v14SetSelect')?.selectedOptions?.[0]?.textContent||j.set.name||'')
@@ -1582,9 +1539,7 @@
         }else if(j.set.isPromoSet){
           notice.textContent='Esta é a coleção de promos da geração; as promos desta coleção entram normalmente no Master Set.';
         }else{
-          notice.textContent=j.autoPromoEntries
-            ?'Este Master Set já inclui automaticamente '+j.autoPromoEntries+' entrada(s) promocional(is) oficial(is) da mesma geração, no idioma selecionado. Você não precisa criar um fichário separado de PROMOS.'
-            :'Não encontrei uma coleção oficial de promos separada nesta geração para acrescentar automaticamente.';
+          notice.textContent='Este Master Set contém somente cartas e variantes do set selecionado. Promos só entram quando existe uma relação estruturada de produto/set (como nas coleções completas de aniversário), nunca por pertencerem apenas à mesma geração.';
         }
         notice.classList.remove('hidden');
       }
@@ -1905,22 +1860,11 @@
     syncLegacySettings();
     renderBinderControls();
     renderAll();
+    // V16.12: loading/reloading the UI must NEVER create work. The persisted
+    // backend state is the only source of truth. Failed/no-price cards remain
+    // terminal until the user explicitly requests a new refresh.
     const pending=V14.allCards.filter(c=>!!c.price_pending);
-    if(pending.length)setTimeout(()=>queueBackgroundPrices(pending),60);
-    const unresolved=V14.allCards.filter(card=>{
-      const hasPrice=Number(card.price_min||card.price_avg||card.price_max||card.myp_price_min||card.myp_price_avg||card.myp_price_max||card.liga_price_min||card.liga_price_avg||card.liga_price_max||0)>0;
-      return !hasPrice&&!card.price_pending&&!card.price_processing_at;
-    });
-    if(unresolved.length){
-      const now=new Date().toISOString();
-      for(let i=0;i<unresolved.length;i+=150){
-        const ids=unresolved.slice(i,i+150).map(x=>x.id);
-        db.from('pokemon_cards').update({price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,price_attempts:0,price_priority:20})
-          .eq('user_id',currentUser.id).in('id',ids).then(()=>{}).catch(()=>{});
-      }
-      unresolved.forEach(card=>{card.price_pending=true;card.price_processing_at=null;card.price_next_retry_at=now;card.price_attempts=0;card.price_priority=20});
-      setTimeout(()=>queueBackgroundPrices(unresolved),120);
-    }
+    if(pending.length)kickPriceWorkerNow();
     if(show)toast('Fichário atualizado.');
   }
 
@@ -2475,107 +2419,45 @@
   async function markCardsForPrice(cards,priority=0){
     const list=uniquePriceCards(cards);
     if(!list.length)return [];
+
+    // Persisted card row = unique active price job for that physical entry.
+    // Atomic predicates below prevent a second click/tab/device from resetting
+    // a queued/processing job (attempts, lock timestamp, stage) while it runs.
     const now=new Date().toISOString();
     const patch={
       price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
       price_attempts:0,price_priority:priority,price_last_error:null,
       price_progress:0,price_progress_stage:'queued',price_progress_updated_at:now
     };
+    const enqueuedIds=new Set();
     for(let i=0;i<list.length;i+=150){
       const ids=list.slice(i,i+150).map(x=>x.id);
-      const {error}=await db.from('pokemon_cards').update(patch).eq('user_id',currentUser.id).in('id',ids);
+      const {data,error}=await db.from('pokemon_cards')
+        .update(patch)
+        .eq('user_id',currentUser.id)
+        .in('id',ids)
+        .or('price_pending.is.false,price_pending.is.null')
+        .is('price_processing_at',null)
+        .select('id');
       if(error)throw error;
+      for(const row of data||[])enqueuedIds.add(row.id);
     }
-    for(const card of list){Object.assign(card,patch);applyLocalPricePatch(card.id,patch)}
+    for(const card of list){
+      if(enqueuedIds.has(card.id)){
+        Object.assign(card,patch);
+        applyLocalPricePatch(card.id,patch);
+      }
+    }
     return list;
   }
 
-  function queueBackgroundPrices(cards,{front=false}={}){
-    const source=uniquePriceCards(cards);
-    const mobile=window.matchMedia?.('(max-width:820px)').matches;
-    // Filas grandes já são persistentes no Supabase. Não duplicamos centenas
-    // de consultas/renders no aparelho; no mobile, todo processamento em lote
-    // fica exclusivamente com o worker do servidor.
-    if(mobile||source.length>8){
-      if(mobile){
-        V14.priceQueue.length=0;
-        V14.priceJobs.clear();
-      }
-      return;
-    }
-    const add=[];
-    for(const card of source){
-      if(!card?.id||V14.priceJobs.has(card.id)||V14.priceQueue.some(x=>x.id===card.id))continue;
-      const retryAt=Date.parse(card.price_next_retry_at||0);
-      if(retryAt&&retryAt>Date.now())continue;
-      const processingAt=Date.parse(card.price_processing_at||0);
-      if(processingAt&&processingAt>Date.now()-5*60_000)continue;
-      add.push(card);V14.priceJobs.set(card.id,true);
-    }
-    V14.priceQueue=front?[...add,...V14.priceQueue]:[...V14.priceQueue,...add];
-    while(V14.priceWorkers<2&&V14.priceQueue.length)runPriceWorker();
-  }
-
-  async function finishPriceFailure(card,dual,error,attempts){
-    const code=priceFailureCode(dual,error);
-    const terminal=terminalPriceFailure(code)||attempts>=6;
-    const clearIdentity=['wrong_product','product_not_found'].includes(code);
-    const patch=terminal?{
-      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_last_error:code,
-      ...(clearIdentity?{
-        myp_price_min:0,myp_price_avg:0,myp_price_max:0,myp_price_link:null,myp_price_checked_at:null,
-        price_min:0,price_avg:0,price_max:0,price_source:'Sem preço BR',price_link:null,
-        price_br_source:null,price_br_link:null,price_checked_at:null
-      }:{})
-    }:{
-      price_pending:true,price_processing_at:null,
-      price_next_retry_at:new Date(Date.now()+Math.min(30,Math.pow(2,Math.min(attempts,4)))*60_000).toISOString(),
-      price_last_error:code
-    };
-    await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
-    applyLocalPricePatch(card.id,patch);
-    return {terminal,code};
-  }
-
-  async function runPriceWorker(){
-    V14.priceWorkers++;
-    try{
-      while(V14.priceQueue.length){
-        const queued=V14.priceQueue.shift();
-        const card=V14.allCards.find(x=>x.id===queued.id)||queued;
-        let dual=null;
-        const attempts=(+card.price_attempts||0)+1;
-        try{
-          const now=new Date().toISOString();
-          await db.from('pokemon_cards').update({
-            price_pending:true,price_processing_at:now,price_attempts:attempts,
-            price_requested_at:card.price_requested_at||now,price_next_retry_at:now,
-            price_progress:10,price_progress_stage:'claimed',price_progress_updated_at:now
-          }).eq('id',card.id).eq('user_id',currentUser.id);
-          Object.assign(card,{price_pending:true,price_processing_at:now,price_attempts:attempts,price_next_retry_at:now});
-
-          dual=await window.queryBothMarketsV122(cardForPrice(card),card.finish||'Normal',card.condition||'Nova');
-          const patch=pricePatchFromDual(card,dual);
-          if(patch){
-            const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
-            if(error)throw error;
-            applyLocalPricePatch(card.id,patch);
-          }else{
-            await finishPriceFailure(card,dual,null,attempts);
-          }
-          try{renderBinder();renderSummary()}catch{}
-        }catch(e){
-          console.warn('[V14 preço em segundo plano]',card.name,e);
-          try{await finishPriceFailure(card,dual,e,attempts)}catch{}
-        }finally{
-          V14.priceJobs.delete(card.id);
-          await sleep(450);
-        }
-      }
-    }finally{
-      V14.priceWorkers=Math.max(0,V14.priceWorkers-1);
-      if(V14.priceQueue.length&&V14.priceWorkers<2)runPriceWorker();
-    }
+  function queueBackgroundPrices(cards){
+    // V16.12: no browser-side price worker. This function intentionally only
+    // wakes the server worker for rows that are already persisted as pending.
+    // The browser never claims, processes, retries or completes a price job.
+    const pending=uniquePriceCards(cards).filter(card=>card?.price_pending);
+    if(pending.length)kickPriceWorkerNow();
+    return pending;
   }
 
   function visiblePriceTargetCards(){
@@ -4405,7 +4287,7 @@
     if(!snapshot?.total)return{total:0,done:0,processing:0,queued:0,priced:0,failed:0,pct:100};
 
     const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
-    let done=0,processing=0,queued=0,priced=0,failed=0,progressSum=0;
+    let done=0,processing=0,queued=0,priced=0,failed=0;
     const activeStages=new Set([
       'claimed','resolving_identity','identity_ready','link_ready','querying_sources',
       'discovering_myp_link','searching_myp','myp_link_found','reading_myp',
@@ -4414,40 +4296,31 @@
 
     for(const id of snapshot.ids||[]){
       const card=byIdMap.get(id);
-      if(!card){done++;progressSum+=100;continue}
+      if(!card){continue}
 
       const stage=String(card.price_progress_stage||'').toLowerCase();
-      const realProgress=Math.max(0,Math.min(100,Number(card.price_progress||0)));
-
-      if(hasBrazilQuoteV1466(card)){
-        done++;priced++;progressSum+=100;continue;
+      if(hasBrazilQuoteV1466(card)&&stage==='complete'){
+        done++;priced++;continue;
       }
-      if(stage==='failed'){
-        done++;failed++;progressSum+=100;continue;
+      if(stage==='failed'&&card.price_pending===false){
+        done++;failed++;continue;
       }
-
-      // This number comes from the server worker's persisted stage updates.
-      // No timers or elapsed-time animation are used.
-      progressSum+=realProgress;
-
-      if(activeStages.has(stage)){processing++;continue}
+      if(activeStages.has(stage)||card.price_processing_at){processing++;continue}
       if(card.price_pending||stage==='queued'){queued++;continue}
-      if(realProgress>=100){done++;failed++;continue}
       queued++;
     }
 
     const total=Number(snapshot.total)||0;
-    const pct=total?Math.max(0,Math.min(100,Math.round(progressSum/total))):100;
+    const pct=total?Math.max(0,Math.min(100,Math.round((done/total)*100))):100;
     return{total,done,processing,queued,priced,failed,pct};
   }
 
   function priceAuditCardProgressV1606(card){
-    if(hasBrazilQuoteV1466(card))return{pct:100,label:'100%',kind:'priced'};
-    const pct=Math.max(0,Math.min(100,Number(card?.price_progress||0)));
     const stage=String(card?.price_progress_stage||'').toLowerCase();
-    if(stage==='failed')return{pct:100,label:'100%',kind:'failed'};
-    if(stage==='queued')return{pct:0,label:'0%',kind:'queued'};
-    return{pct,label:Math.round(pct)+'%',kind:stage||'idle'};
+    if(hasBrazilQuoteV1466(card)&&stage==='complete')return{pct:100,label:'100%',kind:'priced'};
+    if(stage==='failed'&&card?.price_pending===false)return{pct:100,label:'ERRO',kind:'failed'};
+    if(card?.price_processing_at||priceAuditStageV1604(card).key==='processing')return{pct:0,label:'PROCESSANDO',kind:'processing'};
+    return{pct:0,label:'0%',kind:'queued'};
   }
 
   function priceAuditDetailTextV1606(card){
@@ -4515,11 +4388,11 @@
     }
 
     meta.textContent=[
-      q.done+' de '+q.total+' processadas',
-      q.processing+' atualizando agora',
-      q.queued+' aguardando na fila',
-      q.priced+' com valor',
-      q.failed?q.failed+' concluídas sem valor':''
+      q.done+'/'+q.total+' finalizadas',
+      q.processing+' processando agora',
+      q.queued+' aguardando',
+      q.priced+' concluídas com valor',
+      q.failed?q.failed+' erros':''
     ].filter(Boolean).join(' · ');
   }
 
@@ -4641,15 +4514,10 @@
         const pending=Math.max(0,total-done);
 
         V14.priceAuditBatch={ids,total,done,processing,queued,priced,failed,started};
-        let progressSum=0;
-        for(const row of data||[]){
-          if(hasBrazilQuoteV1466(row)||String(row.price_progress_stage||'').toLowerCase()==='failed')progressSum+=100;
-          else progressSum+=Math.max(0,Math.min(100,Number(row.price_progress||0)));
-        }
-        const pct=total?Math.round(progressSum/total):100;
+        const pct=total?Math.round((done/total)*100):100;
         if(progress)progress.textContent=pending
-          ?pct+'% executado · '+processing+' atualizando · '+queued+' na fila'
-          :'100% processado · '+priced+' com valor · '+failed+' sem cotação';
+          ?done+'/'+total+' finalizadas · '+pct+'% · '+processing+' processando · '+queued+' aguardando · '+failed+' erros'
+          :total+'/'+total+' finalizadas · 100% · '+priced+' com valor · '+failed+' erros';
 
         renderUnpricedPopupV1468();
         renderUnpricedAuditV1466();
