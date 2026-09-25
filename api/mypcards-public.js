@@ -748,6 +748,32 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
   return [...new Set(urls.map(safeMypProductUrl).filter(Boolean))].slice(0,8);
 }
 
+
+async function fastExactReaderCandidates({name,nameAliases=[],number,set,setId}){
+  const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
+  const exact=names[0]||String(name||'').trim();
+  if(!exact||!number)return[];
+  const setCode=normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5'?'MEW':String(set||'').trim();
+  const queries=[...new Set([
+    [exact,number].filter(Boolean).join(' '),
+    [number,setCode].filter(Boolean).join(' '),
+    number
+  ].filter(Boolean))].slice(0,3);
+
+  const bodies=await Promise.all(queries.map(async query=>{
+    const url=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+    try{return await fetchJina(url,5200)}catch{return''}
+  }));
+
+  const out=[];
+  for(let i=0;i<bodies.length;i++){
+    const body=bodies[i];if(!body)continue;
+    const byNumberOnly=queries[i]===number||queries[i]===[number,setCode].filter(Boolean).join(' ');
+    out.push(...productUrlsFromText(body,byNumberOnly?[]:names));
+  }
+  return [...new Set(out.map(safeMypProductUrl).filter(Boolean))].slice(0,10);
+}
+
 async function readerSearchCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const setCode=(normalize(setId)==='sv03 5'||normalize(setId)==='sv3 5')?'MEW':normalize(setId)==='g1'?'GEN':String(set||'').trim();
@@ -1152,10 +1178,11 @@ module.exports=async function handler(req,res){
       // no requeue.
       const candidates=await Promise.race([
         Promise.all([
+          fastExactReaderCandidates({name,nameAliases,number,set,setId}).catch(()=>[]),
           fastCollectionReaderCandidates({name,nameAliases,number,set,setId}).catch(()=>[]),
           externalSearchCandidates({name,nameAliases,number,set}).catch(()=>[]),
           fastSetPageCandidates({apiId,setId,set,number,name,nameAliases}).catch(()=>[])
-        ]).then(groups=>[...new Set(groups.flat().map(safeMypProductUrl).filter(Boolean))].slice(0,8)),
+        ]).then(groups=>[...new Set(groups.flat().map(safeMypProductUrl).filter(Boolean))].slice(0,10)),
         new Promise(resolve=>setTimeout(()=>resolve([]),6500))
       ]);
 
