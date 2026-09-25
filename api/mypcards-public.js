@@ -1225,56 +1225,65 @@ module.exports=async function handler(req,res){
     // That was the reason hundreds of queued cards looped forever as
     // fast_link_missing. Do one real bounded identity lookup first.
     if(!directLink){
-      let discovered=null;
+      // V16.13: same lightweight path as a manual one-off lookup:
+      // exact external search -> validate exact MYP product pages.
+      let candidates=[];
       try{
-        // V16.12: run the two real discovery routes in PARALLEL.
-        // The old sequential 14s + 8s chain regularly hit the worker's 24s
-        // deadline and every card went back to the queue.
-        const discovery=Promise.allSettled([
-          searchFastSetPageMypBrowser(wanted),
-          searchWebExactMypBrowser(wanted,'')
+        candidates=await Promise.race([
+          externalSearchCandidates({name,nameAliases,number,set}),
+          new Promise(resolve=>setTimeout(()=>resolve([]),6500))
         ]);
-        const settled=await Promise.race([
-          discovery,
-          new Promise(resolve=>setTimeout(()=>resolve([]),13500))
-        ]);
-        const rows=Array.isArray(settled)
-          ? settled.filter(x=>x?.status==='fulfilled').map(x=>x.value)
-          : [];
-        discovered=
-          rows.find(x=>x?.ok&&hasAnyMarket(x))||
-          rows.find(x=>safeMypProductUrl(x?.link))||
-          {ok:false,error:'fast_discovery_timeout'};
-      }catch(error){
-        discovered={ok:false,error:error?.message||'fast_discovery_error'};
+      }catch{}
+
+      let discovered=null;
+      if(Array.isArray(candidates)&&candidates.length){
+        const checked=await Promise.all(candidates.slice(0,4).map(async candidate=>{
+          try{
+            const raw=await fetchText(candidate,5000);
+            const identity=pageIdentity(raw);
+            if(!matchesWanted(identity,wanted))return null;
+            let market=await marketAcrossSellerPages(candidate,raw,identity,wanted,finish,condition);
+            if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+              market=sameProductFallbackMarket(identity,finish,condition);
+            }
+            return{
+              ok:hasAnyMarket(market),
+              link:safeMypProductUrl(candidate),
+              edition:identity?.edition||set,
+              identity,market,
+              mode:'external-exact-search'
+            };
+          }catch{return null}
+        }));
+        discovered=checked.find(x=>x?.ok)||checked.find(x=>safeMypProductUrl(x?.link))||null;
       }
 
       const discoveredLink=safeMypProductUrl(discovered?.link);
       if(discoveredLink){
         directLink=discoveredLink;
-        if(discovered?.ok&&hasAnyMarket(discovered)){
+        if(discovered?.ok&&hasAnyMarket(discovered?.market)){
+          const market=discovered.market;
           return res.status(200).json({
-            ok:true,source:'MYP Cards',provider:'Fast exact discovery',mode:discovered.mode||'fast-discovery',
-            name,number,edition:discovered.edition||set,finish,condition,link:directLink,
-            min:Number(discovered.min||0),avg:Number(discovered.avg||0),max:Number(discovered.max||0),
-            samples:discovered.samples??null,availableQuantity:discovered.availableQuantity??null,
-            exactVariant:discovered.exactVariant===true,variantFallback:discovered.variantFallback===true,
-            complete:!!(Number(discovered.min)>0&&Number(discovered.avg)>0&&Number(discovered.max)>0),
+            ok:true,source:'MYP Cards',provider:'External exact search',mode:discovered.mode,
+            name:discovered.identity?.name||name,number:discovered.identity?.number||number,
+            edition:discovered.edition||set,finish,condition,link:directLink,
+            min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+            samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+            exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+            complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
             checkedAt:new Date().toISOString()
           });
         }
-        // Identity resolution is useful even if the seller rows still need a
-        // direct product read. The worker persists this link and continues.
         return res.status(200).json({
-          ok:false,error:'link_resolved',source:'MYP Cards',provider:'Fast exact discovery',
+          ok:false,error:'link_resolved',source:'MYP Cards',provider:'External exact search',
           name,number,edition:discovered?.edition||set,finish,condition,link:directLink,
           message:'Produto MYP exato localizado; leitura direta necessária.'
         });
       }
 
       return res.status(200).json({
-        ok:false,error:discovered?.error||'fast_link_missing',source:'MYP Cards',provider:'Fast exact discovery',
-        message:'A busca rápida não localizou a página exata desta impressão.'
+        ok:false,error:'fast_link_missing',source:'MYP Cards',provider:'External exact search',
+        message:'A busca externa exata não localizou a página desta impressão.'
       });
     }
 
