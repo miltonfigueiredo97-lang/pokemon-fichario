@@ -1,6 +1,6 @@
 const { URL } = require('url');
 const { queryMyp } = require('../lib/apify-prices');
-const { findAndScrapeMypBrowser, searchExactMypBrowser, searchCollectionExactMypBrowser, searchFastSetPageMypBrowser, searchWebExactMypBrowser, scanSetCatalogMypBrowser } = require('../lib/myp-browser');
+const { findAndScrapeMypBrowser, searchExactMypBrowser, searchCollectionExactMypBrowser, searchFastSetPageMypBrowser, searchWebExactMypBrowser, scanSetCatalogMypBrowser, resolveBatchMypLinksBrowser } = require('../lib/myp-browser');
 
 const ROOT = 'https://mypcards.com';
 const CACHE = globalThis.__mypPublicCache || (globalThis.__mypPublicCache = new Map());
@@ -1110,7 +1110,21 @@ module.exports=async function handler(req,res){
   const condition=String(req.query.condition||'NM').trim();
   const fast=String(req.query.fast||'')==='1';
   const catalog=String(req.query.catalog||'')==='1';
+  const batchResolve=String(req.query.batchResolve||'')==='1';
   if(fast||catalog)res.setHeader('Cache-Control','no-store, max-age=0');
+
+  if(batchResolve){
+    let items=[];
+    try{
+      const raw=String(req.query.items||'');
+      items=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
+    }catch{}
+    const result=await Promise.race([
+      resolveBatchMypLinksBrowser(items),
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_link_timeout',items:[]}),10500))
+    ]);
+    return res.status(200).json(result);
+  }
 
   if(catalog){
     const result=await Promise.race([

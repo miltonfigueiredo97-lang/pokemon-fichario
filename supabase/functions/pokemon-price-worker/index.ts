@@ -72,57 +72,55 @@ function mypProductId(value:unknown){
   return m?Number(m[1]):0;
 }
 
-function catalogNumberKey(value:unknown){
-  return String(value||"").toUpperCase().replace(/\s+/g,"");
+function base64UrlUtf8(value:string){
+  const bytes=new TextEncoder().encode(value);
+  let binary="";
+  for(const b of bytes)binary+=String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 }
 
 async function hydrateBatchMypLinks(db:any,batch:any[]){
-  const groups=new Map<string,any[]>();
-  for(const card of batch){
-    const existing=[card.myp_price_link,card.price_br_link,card.price_link]
-      .map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v));
-    if(existing)continue;
-    const setId=String(card.set_id||"").trim();
-    const setName=String(card.set_name||"").trim();
-    if(!setId&&!setName)continue;
-    const key=setId+"|"+setName;
-    if(!groups.has(key))groups.set(key,[]);
-    groups.get(key)!.push(card);
-  }
+  const targets=batch.filter(card=>![card.myp_price_link,card.price_br_link,card.price_link]
+    .map((v:any)=>String(v||"").trim()).some((v:string)=>/mypcards\.com/i.test(v)));
+  if(!targets.length)return;
 
-  for(const cards of groups.values()){
-    const sample=cards[0];
-    const q=new URLSearchParams({
-      catalog:"1",
-      set:String(sample.set_name||""),
-      setId:String(sample.set_id||""),
-      lang:String(sample.language_code||"")
+  const items=targets.slice(0,10).map(card=>({
+    key:String(card.id),
+    name:String(card.name||""),
+    number:String(card.number||""),
+    set:String(card.set_name||""),
+    setId:String(card.set_id||""),
+    lang:String(card.language_code||""),
+    finish:String(card.finish||"Normal"),
+    condition:String(card.condition||"Nova")
+  }));
+  const q=new URLSearchParams({
+    batchResolve:"1",
+    items:base64UrlUtf8(JSON.stringify(items))
+  });
+
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),11500);
+  let payload:any=null;
+  try{
+    const rr=await fetch(MYP_API+"?"+q.toString(),{
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.18"},
+      signal:controller.signal
     });
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),10500);
-    let payload:any=null;
-    try{
-      const rr=await fetch(MYP_API+"?"+q.toString(),{
-        headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.17"},
-        signal:controller.signal
-      });
-      if(rr.ok)payload=await rr.json().catch(()=>null);
-    }catch{}
-    finally{clearTimeout(timer)}
+    if(rr.ok)payload=await rr.json().catch(()=>null);
+  }catch{}
+  finally{clearTimeout(timer)}
 
-    const map=new Map<string,string>();
-    for(const item of Array.isArray(payload?.items)?payload.items:[]){
-      const key=catalogNumberKey(item?.number);
-      const link=String(item?.link||"").trim();
-      if(key&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link))map.set(key,link);
-    }
-
-    for(const card of cards){
-      const link=map.get(catalogNumberKey(card.number))||"";
-      if(!link)continue;
-      card.myp_price_link=link;
-      await db.from("pokemon_cards").update({myp_price_link:link}).eq("id",card.id);
-    }
+  const byKey=new Map<string,string>();
+  for(const item of Array.isArray(payload?.items)?payload.items:[]){
+    const link=String(item?.link||"").trim();
+    if(item?.key&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link))byKey.set(String(item.key),link);
+  }
+  for(const card of targets){
+    const link=byKey.get(String(card.id))||"";
+    if(!link)continue;
+    card.myp_price_link=link;
+    await db.from("pokemon_cards").update({myp_price_link:link}).eq("id",card.id);
   }
 }
 const learnedSetLinkCache=new Map<string,{offset:number,anchors:number,expires:number}|null>();
