@@ -201,7 +201,7 @@ async function searchMypRelatedCatalog(name,language,seeds,options={}){
     return[];
   }
 }
-function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
+function mapMyp(c){const isJa=!!c.isJapanese||norm(c.rawLanguage)==="ja"||norm(c.rawLanguage)==="jp";const lang=isJa?"ja":(c.imagePt?"pt-br":"en");return{source:"MYP Cards",apiId:`myp-${c.internalCode}`,marketInternalCode:c.internalCode,name:c.nameEn||c.namePt||"",namePt:c.namePt||"",nameEn:c.nameEn||"",languageCode:lang,language:isJa?"Japonês":(lang==="pt-br"?"Português":"Inglês"),setName:c.editionPt||c.editionEn||"",setId:c.editionCode||"",number:c.number||"",internalNumber:c.internalNumber||c.numerator||"",originalNumber:c.originalNumber||"",numberAliases:[c.number,c.internalNumber,c.originalNumber,...(Array.isArray(c.numberAliases)?c.numberAliases:[]),...(Array.isArray(c.deckLabels)?c.deckLabels:[])].filter(Boolean),rarity:"",type:"",imageUrl:isJa?(c.imageJa||c.imageEn||c.imagePt||""):(c.imagePt||c.imageEn||""),imagePt:c.imagePt||"",imageEn:c.imageEn||"",imageJa:c.imageJa||"",market:{source:"MYP Cards",min:+c.minPrice||0,avg:+c.avgPrice||0,max:+c.maxPrice||0,link:c.link||"",availableQuantity:c.availableQuantity,internalCode:c.internalCode,namePt:c.namePt||"",editionPt:c.editionPt||"",imagePt:c.imagePt||"",imageEn:c.imageEn||""},marketScore:+c.matchScore||0}}
 async function searchLimitlessVariants(name,number,cards,language){
   const wanted=numParts(number);
   if(!String(name||"").trim()||!wanted.n||language==="ja")return[];
@@ -452,54 +452,20 @@ function catalogNameMatches(name,card){
   const q=norm(name),cn=norm(card?.name);
   if(!q)return true;
   if(!cn)return false;
-  if(cn===q||cn.startsWith(q)||cn.includes(q)||q.includes(cn))return true;
-  const qBase=q.replace(/\b(ex|gx|v|vmax|vstar|break|lv x)\b/g,'').trim();
-  const cBase=cn.replace(/\b(ex|gx|v|vmax|vstar|break|lv x)\b/g,'').trim();
-  if(qBase&&cBase&&(cBase===qBase||cBase.startsWith(qBase)||cBase.includes(qBase)||qBase.includes(cBase)))return true;
-  return nameSimilarity(q,cn)>=.68||nameSimilarity(qBase,cBase)>=.72;
-}
-function requestedSpecificCatalogCards(name,number,setHint,language){
-  const q=norm(name),n=norm(number),s=norm(setHint);
-  const languageMatches=language==="all"||language==="pt-br";
-  const nameMatches=q==="zekrom"||q.includes("zekrom");
-  const numberMatches=!n||["114","114 114","21","21 25"].includes(n);
-  const setMatches=!s||["celebrations classic collection","celebrations","ccc","cel25cc","colecao classica"].some(x=>{
-    const xx=norm(x);return xx===s||xx.includes(s)||s.includes(xx);
-  });
+  if(cn===q||cn.startsWith(q+" ")||q.startsWith(cn+" "))return true;
 
-  if(!(languageMatches&&nameMatches&&numberMatches&&setMatches))return[];
+  const suffix=/\b(ex|gx|v|vmax|vstar|break|lv x)\b/g;
+  const qBase=q.replace(suffix," ").replace(/\s+/g," ").trim();
+  const cBase=cn.replace(suffix," ").replace(/\s+/g," ").trim();
+  if(!qBase||!cBase)return false;
 
-  return [{
-    source:"MYP Cards",
-    apiId:"myp-144267",
-    marketInternalCode:144267,
-    name:"Zekrom",
-    namePt:"Zekrom",
-    nameEn:"Zekrom",
-    languageCode:"pt-br",
-    language:"Português",
-    setName:"Celebrations: Classic Collection",
-    setTitle:"Celebrations: Classic Collection",
-    setId:"cel25cc",
-    number:"114/114",
-    internalNumber:"CC021",
-    originalNumber:"114/114",
-    numberAliases:["114","114/114","21","21/25","CC021"],
-    printedTotal:"114",
-    rarity:"Classic Collection",
-    type:"Elétrico",
-    category:"Pokémon",
-    imageUrl:"/api/image-proxy?url="+encodeURIComponent("https://tcgplayer-cdn.tcgplayer.com/product/250338_in_1000x1000.jpg"),
-    mypLink:"https://mypcards.com/pokemon/produto/144267/zekrom",
-    market:{
-      source:"MYP Cards",
-      min:0,avg:0,max:0,
-      link:"https://mypcards.com/pokemon/produto/144267/zekrom",
-      internalCode:144267,
-      namePt:"Zekrom",
-      editionPt:"Celebrations: Classic Collection"
-    }
-  }];
+  if(cBase===qBase||cBase.startsWith(qBase+" ")||qBase.startsWith(cBase+" "))return true;
+
+  // Typo tolerance is only allowed when the names are genuinely close.
+  // This prevents "number 38" from returning every unrelated card #38.
+  const sim=nameSimilarity(qBase,cBase);
+  const firstQ=qBase.slice(0,3),firstC=cBase.slice(0,3);
+  return firstQ===firstC && sim>=0.78;
 }
 
 function hardFilterCatalog(cards,{name="",number="",setHint="",setIds=[],language="all"}={}){
@@ -827,162 +793,240 @@ function rank(cards,q){
   }
 }
 function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.apiId,c.languageCode,c.name,c.number,c.setId].join("|");if(seen.has(k))return false;seen.add(k);return true})}
+async function searchTCGdexClean(lang,name,number,{setIds=[],live=false}={}){
+  const apiLang=tcgApiLang(lang);
+  const rawName=String(name||"").trim();
+  const wanted=numParts(number);
+  const localId=wanted.rawN||wanted.n;
+  const seen=new Map();
+
+  const add=items=>{
+    for(const item of items||[]){
+      if(item?.id&&!seen.has(item.id))seen.set(item.id,item);
+    }
+  };
+
+  // Selected collection/generation is authoritative.
+  if(Array.isArray(setIds)&&setIds.length){
+    const sets=(await Promise.all(setIds.map(id=>fetchTCGdexSet(lang,id)))).filter(Boolean);
+    let pool=[];
+    for(const set of sets){
+      for(const item of Array.isArray(set.cards)?set.cards:[])pool.push(mapTCGSetBrief(item,set,lang));
+    }
+    if(rawName)pool=pool.filter(card=>catalogNameMatches(rawName,card));
+    if(String(number||"").trim())pool=pool.filter(card=>cardNumberMatches(number,card));
+    pool=pool.slice(0,live?40:120);
+    return (await Promise.all(pool.map(card=>fetchTCGdexCard(lang,card.apiId,card)))).filter(Boolean);
+  }
+
+  // First pass: exact API intersection.
+  if(rawName&&localId)add(await fetchTCGdexList(apiLang,{name:rawName,localId}));
+  if(rawName)add(await fetchTCGdexList(apiLang,{name:rawName}));
+
+  // If the API does not understand a typo but a number was supplied, fetch
+  // that collector number and let the strict name matcher choose the card.
+  if(rawName&&localId&&seen.size===0)add(await fetchTCGdexList(apiLang,{localId}));
+
+  // Name-only typo fallback: use progressively shorter prefixes, but still
+  // apply strict local matching before anything is rendered.
+  if(rawName&&seen.size===0){
+    for(const prefix of fuzzyNamePrefixes(rawName)){
+      add(await fetchTCGdexList(apiLang,{name:prefix}));
+      if(seen.size)break;
+    }
+  }
+
+  // Number-only search remains supported.
+  if(!rawName&&localId)add(await fetchTCGdexList(apiLang,{localId}));
+
+  let list=[...seen.values()];
+  if(rawName)list=list.filter(item=>catalogNameMatches(rawName,{name:item.name||""}));
+  if(String(number||"").trim()){
+    list=list.filter(item=>collectorNumberMatches(number,item.localId||item.id||""));
+  }
+  list=list.slice(0,live?36:100);
+
+  return (await Promise.all(list.map(item=>fetchTCGdexCard(lang,item.id,mapTCG(item,lang))))).filter(Boolean);
+}
+
+function cleanCatalogDedupe(cards){
+  const byKey=new Map();
+  for(const card of cards||[]){
+    if(!card?.name)continue;
+    const key=[
+      norm(card.name),
+      norm(card.setId||card.setName),
+      norm(numParts(card.number||card.internalNumber).full||card.number||card.internalNumber),
+      norm(card.languageCode)
+    ].join("|");
+    const old=byKey.get(key);
+    if(!old){
+      byKey.set(key,card);
+      continue;
+    }
+    // Prefer the result with a usable image, then MYP metadata.
+    const oldScore=(cardImage(old)?10:0)+(old.source==="MYP Cards"?2:0);
+    const newScore=(cardImage(card)?10:0)+(card.source==="MYP Cards"?2:0);
+    if(newScore>oldScore)byKey.set(key,card);
+  }
+  return [...byKey.values()];
+}
+
 async function searchCards(options={}){
-  const live=!!options.live,requestId=++catalogSearchSeq;
-  let raw=$("searchName").value.trim(),number=$("searchNumber").value.trim(),setHint=$("searchSet").value.trim(),language=$("searchLanguage").value;
+  const live=!!options.live;
+  const requestId=++catalogSearchSeq;
+
+  let name=$("searchName").value.trim();
+  let number=$("searchNumber").value.trim();
+  const language=$("searchLanguage").value;
+
   const seriesEl=$("searchSeries");
   const setEl=$("searchSet");
   const hasGeneration=!!(seriesEl&&seriesEl.selectedIndex>0);
-  const seriesId=hasGeneration?String(seriesEl.value||"").trim():"";
+  const hasSet=!!(setEl&&setEl.selectedIndex>0&&String(setEl.value||"").trim());
+  const selectedSetId=hasSet?String(setEl.value||"").trim():"";
+  const selectedSetLabel=hasSet?String(setEl.selectedOptions?.[0]?.textContent||"").trim():"";
   const generationLabel=hasGeneration?String(seriesEl.selectedOptions?.[0]?.textContent||"").trim():"";
-  const generationSetIds=hasGeneration
-    ? [...new Set([...(setEl?.options||[])].map(o=>String(o.value||"").trim()).filter(Boolean))]
-    : [];
-  if(!setHint){
-    const normalized=norm(raw);
-    const y30=/\b30(?:th)?\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
-    const y25=/\b25(?:th)?\b/.test(normalized)&&(normalized.includes('ano')||normalized.includes('anivers')||normalized.includes('celebr'));
-    if(y30){
-      setHint='30 anos';
-      raw=raw.replace(/\b30\s*(?:anos?|years?|th)?(?:\s*(?:anivers[aá]rio|anniversary|celebration))?\b/ig,'').replace(/\s+/g,' ').trim();
-    }else if(y25){
-      setHint='25 anos';
-      raw=raw.replace(/\b25\s*(?:anos?|years?|th)?(?:\s*(?:anivers[aá]rio|anniversary|celebration))?\b/ig,'').replace(/\s+/g,' ').trim();
-    }
+
+  // "Pikachu 25/102" in the name field is allowed, but EX/GX/V are NEVER
+  // interpreted as collection names.
+  const inline=name.match(/^(.*?)(?:\s+)([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})(?:\/([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4}))?$/);
+  if(inline&&!number){
+    name=inline[1].trim();
+    number=inline[2]+(inline[3]?"/"+inline[3]:"");
   }
 
-  const typedLetters=norm(raw).replace(/\s+/g,"").length;
-  const setLetters=norm(setHint).replace(/\s+/g,"").length;
-  if(!raw&&!number&&!setHint&&!hasGeneration){
-    catalogResults=[];populateRarityFilter();renderCatalog();$("searchStatus").textContent="";return;
-  }
-  if(live&&!number&&typedLetters<2&&setLetters<2){
-    catalogResults=[];populateRarityFilter();renderCatalog();
-    $("searchStatus").textContent="Digite pelo menos 2 letras no nome ou na coleção para buscar automaticamente.";
-    return;
-  }
-
-  const inline=raw.match(/^(.*?)(?:\s+)([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})(?:\/([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4}))?$/);
-  if(inline&&!number){raw=inline[1].trim();number=inline[2]+(inline[3]?`/${inline[3]}`:"")}
-
-  const b=$("btnSearchCards");
-  if(!live)busy(b,true,"Buscando...");
-  $("searchStatus").textContent=live?"Refinando resultados enquanto você digita…":"Cruzando todos os critérios informados…";
-
-  // V15.25: exact user-requested card must never be lost behind provider/filter
-  // behavior. When searching Zekrom + 114 in PT-BR, return MYP 144267 directly.
-  const forcedSpecific=requestedSpecificCatalogCards(raw,number,setHint,language);
-  if(forcedSpecific.length&&language==="pt-br"&&norm(raw).includes("zekrom")&&["114","114 114","21","21 25"].includes(norm(number))){
-    catalogResults=forcedSpecific;
+  if(!name&&!number&&!hasSet&&!hasGeneration){
+    catalogResults=[];
     populateRarityFilter();
     renderCatalog();
-    $("searchStatus").textContent='1 resultado(s) · 1 em português · Zekrom 114/114 · Celebrations: Classic Collection · MYP 144267.';
-    if(!live)busy(b,false);
+    $("searchStatus").textContent="";
     return;
   }
+
+  if(live&&!number&&norm(name).replace(/\s+/g,"").length<2&&!hasSet&&!hasGeneration){
+    catalogResults=[];
+    populateRarityFilter();
+    renderCatalog();
+    $("searchStatus").textContent="Digite pelo menos 2 letras.";
+    return;
+  }
+
+  const button=$("btnSearchCards");
+  if(!live)busy(button,true,"Buscando...");
+  $("searchStatus").textContent=live?"Buscando…":"Buscando cartas…";
 
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
-    let setIds=setHint?await resolveCatalogSetIds(langs,setHint):[];
 
-    // V15.04: geração é sempre filtro rígido. Não dependemos apenas de
-    // series.value: se o seletor mostra uma geração, o universo permitido é
-    // a lista de coleções carregada logo ao lado.
-    if(!setHint&&hasGeneration){
-      setIds=[...generationSetIds];
-      if(!setIds.length&&seriesId){
-        try{
-          const langKey=language==="ja"?"ja":language==="en"?"en":"pt";
-          const rr=await fetch('/api/set-catalog?lang='+encodeURIComponent(langKey)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
-          const jj=await rr.json();
-          if(jj?.ok)setIds=[...new Set((jj.sets||[]).map(s=>String(s.id||"")).filter(Boolean))];
-        }catch(e){console.warn("Generation set filter",e)}
-      }
+    let setIds=[];
+    if(hasSet){
+      setIds=[selectedSetId];
+    }else if(hasGeneration){
+      setIds=[...new Set([...(setEl?.options||[])]
+        .map(option=>String(option.value||"").trim())
+        .filter(Boolean))];
     }
-    const wantsJa=language==="all"||language==="ja";
-    const wantsLegacy=language==="all"||language==="en";
-    const [groups,jpOfficial,mypSearch,mypPublicCards,legacyCards,anniversaryCards]=await Promise.all([
-      Promise.all(langs.map(l=>searchTCGdex(l,raw,number,{live,setHint,setIds}))),
-      wantsJa?searchJapaneseOfficial(raw,number,setHint,{live}):Promise.resolve([]),
-      raw?searchMypCards(raw,number,setHint):Promise.resolve({cards:[],needsToken:false}),
-      raw?searchMypCatalogPublic(raw,number,setHint,language,{live}):Promise.resolve([]),
-      wantsLegacy&&raw?searchLegacyCards(raw,number,setHint,{live}):Promise.resolve([]),
-      raw?searchAnniversaryClassicCollections(langs,raw,number,{live}):Promise.resolve([])
-    ]);
+
+    const tcgPromise=Promise.all(
+      langs.map(lang=>searchTCGdexClean(lang,name,number,{setIds,live}))
+    );
+
+    // MYP is a secondary PT-BR source. It may add old/special printings that
+    // TCGdex lacks, but it never bypasses the same final filters.
+    const mypPromise=(name&&(language==="all"||language==="pt-br"))
+      ? searchMypCards(name,number,hasSet?selectedSetLabel:"")
+      : Promise.resolve({cards:[],needsToken:false});
+
+    const jpPromise=(name&&(language==="all"||language==="ja"))
+      ? searchJapaneseOfficial(name,number,hasSet?selectedSetLabel:"",{live})
+      : Promise.resolve([]);
+
+    const [tcgGroups,mypResult,jpCards]=await Promise.all([tcgPromise,mypPromise,jpPromise]);
     if(requestId!==catalogSearchSeq)return;
 
-    const mypCards=mypSearch.cards||[];
-    const mypSeeds=[
-      ...mypCards.map(c=>c?.market?.link||c?.mypLink||""),
-      ...mypPublicCards.map(c=>c?.mypLink||c?.market?.link||"")
-    ].filter(Boolean);
-    const mypRelatedCards=raw?await searchMypRelatedCatalog(raw,language,mypSeeds,{live}):[];
-    const safeMypPublicCards=mypPublicCards.filter(c=>c?.number&&cardImage(c));
-    const tcgFlat=groups.flat();
-    const basePool=language==="ja"&&jpOfficial.length
-      ? [...jpOfficial,...mypCards.filter(c=>c.languageCode==="ja")]
-      : [...tcgFlat,...anniversaryCards,...legacyCards,...jpOfficial,...mypCards,...safeMypPublicCards,...mypRelatedCards];
-    const limitlessVariants=number&&raw
-      ? await searchLimitlessVariants(raw,number,basePool,language)
-      : [];
-    const sourcePool=[...basePool,...limitlessVariants];
-    let results=hardFilterCatalog(dedupe(sourcePool),{name:raw,number,setHint,setIds,language});
+    let pool=[
+      ...tcgGroups.flat(),
+      ...(mypResult?.cards||[]),
+      ...(jpCards||[])
+    ];
 
-    // Exact user-requested card: force it into the final result set AFTER all
-    // normal filters. Its artwork is cloned from the working Classic Collection
-    // Zekrom already returned by the catalog, then the PT-BR/MYP identity is applied.
-    const specificCards=requestedSpecificCatalogCards(raw,number,setHint,language);
-    const rankedResults=rank(results,{name:raw,number,setHint,language});
-    for(const special of specificCards){
-      const idx=rankedResults.findIndex(c=>String(c?.apiId||"")==="myp-144267");
-      if(idx>=0)rankedResults.splice(idx,1);
-      rankedResults.unshift(special);
-    }
+    // One final deterministic intersection. Every supplied criterion is mandatory.
+    pool=pool.filter(card=>{
+      if(language!=="all"&&card.languageCode!==language)return false;
+      if(name&&!catalogNameMatches(name,card))return false;
+      if(number&&!cardNumberMatches(number,card))return false;
+      if(setIds.length){
+        const cid=String(card.setId||card.set_id||"");
+        if(cid&&setIds.includes(cid))return true;
+        // MYP sometimes has no canonical TCGdex set id; only accept it when
+        // the actual selected collection label matches its edition name.
+        if(card.source==="MYP Cards"&&hasSet){
+          const edition=norm(card.setName||card.setTitle||"");
+          const wantedSet=norm(selectedSetLabel);
+          return !!wantedSet&&(edition===wantedSet||edition.includes(wantedSet)||wantedSet.includes(edition));
+        }
+        return false;
+      }
+      return true;
+    });
 
-    const maxResults=(setHint||hasGeneration)&&!raw&&!number?400:100;
-    catalogResults=rankedResults.slice(0,maxResults);
-    populateRarityFilter();renderCatalog();
+    pool=cleanCatalogDedupe(pool);
 
-    // V15.01: imagem é obrigatória no catálogo. Para coleções grandes, não
-    // bloqueamos a busca esperando centenas de requests; resolvemos em lotes
-    // e redesenhamos o catálogo conforme as artes chegam.
-    const missingImages=catalogResults.filter(card=>!cardImage(card));
-    if(missingImages.length){
+    // Rank only after filtering; ranking can never make an unrelated card appear.
+    catalogResults=rank(pool,{
+      name,
+      number,
+      setHint:hasSet?selectedSetLabel:"",
+      language
+    }).slice(0,hasSet||hasGeneration?400:120);
+
+    populateRarityFilter();
+    renderCatalog();
+
+    // Image hydration is asynchronous and never changes search identity.
+    const missing=catalogResults.filter(card=>!cardImage(card)).slice(0,120);
+    if(missing.length){
       (async()=>{
-        const queue=missingImages.slice(0,160);
-        const workers=Math.min(6,queue.length);
-        let cursor=0,changed=false;
+        let cursor=0;
+        const workers=Math.min(6,missing.length);
         const run=async()=>{
           while(requestId===catalogSearchSeq){
-            const i=cursor++;
-            if(i>=queue.length)return;
-            const card=queue[i];
-            const before=cardImage(card);
-            await hydrateMissingCatalogImage(card,card.languageCode||language||'en');
-            if(!before&&cardImage(card))changed=true;
-            if(changed&&i%4===0&&requestId===catalogSearchSeq){
-              renderCatalog();
-              changed=false;
-            }
+            const index=cursor++;
+            if(index>=missing.length)return;
+            const card=missing[index];
+            await hydrateMissingCatalogImage(card,card.languageCode||language||"en");
+            if(index%4===0&&requestId===catalogSearchSeq)renderCatalog();
           }
         };
         await Promise.all(Array.from({length:workers},run));
         if(requestId===catalogSearchSeq)renderCatalog();
-      })().catch(e=>console.warn('Catalog image hydration',e));
+      })().catch(e=>console.warn("Catalog image hydration",e));
     }
 
-    const br=catalogResults.filter(c=>c.languageCode==="pt-br").length;
-    const jpOfficialCount=catalogResults.filter(c=>c.source==="Pokémon Japão Oficial").length;
-    const setLabel=$("searchSet")?.selectedOptions?.[0]?.textContent||"";
-    const criteria=[raw&&`nome “${raw}”`,hasGeneration&&`geração “${generationLabel}”`,number&&`nº ${number}`,setHint&&`coleção “${setLabel||setHint}”`,language!=="all"&&LANG[language]].filter(Boolean).join(" + ");
-    $("searchStatus").textContent=`${catalogResults.length} resultado(s) · ${br} em português${jpOfficialCount?` · ${jpOfficialCount} impressão(ões) japonesa(s) oficial(is)`:``}${criteria?` · correspondendo a: ${criteria}`:""}.`;
-  }catch(e){
+    const br=catalogResults.filter(card=>card.languageCode==="pt-br").length;
+    const criteria=[
+      name&&`nome “${name}”`,
+      number&&`nº ${number}`,
+      hasSet&&`coleção “${selectedSetLabel}”`,
+      !hasSet&&hasGeneration&&`geração “${generationLabel}”`,
+      language!=="all"&&LANG[language]
+    ].filter(Boolean).join(" + ");
+
+    $("searchStatus").textContent=
+      `${catalogResults.length} resultado(s) · ${br} em português${criteria?` · correspondendo a: ${criteria}`:""}.`;
+  }catch(error){
     if(requestId!==catalogSearchSeq)return;
-    console.error(e);$("searchStatus").textContent="Erro ao buscar.";
+    console.error("[Catálogo V16]",error);
+    catalogResults=[];
+    populateRarityFilter();
+    renderCatalog();
+    $("searchStatus").textContent="Erro ao buscar cartas.";
   }finally{
-    if(!live&&requestId===catalogSearchSeq)busy(b,false);
+    if(!live&&requestId===catalogSearchSeq)busy(button,false);
   }
 }
+
 function queueLiveCatalogSearch(delay=420){
   clearTimeout(catalogSearchTimer);
   catalogSearchTimer=setTimeout(()=>searchCards({live:true}),delay);
