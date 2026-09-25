@@ -498,6 +498,37 @@ async function collectionPageText(editionUrl,page){
   return value;
 }
 
+async function fastSetPageCandidates({apiId,setId,set,number,name,nameAliases=[]}){
+  const meta=await resolveSetMeta(apiId,set,setId);
+  const wanted=numberParts(number);
+  if(!wanted.n)return[];
+  const collector=/^\d+$/.test(wanted.n)?Number(wanted.n):0;
+  const total=Math.max(Number(meta?.total||0),collector,48);
+  const estimated=collector?Math.max(1,Math.floor(Math.max(0,total-collector)/48)+1):1;
+
+  const slugs=[...new Set([
+    slugify(set),
+    ...(meta?.names||[]).map(slugify)
+  ].filter(slug=>slug&&slug.length>=4&&!/^\d+$/.test(slug)))].slice(0,4);
+
+  const pages=[...new Set([estimated,estimated>1?estimated-1:null,estimated+1].filter(Boolean))];
+  const requests=[];
+  for(const slug of slugs){
+    const editionUrl=ROOT+'/pokemon/'+slug;
+    for(const page of pages){
+      requests.push((async()=>{
+        try{
+          const url=editionUrl+'?page='+page+'&per-page=48&sort=-codigoproduto';
+          const body=await fetchJina(url,7000);
+          return collectionProductCandidatesFromText(body,number,[name,...nameAliases].filter(Boolean));
+        }catch{return[]}
+      })());
+    }
+  }
+  const groups=await Promise.all(requests);
+  return[...new Set(groups.flat())].slice(0,8);
+}
+
 async function collectionIndexCandidates({apiId,setId,set,number,name,nameAliases=[]}){
   const meta=await resolveSetMeta(apiId,set,setId);
   const discovered=await mypEditionUrl({apiId,setId,set}).catch(()=>'');
@@ -995,8 +1026,8 @@ module.exports=async function handler(req,res){
     try{
       const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition};
       const candidates=await Promise.race([
-        collectionIndexCandidates(wanted),
-        new Promise(resolve=>setTimeout(()=>resolve([]),13000))
+        fastSetPageCandidates(wanted),
+        new Promise(resolve=>setTimeout(()=>resolve([]),8500))
       ]);
       const checked=await Promise.all((candidates||[]).slice(0,5).map(async candidate=>{
         try{
