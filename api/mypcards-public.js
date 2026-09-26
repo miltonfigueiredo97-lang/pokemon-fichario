@@ -1665,70 +1665,15 @@ module.exports=async function handler(req,res){
 
   if(queueSimple){
     if(!name||!number)return res.status(400).json({ok:false,error:'name_number_required'});
-    const wanted={
-      name,nameAliases:[name],number,set,setId,apiId,lang,finish,condition,
-      quick:true,strictDirect:true
-    };
-    const direct=safeMypProductUrl(link);
 
-    if(direct){
-      const result=await findAndScrapeMypBrowser(direct,wanted);
-      return res.status(200).json({
-        ...result,source:'MYP Cards',provider:'MYP direct product',
-        mode:result?.mode||'browser-direct-product'
-      });
-    }
-
-    // V16.44: fluxo principal = exatamente o que o usuário faz:
-    // MYP -> busca "Nome (número/total)" -> primeiro resultado correto -> abre produto.
-    // searchExactMypBrowser agora espera o interstitial de segurança terminar,
-    // em vez de abandonar a carta enquanto o Cloudflare ainda está verificando.
-    const exact=await searchExactMypBrowser(wanted).catch(error=>({
-      ok:false,error:'browser_exact_error',message:String(error?.message||error)
-    }));
-    if(exact?.ok){
-      return res.status(200).json({
-        ...exact,source:'MYP Cards',provider:'MYP exact search',
-        mode:exact?.mode||'browser-human-myp-search'
-      });
-    }
-
-    // Um único fallback proxy, ainda com a MESMA consulta exata, somente se
-    // o datacenter não conseguir atravessar a verificação da MYP.
-    let actor=null;
-    try{
-      // Discovery only: do NOT ask the actor to pre-filter language/condition/
-      // finish, because that can hide the correct product before we get its URL.
-      // Identity is still validated by exact name + collector number.
-      actor=await queryMyp({
-        ...wanted,
-        lang:'',condition:'',finish:'Normal',
-        maxQueries:1,timeoutSeconds:11
-      });
-    }catch(error){
-      actor={error:String(error?.code||error?.message||'apify_error'),message:String(error?.message||error||'')};
-    }
-
-    const actorLink=safeMypProductUrl(actor?.link);
-    if(actorLink){
-      // Price is NEVER trusted from the discovery call. Open the exact MYP
-      // product and apply the real requested PT-BR / condition / finish filters.
-      const result=await findAndScrapeMypBrowser(actorLink,wanted).catch(error=>({
-        ok:false,error:'direct_product_error',message:String(error?.message||error),link:actorLink
-      }));
-      if(result?.ok){
-        return res.status(200).json({
-          ...result,source:'MYP Cards',provider:'MYP exact proxy discovery + direct read',
-          mode:result?.mode||'exact-name-number-direct-read',link:result?.link||actorLink
-        });
-      }
-    }
-
-    return res.status(200).json({
-      ok:false,error:String(exact?.error||actor?.error||'exact_myp_product_not_found'),
-      source:'MYP Cards',provider:'MYP exact search',
-      message:String(exact?.message||actor?.message||'A busca exata Nome (número) não localizou a carta.')
+    // V16.45: sem resolvedor paralelo, sem busca externa e sem Chromium para
+    // descobrir a carta. Usa EXATAMENTE o fluxo manual confirmado:
+    // "Nome (numero/total)" -> busca da própria MYP -> primeiro produto válido
+    // -> abre o produto -> lê e salva a cotação.
+    const result=await simpleQueueMypLookup({
+      name,number,set,setId,apiId,lang,finish,condition,link
     });
+    return res.status(200).json(result);
   }
 
   if(browserBatch){
