@@ -64,6 +64,65 @@ async function readMypPage(page,url,wanted){
   return data;
 }
 
+// The product page shows only the first 20 offers of each seller list; the
+// rest (often every Reverse/Poké Ball offer) sit on "?estoque-cert-page=N" and
+// "?estoque-outros-page=N". Load them from inside the page, the same way the
+// site's own pagination does, and merge the rows. Row fields mirror
+// readProduct() in lib/myp-browser.js.
+async function loadMoreOffers(page){
+  return page.evaluate(async()=>{
+    const base=location.pathname;
+    const urls=[...new Set([...document.querySelectorAll('a[href*="estoque-cert-page="],a[href*="estoque-outros-page="]')]
+      .map(a=>{try{const u=new URL(a.getAttribute('href'),location.href);return u.pathname===base?u.pathname+u.search:''}catch{return''}})
+      .filter(u=>u&&!/page=1(?:&|$)/.test(u)))].slice(0,8);
+    const rowsOf=(doc)=>[...doc.querySelectorAll('tr')].map(tr=>{
+      const note=(tr.textContent||'').replace(/\s+/g,' ').trim();
+      const finishNode=tr.querySelector('.estoque-lista-nomeenfoil,[class*="nomeenfoil"],[class*="enfoil"],[data-finish],[data-foil]');
+      const finishFromText=(note.match(/\b(Master\s*Ball\s*Foil|Masterball\s*Foil|Pok[eé]\s*Ball\s*Foil|Pokeball\s*Foil|Reverse\s*(?:Foil|Holo)|Full[- ]?Art|Foil|Holo|Promo)\b/i)||[])[1]||'';
+      const conditionNode=tr.querySelector('.estoque-lista-qualidadenome .chip-inline,[class*="qualidade"] .chip-inline,[class*="condition"]');
+      const conditionFromText=(note.match(/(?:^|\s)(NM|SP|MP|HP|DM)(?=\s|$|-)/i)||[])[1]||'';
+      const priceNode=tr.querySelector('.estoque-lista-precoestoque .moeda,[class*="precoestoque"] .moeda,[class*="price"] .moeda');
+      const prices=note.match(/R\$\s*[0-9.]+(?:,[0-9]{1,2})?/gi)||[];
+      const qtyNode=tr.querySelector('.estoque-lista-quantidadeestoque,[class*="quantidadeestoque"],[class*="quantity"]');
+      const flag=tr.querySelector('.flag-icon,[class*="flag-icon-"],[class*="fi-"],img[alt]');
+      return{
+        seller:tr.querySelector('.nome-vendedor-apelido,[class*="vendedor"][class*="apelido"],[class*="seller"]')?.textContent?.trim()||'',
+        finish:finishNode?.textContent?.trim()||finishFromText,
+        condition:conditionNode?.textContent?.trim()||conditionFromText,
+        language:flag?[flag.getAttribute('title'),flag.getAttribute('aria-label'),flag.getAttribute('data-original-title'),flag.getAttribute('data-bs-original-title'),flag.getAttribute('alt'),flag.getAttribute('class')].filter(Boolean).join(' ').trim():'',
+        price:priceNode?.textContent?.trim()||(prices.length?prices[prices.length-1]:''),
+        qty:qtyNode?.textContent?.trim()||((note.match(/(\d+)\s*un\./i)||[])[0]||''),
+        note
+      };
+    }).filter(x=>x.price&&x.seller);
+    const out=[];let pages=0,blocked=0;
+    for(const u of urls){
+      try{
+        const r=await fetch(u,{credentials:'include',headers:{Accept:'text/html'}});
+        const html=await r.text();
+        if(!r.ok||/Just a moment|Um momento/i.test(html.slice(0,4000))){blocked++;continue}
+        out.push(...rowsOf(new DOMParser().parseFromString(html,'text/html')));pages++;
+      }catch{blocked++}
+    }
+    return{rows:out,pages,blocked,urls:urls.length};
+  }).catch(()=>({rows:[],pages:0,blocked:0,urls:0}));
+}
+
+// No offer for the card's exact condition/language: use the closest available
+// one (condition first, then any language) and say so, instead of no price.
+function closestMarket(data,wanted){
+  const order=['NM','SP','MP','HP','DM'];
+  const start=Math.max(0,order.indexOf(String(wanted.condition||'').toUpperCase()==='NOVA'?'NM':String(wanted.condition||'NM').toUpperCase()));
+  for(const lang of [wanted.lang,'']){
+    for(const cond of order.slice(start).concat(order.slice(0,start).reverse())){
+      if(lang===wanted.lang&&cond===order[start])continue;
+      const m=summarizeProduct(data,{...wanted,lang,condition:cond});
+      if(m.ok)return{...m,approx:{condition:cond,language:lang||'qualquer'}};
+    }
+  }
+  return null;
+}
+
 // Several anchors can point to the same product ("Ver ofertas", image, title);
 // keep, per product, the text that carries "Name (number)".
 function relatedProducts(rows,self){
@@ -119,7 +178,20 @@ async function lookupMyp(page,wanted,urls,deadline){
     }
 
     probe.match=true;
+    const more=await loadMoreOffers(page);
+    if(more.rows.length){
+      const seen=new Set((data.offers||[]).map(o=>[o.seller,o.price,o.finish,o.condition,o.language].join('|')));
+      for(const row of more.rows){
+        const key=[row.seller,row.price,row.finish,row.condition,row.language].join('|');
+        if(!seen.has(key)){seen.add(key);data.offers.push(row)}
+      }
+    }
+    probe.offerPages={extra:more.pages,blocked:more.blocked,rows:(data.offers||[]).length};
     let market=summarizeProduct(data,effective);
+    if(!market.ok&&market.error==='variant_not_found'){
+      const approx=closestMarket(data,effective);
+      if(approx)market=approx;
+    }
     if(market.ok)return{market:{...market,link:finalUrl,source:'MYP Cards'},probes};
     identityOnly={ok:false,error:market.error||'variant_not_found',link:finalUrl,title:data.title,edition:data.edition,
       rows:(data.offers||[]).length,language:market.language,availableLanguages:market.availableLanguages,defaultFinish:market.defaultFinish,
@@ -272,7 +344,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.9',
+      build:'18.0',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
