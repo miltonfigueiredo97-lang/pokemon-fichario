@@ -2895,9 +2895,29 @@
     const avg=manualMoneyV1469(byId('v1469ManualAvg')?.value);
     const max=manualMoneyV1469(byId('v1469ManualMax')?.value);
     const link=String(byId('v1469ManualLink')?.value||'').trim();
-    if(!(min||avg||max))return toast('Informe pelo menos um valor para a cotação manual.');
     if(link&&!/^https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
       return toast('O link informado não é uma página de produto da MYP Cards.');
+    }
+    if(!(min||avg||max)){
+      if(!link)return toast('Informe o link do produto na MYP ou pelo menos um valor.');
+      // Link only: save it and let the server worker read the real quote.
+      const b=byId('v1469ManualSave');
+      busy(b,true,'Salvando link…');
+      try{
+        const {error}=await db.from('pokemon_cards').update({myp_price_link:link,price_br_link:link,price_link:link,myp_link_tried:[]}).eq('id',card.id).eq('user_id',currentUser.id);
+        if(error)throw error;
+        applyLocalPricePatch(card.id,{myp_price_link:link,price_br_link:link,price_link:link});
+        await markCardsForPrice([card],1000);
+        kickPriceWorkerNow();
+        ensureManualPriceDialogV1469().close();
+        syncSingleCardPriceButton();
+        if(byId('cardDialog')?.open)resumeSinglePriceWatch(card);
+        toast('Link MYP salvo. Buscando o preço nessa página…');
+      }catch(error){
+        console.error('[Link manual]',error);
+        toast('Não consegui salvar o link.');
+      }finally{busy(b,false)}
+      return;
     }
 
     const b=byId('v1469ManualSave');
