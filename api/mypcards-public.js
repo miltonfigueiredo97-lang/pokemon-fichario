@@ -1166,6 +1166,101 @@ async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang
 }
 
 
+async function resolveBatchMypSearchFirst(items=[]){
+  const rows=(Array.isArray(items)?items:[]).slice(0,10).map(item=>({
+    ...item,
+    key:String(item?.key||item?.id||''),
+    name:String(item?.name||'').trim(),
+    number:String(item?.number||'').trim(),
+    set:String(item?.set||item?.setName||'').trim(),
+    setId:String(item?.setId||'').trim(),
+    lang:String(item?.lang||'').trim(),
+    finish:String(item?.finish||'Normal').trim(),
+    condition:String(item?.condition||'Nova').trim(),
+    link:safeMypProductUrl(item?.link||'')
+  }));
+  const started=Date.now();
+  if(!rows.length)return{ok:true,items:[],elapsedMs:0};
+
+  // Stage 1: ten exact web-index lookups in parallel. This mirrors the query
+  // that reliably resolves MYP products from a browser/search engine and avoids
+  // crawling a whole collection before we even know the exact product URL.
+  await Promise.all(rows.map(async item=>{
+    if(item.link)return;
+    try{
+      const candidates=await Promise.race([
+        externalSearchCandidates({
+          name:item.name,
+          nameAliases:[],
+          number:item.number,
+          set:item.set
+        }),
+        new Promise(resolve=>setTimeout(()=>resolve([]),3600))
+      ]);
+      if(Array.isArray(candidates)&&candidates.length)item.link=safeMypProductUrl(candidates[0]);
+    }catch{}
+  }));
+
+  // Stage 2: read the ten exact product pages concurrently. Normal/Reverse/Foil
+  // are all seller rows on the same MYP product page, so one page identifies the
+  // product and usually contains the requested market immediately.
+  const results=await Promise.all(rows.map(async item=>{
+    if(!item.link){
+      return{key:item.key,name:item.name,number:item.number,ok:false,error:'search_exact_product_not_found',elapsedMs:Date.now()-started};
+    }
+    try{
+      const raw=await fetchText(item.link,4300);
+      const identity=pageIdentity(raw);
+      const wanted={name:item.name,nameAliases:[item.name],number:item.number,set:item.set,setId:item.setId,lang:item.lang};
+      if(!matchesWanted(identity,wanted)){
+        return{key:item.key,name:item.name,number:item.number,ok:false,error:'search_wrong_product',link:item.link,elapsedMs:Date.now()-started};
+      }
+
+      let market=extractMarket(identity,item.finish,item.condition);
+
+      // Same-attempt finish fallback: only if the requested market is not on the
+      // first page, read seller page 2 and 3 concurrently. No retry/requeue.
+      if(!marketFitsFinish(market,item.finish)&&finishKind(item.finish)!=='normal'){
+        const base=safeMypProductUrl(item.link);
+        const variantBodies=await Promise.all([
+          fetchJina(base+'?estoque-cert-page=2',2400).catch(()=>''),
+          fetchJina(base+'?estoque-outros-page=2',2400).catch(()=>''),
+          fetchJina(base+'?estoque-cert-page=3',2400).catch(()=>''),
+          fetchJina(base+'?estoque-outros-page=3',2400).catch(()=>'')
+        ]);
+        const markets=[market];
+        for(const body of variantBodies){
+          if(!body)continue;
+          const variantIdentity=pageIdentity(body);
+          if(matchesWanted(variantIdentity,wanted))markets.push(extractMarket(variantIdentity,item.finish,item.condition));
+        }
+        market=mergeVariantMarkets(markets)||market;
+      }
+
+      if(!marketFitsFinish(market,item.finish)&&!requiresExactMewPtBrVariant(item)){
+        market=sameProductFallbackMarket(identity,item.finish,item.condition);
+      }
+      if(!hasAnyMarket(market)){
+        return{key:item.key,name:item.name,number:item.number,ok:false,error:'search_no_price',link:item.link,elapsedMs:Date.now()-started};
+      }
+      return{
+        key:item.key,name:item.name,number:item.number,ok:true,
+        source:'MYP Cards',provider:'MYP search-index batch10',mode:'search-index-batch10-one-shot',
+        link:item.link,edition:identity.edition||item.set,finish:item.finish,condition:item.condition,
+        min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+        samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+        exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+        complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+        checkedAt:new Date().toISOString(),elapsedMs:Date.now()-started
+      };
+    }catch(error){
+      return{key:item.key,name:item.name,number:item.number,ok:false,error:'search_batch_read_error',link:item.link,message:String(error?.message||error||''),elapsedMs:Date.now()-started};
+    }
+  }));
+
+  return{ok:true,items:results,elapsedMs:Date.now()-started};
+}
+
 async function resolveBatchMypHttp(items=[]){
   const rows=(Array.isArray(items)?items:[]).slice(0,10).map(item=>({
     ...item,
@@ -1387,15 +1482,17 @@ module.exports=async function handler(req,res){
     // The HTTP set-page resolver is always available; Apify is only an optional
     // accelerator. We merge per-card results and never schedule a second attempt.
     const run=async(fn)=>{try{return await fn()}catch(error){return{ok:false,error:String(error?.message||error||'batch_resolver_error'),items:[]}}};
-    const [httpResult,actorResult]=await Promise.race([
+    const [searchResult,httpResult,actorResult]=await Promise.race([
       Promise.all([
+        run(()=>resolveBatchMypSearchFirst(items)),
         run(()=>resolveBatchMypHttp(items)),
         run(()=>resolveBatchMypActor(items))
       ]),
       new Promise(resolve=>setTimeout(()=>resolve([
+        {ok:false,error:'batch_search_timeout',items:[]},
         {ok:false,error:'batch_http_timeout',items:[]},
         {ok:false,error:'batch_actor_timeout',items:[]}
-      ]),10500))
+      ]),10800))
     ]);
 
     const byKey=new Map();
@@ -1411,6 +1508,7 @@ module.exports=async function handler(req,res){
         }
       }
     };
+    ingest(searchResult,3);
     ingest(httpResult,2);
     ingest(actorResult,1);
 
@@ -1426,13 +1524,13 @@ module.exports=async function handler(req,res){
         name:String(raw?.name||''),
         number:String(raw?.number||''),
         ok:false,
-        error:String(httpResult?.error||actorResult?.error||'batch_no_result')
+        error:String(searchResult?.error||httpResult?.error||actorResult?.error||'batch_no_result')
       };
     });
 
     return res.status(200).json({
       ok:true,
-      mode:'batch10-http-plus-optional-actor-one-shot',
+      mode:'batch10-search-plus-http-one-shot',
       items:merged
     });
   }
