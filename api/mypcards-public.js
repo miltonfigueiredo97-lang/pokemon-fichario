@@ -1468,9 +1468,23 @@ module.exports=async function handler(req,res){
   const fast=String(req.query.fast||'')==='1';
   const catalog=String(req.query.catalog||'')==='1';
   const batchResolve=String(req.query.batchResolve||'')==='1';
+  const browserBatch=String(req.query.browserBatch||'')==='1';
   const identityOnly=String(req.query.identityOnly||'')==='1';
   const identityDebug=String(req.query.identityDebug||'')==='1';
   if(fast||catalog||identityOnly||identityDebug)res.setHeader('Cache-Control','no-store, max-age=0');
+
+  if(browserBatch){
+    let items=[];
+    try{
+      const raw=String(req.query.items||'');
+      items=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
+    }catch{}
+    const result=await Promise.race([
+      resolveBatchMypLinksBrowser(items),
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'browser_batch_timeout',items:[]}),30000))
+    ]);
+    return res.status(200).json(result);
+  }
 
   if(batchResolve){
     let items=[];
