@@ -461,8 +461,9 @@ Deno.serve(async(req:Request)=>{
       const ligaError=String(liga?.error||"").trim();
       const mypError=String(myp?.error||"").trim();
       const discoveredMypLink=String(myp?.link||"").trim();
+      const mypMessage=String(myp?.message||"").replace(/\s+/g," ").slice(0,420);
       const detail=[
-        mypError?"myp:"+mypError:"",
+        mypError?("myp:"+mypError+(mypMessage?":"+mypMessage:"")):"",
         ligaError?"liga:"+ligaError:""
       ].filter(Boolean).join("|")||"no_price_data";
 
