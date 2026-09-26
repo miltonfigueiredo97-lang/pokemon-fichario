@@ -1165,6 +1165,109 @@ async function resolvePage({name,nameAliases=[],number,set,setId,apiId,link,lang
   return best;
 }
 
+
+async function resolveBatchMypHttp(items=[]){
+  const rows=(Array.isArray(items)?items:[]).slice(0,10).map(item=>({
+    ...item,
+    key:String(item?.key||item?.id||''),
+    name:String(item?.name||'').trim(),
+    number:String(item?.number||'').trim(),
+    set:String(item?.set||item?.setName||'').trim(),
+    setId:String(item?.setId||'').trim(),
+    lang:String(item?.lang||'').trim(),
+    finish:String(item?.finish||'Normal').trim(),
+    condition:String(item?.condition||'Nova').trim(),
+    link:safeMypProductUrl(item?.link||'')
+  }));
+  const started=Date.now();
+  if(!rows.length)return{ok:true,items:[],elapsedMs:0};
+
+  const setGroups=new Map();
+  for(const item of rows){
+    if(item.link)continue;
+    const slug=slugify(item.set);
+    const key=[slug,item.setId].join('|');
+    if(!setGroups.has(key))setGroups.set(key,{slug,setId:item.setId,items:[]});
+    setGroups.get(key).items.push(item);
+  }
+
+  // Resolve exact product URLs from the MYP edition pages first. One first-page
+  // request per set gives the real item count; only the page(s) needed for these
+  // ten collector numbers are fetched after that.
+  await Promise.all([...setGroups.values()].map(async group=>{
+    if(!group.slug)return;
+    const base=ROOT+'/pokemon/'+group.slug;
+    let first='';
+    try{first=await fetchText(base+'?page=1&per-page=96&sort=-codigoproduto',3600)}catch{}
+    const firstText=stripTags(first);
+    const totalMatch=firstText.match(/(\d+)\s+itens\s+encontrados/i);
+    const maxCollector=Math.max(0,...group.items.map(x=>{
+      const np=numberParts(x.number);return /^\d+$/.test(np.n)?Number(np.n):0;
+    }));
+    const total=Math.max(Number(totalMatch?.[1]||0),maxCollector,96);
+    const pages=new Map([[1,first]]);
+
+    for(const item of group.items){
+      if(item.link)continue;
+      const direct=collectionProductCandidatesFromText(first,item.number,[item.name]);
+      if(direct.length){item.link=direct[0];continue}
+      const np=numberParts(item.number);
+      const collector=/^\d+$/.test(np.n)?Number(np.n):0;
+      if(!collector)continue;
+      const estimated=Math.max(1,Math.floor(Math.max(0,total-collector)/96)+1);
+      item._estimatedPage=estimated;
+    }
+
+    const needed=[...new Set(group.items.map(x=>x._estimatedPage).filter(x=>x&&x!==1))].slice(0,4);
+    await Promise.all(needed.map(async page=>{
+      try{pages.set(page,await fetchText(base+'?page='+page+'&per-page=96&sort=-codigoproduto',3600))}
+      catch{pages.set(page,'')}
+    }));
+
+    for(const item of group.items){
+      if(item.link)continue;
+      const page=Number(item._estimatedPage||1);
+      const candidates=collectionProductCandidatesFromText(pages.get(page)||'',item.number,[item.name]);
+      if(candidates.length)item.link=candidates[0];
+    }
+  }));
+
+  const results=await Promise.all(rows.map(async item=>{
+    if(!item.link){
+      return{key:item.key,name:item.name,number:item.number,ok:false,error:'batch_exact_product_not_found',elapsedMs:Date.now()-started};
+    }
+    try{
+      const raw=await fetchText(item.link,4200);
+      const identity=pageIdentity(raw);
+      const wanted={name:item.name,nameAliases:[item.name],number:item.number,set:item.set,setId:item.setId,lang:item.lang};
+      if(!matchesWanted(identity,wanted)){
+        return{key:item.key,name:item.name,number:item.number,ok:false,error:'batch_wrong_product',link:item.link,elapsedMs:Date.now()-started};
+      }
+      let market=extractMarket(identity,item.finish,item.condition);
+      if(!marketFitsFinish(market,item.finish)&&!requiresExactMewPtBrVariant(item)){
+        market=sameProductFallbackMarket(identity,item.finish,item.condition);
+      }
+      if(!hasAnyMarket(market)){
+        return{key:item.key,name:item.name,number:item.number,ok:false,error:'batch_no_price',link:item.link,elapsedMs:Date.now()-started};
+      }
+      return{
+        key:item.key,name:item.name,number:item.number,ok:true,
+        source:'MYP Cards',provider:'MYP HTTP batch10',mode:'http-batch10-set-page',
+        link:item.link,edition:identity.edition||item.set,finish:item.finish,condition:item.condition,
+        min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+        samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+        exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+        complete:!!(Number(market.min)>0&&Number(market.avg)>0&&Number(market.max)>0),
+        checkedAt:new Date().toISOString(),elapsedMs:Date.now()-started
+      };
+    }catch(error){
+      return{key:item.key,name:item.name,number:item.number,ok:false,error:'batch_http_error',link:item.link,message:String(error?.message||error||''),elapsedMs:Date.now()-started};
+    }
+  }));
+
+  return{ok:true,items:results,elapsedMs:Date.now()-started};
+}
+
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');
   res.setHeader('Cache-Control','s-maxage=1200, stale-while-revalidate=14400');
@@ -1192,8 +1295,8 @@ module.exports=async function handler(req,res){
       items=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
     }catch{}
     const result=await Promise.race([
-      resolveBatchMypLinksBrowser(items),
-      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),11000))
+      resolveBatchMypHttp(items),
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),10800))
     ]);
     return res.status(200).json(result);
   }
