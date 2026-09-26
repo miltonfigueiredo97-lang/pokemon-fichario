@@ -1582,8 +1582,29 @@ module.exports=async function handler(req,res){
 
   if(queueSimple){
     if(!name||!number)return res.status(400).json({ok:false,error:'name_number_required'});
-    const result=await simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,condition,link});
-    return res.status(200).json(result);
+    const wanted={
+      name,nameAliases:[name],number,set,setId,apiId,lang,finish,condition,
+      quick:true,strictDirect:!!safeMypProductUrl(link)
+    };
+
+    // V16.39: este é literalmente o fluxo humano informado pelo usuário.
+    // Sem Google/Bing, sem catálogo inteiro, sem lote:
+    //   1. abre a busca da própria MYP por "Nome (número/total)";
+    //   2. pega o primeiro resultado que bate nome+número;
+    //   3. abre o produto;
+    //   4. lê e devolve a cotação.
+    // searchExactMypBrowser() já executa exatamente essa URL da MYP.
+    const direct=safeMypProductUrl(link);
+    const result=direct
+      ?await findAndScrapeMypBrowser(direct,wanted)
+      :await searchExactMypBrowser(wanted);
+
+    return res.status(200).json({
+      ...result,
+      source:'MYP Cards',
+      provider:'MYP exact browser search',
+      mode:result?.mode||(direct?'browser-direct-product':'browser-exact-only')
+    });
   }
 
   if(browserBatch){
