@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH_SIZE = 1;
+const BATCH_SIZE = 10;
 const MAX_RUN_MS = 48 * 1000;
 const STALE_MS = 75 * 1000;
 
@@ -48,7 +48,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const controller=new AbortController();
   // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
   // Só esse caminho ganha orçamento maior; links conhecidos continuam rápidos.
-  const timeoutMs=base===MYP_API?32000:7000;
+  const timeoutMs=base===MYP_API?11500:7000;
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
@@ -348,24 +348,13 @@ function choosePrimary(liga:any,myp:any){
 }
 async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promise<void>=async()=>{}){
   await onProgress(55,"querying_sources");
-  const batched=card?._batchMypMarket;
-  if(batched){
-    await onProgress(86,"sources_returned");
-    return{
-      myp:batched,
-      liga:{ok:false,error:"skipped_batch_primary_myp"}
-    };
-  }
-
-  // Compatibility path for a single-card refresh outside the fixed bulk batch.
-  // One-card queue: once the exact MYP URL is known, use the SAME browser-
-  // backed product read that succeeds in an individual refresh. The old static
-  // fast reader can identify the page but often cannot see the live seller rows.
+  // V16.34: each of the ten cards performs one independent bounded lookup.
+  // No preliminary batch resolver, retry or requeue.
   const knownMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
     .map((v:any)=>String(v||"").trim())
     .find((v:string)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(v))||"";
   const [myp,liga]=await Promise.all([
-    fetchSource(MYP_API,card,true,false)
+    fetchSource(MYP_API,card,true,!!knownMypLink)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"one_shot_timeout":String(e?.message||"myp_one_shot_error")})),
     fetchSource(LIGA_API,card,false,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
@@ -397,7 +386,7 @@ Deno.serve(async(req:Request)=>{
       // consistente, aprenda o padrão automaticamente e use-o como candidato.
       // A API ainda valida a página real antes de aceitar qualquer preço.
       let fetchCard=card;
-      if(!card?._batchMypMarket){
+      {
         const existingMyp=[
           card.myp_price_link,card.price_br_link,card.price_link
         ].map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v))||"";
@@ -418,7 +407,7 @@ Deno.serve(async(req:Request)=>{
         }
       }
 
-      await setProgress(db,card.id,40,card?._batchMypMarket?"batch_market_ready":[fetchCard.myp_price_link,fetchCard.price_br_link,fetchCard.price_link].some((v:any)=>/mypcards\.com/i.test(String(v||"")))?"link_ready":"identity_ready");
+      await setProgress(db,card.id,40,[fetchCard.myp_price_link,fetchCard.price_br_link,fetchCard.price_link].some((v:any)=>/mypcards\.com/i.test(String(v||"")))?"link_ready":"identity_ready");
       const markets=await fetchMarkets(fetchCard,(pct,stage)=>setProgress(db,card.id,pct,stage));
       await setProgress(db,card.id,86,"validating_quote");
       const myp=markets.myp,liga=markets.liga;
@@ -501,9 +490,9 @@ Deno.serve(async(req:Request)=>{
     }
 
   }  async function claimBatch(){
-    // Reliability mode requested for diagnosis: one physical card at a time.
-    // A second card cannot be claimed until the current one is terminal.
-    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:1});
+    // V16.34: one fixed group of ten. The next group cannot be claimed until
+    // all ten current rows have cleared price_processing_at.
+    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:10});
     if(error)throw error;
     return Array.isArray(data)?data:[];
   }
@@ -514,13 +503,8 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Exactly ONE card is active. First ask the bounded set-catalog resolver
-      // for the exact MYP product/quote. If it cannot finish the card, the same
-      // card immediately falls through to the individual resolver before any
-      // next queue item may be claimed.
-      const needsIdentity=batch.filter((card:any)=>![card.myp_price_link,card.price_br_link,card.price_link]
-        .some((v:any)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(String(v||""))));
-      if(needsIdentity.length)await hydrateBatchMypLinks(db,needsIdentity);
+      // Fixed barrier: all ten start together, each with its own one-shot
+      // resolver. The next ten are not claimed until all current ten terminate.
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
