@@ -4243,7 +4243,7 @@
 
   function priceAuditStageV1604(card){
     const raw=String(card?.price_progress_stage||'').trim().toLowerCase();
-    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
+    const active=new Set(['batch_resolving','batch_resolved','claimed','resolving_identity','identity_ready','link_ready','querying_sources','batch_miss_exact_retry','exact_lookup','exact_lookup_retry','discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
     // Active backend state always wins over an older saved quote. A refresh of
     // an already-priced card must visibly be queued/processing until THIS job ends.
     if(active.has(raw)||card?.price_processing_at)return{key:'processing',rank:0,label:'PROCESSANDO'};
@@ -4290,50 +4290,52 @@
   function priceAuditQueueProgressV1606(){
     const batch=V14.priceAuditBatch;
     const snapshot=batch?.total?batch:V14.priceAuditQueueSnapshot;
-    if(!snapshot?.total)return{total:0,done:0,processing:0,queued:0,priced:0,failed:0,pct:0};
+    if(!snapshot?.total)return{total:0,done:0,processing:0,retrying:0,queued:0,priced:0,noQuote:0,failed:0,pct:0};
 
     const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
-    let done=0,processing=0,retrying=0,queued=0,priced=0,noQuote=0,failed=0;
+    let processing=0,retrying=0,queued=0,priced=0,noQuote=0,failed=0;
+    let progressSum=0,seen=0;
     const activeStages=new Set([
-      'claimed','resolving_identity','identity_ready','link_ready','querying_sources',
+      'batch_resolving','batch_resolved','claimed','resolving_identity','identity_ready','link_ready','querying_sources',
+      'batch_miss_exact_retry','exact_lookup','exact_lookup_retry',
       'discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready',
       'myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'
     ]);
 
     for(const id of snapshot.ids||[]){
       const card=byIdMap.get(id);
-      if(!card){continue}
+      if(!card)continue;
+      seen++;
 
       const stage=String(card.price_progress_stage||'').toLowerCase();
-      if(hasBrazilQuoteV1466(card)&&stage==='complete'&&card.price_pending===false){
-        done++;priced++;continue;
-      }
-      if(stage==='no_quote'&&card.price_pending===false){
-        noQuote++;continue;
-      }
-      if(stage==='failed'&&card.price_pending===false){
-        failed++;continue;
-      }
+      const realProgress=Math.max(0,Math.min(100,Number(card.price_progress)||0));
+      progressSum+=realProgress;
+
+      if(stage==='complete'&&card.price_pending===false&&hasBrazilQuoteV1466(card)){priced++;continue}
+      if(stage==='no_quote'&&card.price_pending===false){noQuote++;continue}
+      if(stage==='failed'&&card.price_pending===false){failed++;continue}
       if(activeStages.has(stage)||card.price_processing_at){processing++;continue}
       if(stage==='retry_wait'){retrying++;continue}
       if(card.price_pending||stage==='queued'){queued++;continue}
       queued++;
     }
 
-    const total=Number(snapshot.total)||0;
-    // Percentage means "price successfully updated and saved", not merely
-    // "worker stopped touching this row". Failed jobs never inflate progress.
-    const pct=total?Math.max(0,Math.min(100,Math.round((priced/total)*100))):0;
-    return{total,done:priced,processing,retrying,queued,priced,noQuote,failed,pct};
+    const total=Number(snapshot.total)||seen||0;
+    const pct=total?Math.max(0,Math.min(100,Math.round(progressSum/total))):0;
+    return{total,done:priced+failed+noQuote,processing,retrying,queued,priced,noQuote,failed,pct};
   }
 
   function priceAuditCardProgressV1606(card){
     const stage=String(card?.price_progress_stage||'').toLowerCase();
-    if(hasBrazilQuoteV1466(card)&&stage==='complete')return{pct:100,label:'100%',kind:'priced'};
-    if(stage==='failed'&&card?.price_pending===false)return{pct:0,label:'RETRY',kind:'queued'};
-    if(card?.price_processing_at||priceAuditStageV1604(card).key==='processing')return{pct:0,label:'PROCESSANDO',kind:'processing'};
-    if(stage==='retry_wait')return{pct:0,label:'NOVA TENTATIVA',kind:'retrying'};
-    return{pct:0,label:'0%',kind:'queued'};
+    const pct=Math.max(0,Math.min(100,Number(card?.price_progress)||0));
+    if(stage==='complete'&&card?.price_pending===false&&hasBrazilQuoteV1466(card))return{pct:100,label:'100%',kind:'priced'};
+    if(stage==='failed'&&card?.price_pending===false)return{pct:0,label:'FALHOU',kind:'failed'};
+    if(stage==='no_quote'&&card?.price_pending===false)return{pct:0,label:'SEM COTAÇÃO',kind:'failed'};
+    if(stage==='retry_wait')return{pct,label:pct+'%',kind:'retrying'};
+    if(card?.price_pending||card?.price_processing_at||priceAuditStageV1604(card).key==='processing'){
+      return{pct,label:pct+'%',kind:'processing'};
+    }
+    return{pct,label:pct+'%',kind:'queued'};
   }
 
   function priceAuditDetailTextV1606(card){
@@ -4342,12 +4344,17 @@
     const labels={
       queued:'Aguardando worker',
       retry_wait:'Aguardando a próxima estratégia de busca',
+      batch_resolving:'Resolvendo lote de 10 na MYP',
+      batch_resolved:'Lote de 10 respondido',
       claimed:'Worker iniciou esta carta',
       resolving_identity:'Localizando/confirmando a impressão',
       identity_ready:'Impressão identificada',
       batch_market_ready:'Lote de 10 resolvido na MYP',
       link_ready:'Página MYP identificada',
       querying_sources:'Preparando consultas de preço',
+      batch_miss_exact_retry:'Busca do lote falhou; tentando esta carta diretamente',
+      exact_lookup:'Busca exata individual em andamento',
+      exact_lookup_retry:'Segunda busca exata individual em andamento',
       discovering_myp_link:'Localizando a página exata na MYP',
       searching_myp:'Procurando a página exata na MYP',
       myp_link_found:'Página MYP localizada',
@@ -4394,7 +4401,7 @@
     if(!title||!pctEl||!bar||!meta)return;
 
     const q=priceAuditQueueProgressV1606();
-    title.textContent='Progresso real das cotações';
+    title.textContent='Execução real da fila';
     pctEl.textContent=q.pct+'%';
     bar.style.width=q.pct+'%';
 
@@ -4404,12 +4411,12 @@
     }
 
     meta.textContent=[
-      q.priced+'/'+q.total+' atualizadas com valor',
-      q.processing+' processando neste lote',
+      q.processing+' executando agora',
+      q.queued+' aguardando',
+      q.priced+' concluídas com valor',
       q.retrying?q.retrying+' aguardando nova tentativa':'',
-      q.queued+' aguardando próximo lote',
       q.noQuote?q.noQuote+' sem cotação':'',
-      q.failed?q.failed+' erros':''
+      q.failed?q.failed+' falharam':''
     ].filter(Boolean).join(' · ');
   }
 
@@ -4429,7 +4436,7 @@
     }catch(error){
       console.warn('[Cotações · atualização ao vivo]',error);
     }
-    V14.priceAuditPollTimer=setTimeout(pollPriceAuditV1604,4200);
+    V14.priceAuditPollTimer=setTimeout(pollPriceAuditV1604,900);
   }
 
   function priceAuditFilteredCardsV1603(){
@@ -4439,7 +4446,8 @@
     const query=nrm(byId('v1468UnpricedSearch')?.value||'');
     return priceAuditBinderCardsV1603(binderId).filter(card=>{
       const priced=hasBrazilQuoteV1466(card);
-      if(state==='unpriced'&&priced)return false;
+      const inActiveBatch=!!(V14.priceAuditBatch?.ids&&V14.priceAuditBatch.ids.includes(card.id));
+      if(state==='unpriced'&&priced&&!inActiveBatch)return false;
       if(state==='priced'&&!priced)return false;
       if(problem!=='all'&&unpricedProblemKindV1468(card)!==problem)return false;
       if(query&&!nrm([card.name,card.number,card.set_name,card.finish,card.rarity,binderForCard(card)?.name,priceProblemTextV1466(card)].filter(Boolean).join(' ')).includes(query))return false;
@@ -4528,14 +4536,15 @@
         const queued=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='queued').length;
         const priced=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='complete'&&hasBrazilQuoteV1466(row)).length;
         const failed=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='failed').length;
-        const done=priced+failed;
+        const noQuote=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='no_quote').length;
+        const done=priced+failed+noQuote;
         const pending=Math.max(0,total-done);
+        const pct=total?Math.round(data.reduce((sum,row)=>sum+Math.max(0,Math.min(100,Number(row.price_progress)||0)),0)/total):0;
 
-        V14.priceAuditBatch={ids,total,done,processing,retrying,queued,priced,failed,started};
-        const pct=total?Math.round((priced/total)*100):0;
+        V14.priceAuditBatch={ids,total,done,processing,retrying,queued,priced,failed,noQuote,started};
         if(progress)progress.textContent=pending
-          ?priced+'/'+total+' atualizadas com valor · '+pct+'% · '+processing+' processando · '+retrying+' tentando novamente · '+queued+' aguardando próximo lote · '+failed+' erros'
-          :priced+'/'+total+' atualizadas com valor · '+pct+'% · '+failed+' erros';
+          ?pct+'% executado · '+processing+' executando · '+queued+' aguardando · '+priced+' com valor'
+          :pct+'% executado · '+priced+' com valor · '+failed+' falhas';
 
         renderUnpricedPopupV1468();
         renderUnpricedAuditV1466();
