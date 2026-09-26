@@ -25,7 +25,7 @@ const {searchMypResults,launch,readProduct,summarizeProduct,productIdentityOk,fi
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
 const MAX_CANDIDATES=1;
-const BUILD='18.4';
+const BUILD='18.5';
 const DEADLINE_MS=52000;
 
 function normalize(v){
@@ -307,7 +307,7 @@ module.exports=async(req,res)=>{
     if(searchQuery){
       await browser.close().catch(()=>{});browser=null;
       const found=await searchMypResults(searchQuery);
-      const cards=(found.cards||[]).map(t=>({productId:productIdOf(t.href),link:safeMypProductUrl(t.href),text:t.text,image:t.image})).filter(c=>c.link);
+      const cards=(found.cards||[]).map(t=>({productId:productIdOf(t.href),link:safeMypProductUrl(t.href),text:t.text,image:t.image,code:t.code,edition:t.edition,editionName:t.editionName})).filter(c=>c.link);
       return res.status(200).json({ok:!!cards.length,build:BUILD,mode:'search',status:found.status||0,blocked:!!found.blocked,error:found.error||null,cards,elapsedMs:Date.now()-started});
     }
 

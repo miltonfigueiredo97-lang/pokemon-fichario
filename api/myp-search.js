@@ -28,36 +28,39 @@ function collectorToken(v){
   return m?(m[1]||'').toLowerCase()+String(Number(m[2]))+(m[3]||'').toLowerCase():raw.toLowerCase();
 }
 
-// "Cetitan - 069/064 (069/064) SV7A Outros idiomas 3 un R$ 39,99 Ver ofertas"
+// A result: title "Name (number)" (Japanese: "Name - 069/064 (069/064)"),
+// edition code (SIT, 30CC, SV7A...) with the edition name, MYP code
+// "pokemon_<set>_<number>", image, lowest price and stock.
 function parseTile(tile){
-  const text=String(tile.text||'').split(' · ')[0];
-  const m=text.match(/^\s*(.+?)\s*\(\s*([A-Za-z]*\d+[A-Za-z]*)(?:\s*\/\s*([A-Za-z]*\d+[A-Za-z]*))?\s*\)\s*([A-Za-z0-9-]{2,10})?/);
+  const text=String(tile.text||'');
+  const title=String(tile.title||text.split(' · ')[0]);
+  const m=title.match(/^\s*(.+?)\s*\(\s*([A-Za-z]*\d+[A-Za-z]*)(?:\s*\/\s*([A-Za-z]*\d+[A-Za-z]*))?\s*\)/);
   if(!m)return null;
   const id=Number((String(tile.href).match(/\/produto\/(\d+)\//)||[])[1]||0);
   if(!id)return null;
-  // Japanese products are titled "Name - 069/064"; the number repeats in parens.
   const name=m[1].replace(/\s+-\s+[A-Za-z]*\d+[A-Za-z]*(?:\/[A-Za-z]*\d+[A-Za-z]*)?\s*$/,'').trim();
-  // The set code is the last word before the stock/offer words; an English
-  // name may sit in between ("Zekrom do N (031) N's Zekrom MEP Alta procura").
-  const after=text.slice(text.indexOf(m[0])+m[0].length-String(m[4]||'').length)
-    .split(/\b(?:Alta procura|Outros idiomas|\d+\s*un\b|Adicionar|Ver ofertas|R\$)/i)[0].trim();
-  const setCode=(after.split(/\s+/).filter(Boolean).pop()||'').toUpperCase();
-  const japanese=/\s-\s[A-Za-z]*\d+/.test(m[1]);
+  let setCode=String(tile.edition||'').trim();
+  if(!setCode){
+    // Text-only fallback: the code is the last word before stock/offer words.
+    const after=text.slice(text.indexOf(m[0])+m[0].length).split(/\b(?:Alta procura|Outros idiomas|\d+\s*un\b|Adicionar|Ver ofertas|R\$)/i)[0].trim();
+    setCode=after.split(/\s+/).filter(Boolean).pop()||'';
+  }
   const price=(text.match(/R\$\s*([0-9.]+,[0-9]{2})/)||[])[1]||'';
-  const stock=Number((text.match(/(\d+)\s*un\b/)||[])[1]||0);
   return{
     productId:id,
     link:String(tile.href).split('?')[0],
+    code:String(tile.code||''),
     name,
-    number:m[3]?`${m[2]}/${m[3]}`:m[2],
+    number:m[3]?m[2]+'/'+m[3]:m[2],
     numberToken:collectorToken(m[2]),
     totalToken:m[3]?collectorToken(m[3]):'',
-    setCode,
-    japanese:!!japanese,
+    setCode:setCode.toUpperCase(),
+    editionName:String(tile.editionName||''),
+    japanese:/\s-\s[A-Za-z]*\d+/.test(m[1]),
     otherLanguages:/outros idiomas/i.test(text),
     image:tile.image||'',
     lowestPrice:price?Number(price.replace(/\./g,'').replace(',','.')):0,
-    stock
+    stock:Number((text.match(/(\d+)\s*un\b/)||[])[1]||0)
   };
 }
 

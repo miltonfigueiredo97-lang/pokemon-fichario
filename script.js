@@ -169,17 +169,22 @@ async function searchMypCards(name,number,setHint,language){
   try{
     const {data:{session}}=await db.auth.getSession();
     if(!session?.access_token)return{cards:[],needsToken:false};
-    const q=String(name).trim()+(number?" ("+String(number).trim()+")":"");
-    const r=await fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}});
-    const j=await r.json().catch(()=>null);
-    if(!j?.ok)return{cards:[],needsToken:false,message:j?.blocked?"MYP indisponível agora.":""};
+    // With a number, also search by name alone: reprint collections are titled
+    // with the original printed number on MYP (Classic Collection Lugia = 149/147).
+    const queries=[String(name).trim()+(number?" ("+String(number).trim()+")":"")];
+    if(number)queries.push(String(name).trim());
+    const answers=await Promise.all(queries.map(q=>fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null)));
+    const byId=new Map();
+    for(const a of answers)for(const c of (a?.ok?a.cards:[])||[])if(!byId.has(c.productId))byId.set(c.productId,c);
+    const j={ok:answers.some(a=>a?.ok),cards:[...byId.values()]};
+    if(!j.ok)return{cards:[],needsToken:false,message:answers.some(a=>a?.blocked)?"MYP indisponível agora.":""};
     const chosen=language&&language!=="all"?language:"pt-br";
     return{cards:(j.cards||[]).map(c=>{
       const lang=c.japanese?"ja":(chosen==="ja"?"pt-br":chosen);
       return{
         source:"MYP Cards",apiId:"myp-"+c.productId,marketInternalCode:c.productId,
         name:c.name,namePt:c.name,nameEn:"",languageCode:lang,language:LANG[lang]||lang,
-        setName:c.setCode,setId:c.setCode,setCode:c.setCode,
+        setName:c.editionName||c.setCode,setId:c.setCode,setCode:c.setCode,
         number:c.number,internalNumber:c.numberToken,originalNumber:c.number,numberAliases:[c.number],
         rarity:"",type:"",imageUrl:c.image||"",imagePt:c.image||"",
         mypLink:c.link,
@@ -225,6 +230,21 @@ function mergeMypIntoCatalog(pool,setCodeOf){
       return !code||!m.setCode||code===m.setCode;
     });
     if(!match)continue;
+    used.add(match);
+    if(!cardImage(card)&&match.imageUrl){card.imageUrl=match.imageUrl;card.imageFallbackSource="MYP Cards"}
+    card.mypLink=match.mypLink;
+    card.marketInternalCode=card.marketInternalCode||match.marketInternalCode;
+    if(match.market&&!card.market)card.market=match.market;
+  }
+  // Reprint collections (Classic Collection...) keep the ORIGINAL number on
+  // MYP: match by set code + name when exactly one MYP result fits.
+  for(const card of rest){
+    if(card.mypLink)continue;
+    const code=setCodeOf(card);
+    if(!code)continue;
+    const fits=myp.filter(m=>!used.has(m)&&m.setCode===code&&(catalogNameMatches(card.name,m)||catalogNameMatches(m.name,card)));
+    if(fits.length!==1)continue;
+    const match=fits[0];
     used.add(match);
     if(!cardImage(card)&&match.imageUrl){card.imageUrl=match.imageUrl;card.imageFallbackSource="MYP Cards"}
     card.mypLink=match.mypLink;
