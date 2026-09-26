@@ -4599,9 +4599,54 @@
         '<em>'+esc(priceAuditDetailTextV1606(card))+'</em></span>'+
         '<span class="v1468-unpriced-open"><small>Conferir</small><b>›</b></span>';
       row.onclick=()=>{ensureUnpricedDialogV1468().close();byId('summaryPanel')?.classList.remove('mobile-open');openExistingCard(card,true)};
-      list.appendChild(row);
+      if(stage.key==='noquote'){
+        // The worker could not reach this product (e.g. Japanese printings
+        // titled "Name - 069/064"). One search in the user's browser + paste.
+        const wrap=document.createElement('div');wrap.className='v17-row-wrap';
+        wrap.appendChild(row);
+        wrap.appendChild(pasteLinkBarV17(card));
+        list.appendChild(wrap);
+      }else{
+        list.appendChild(row);
+      }
     }
     return ensureUnpricedDialogV1468();
+  }
+
+  function mypSearchUrlV17(card){
+    const query=String(card.name||'').trim()+(card.number?' ('+card.number+')':'');
+    return 'https://mypcards.com/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+  }
+
+  function pasteLinkBarV17(card){
+    const bar=document.createElement('div');bar.className='v17-paste-bar';
+    bar.innerHTML='<a class="v17-paste-search" target="_blank" rel="noopener">Buscar na MYP ↗</a>'+
+      '<input class="v17-paste-input" type="url" inputmode="url" placeholder="Cole aqui o link do produto MYP">'+
+      '<button type="button" class="v17-paste-save">Salvar link</button>';
+    bar.querySelector('a').href=mypSearchUrlV17(card);
+    const input=bar.querySelector('input'),save=bar.querySelector('button');
+    save.onclick=async()=>{
+      const link=String(input.value||'').trim().replace(/[?#].*$/,'');
+      if(!/^https?:\/\/(?:www\.)?mypcards\.com\/pokemon\/produto\/\d+\//i.test(link+'/')){
+        return toast('Cole o link da página do produto na MYP (…/pokemon/produto/123/nome).');
+      }
+      busy(save,true,'Salvando…');
+      try{
+        const clean=link.endsWith('/')||/\/produto\/\d+\/[^/]+$/.test(link)?link:link+'/';
+        const {error}=await db.from('pokemon_cards').update({myp_price_link:clean,price_br_link:clean,price_link:clean,myp_link_tried:[]}).eq('id',card.id).eq('user_id',currentUser.id);
+        if(error)throw error;
+        applyLocalPricePatch(card.id,{myp_price_link:clean,price_br_link:clean,price_link:clean});
+        await markCardsForPrice([card],1000);
+        kickPriceWorkerNow();
+        toast('Link salvo. Buscando o preço dessa página…');
+        renderUnpricedPopupV1468();
+      }catch(e){
+        console.error('[Colar link MYP]',e);
+        toast('Não consegui salvar o link.');
+      }finally{busy(save,false)}
+    };
+    input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click()}});
+    return bar;
   }
 
   async function syncPriceAuditRowsV1603(){
