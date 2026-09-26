@@ -116,8 +116,14 @@ async function hydrateBatchMypLinks(db:any,batch:any[]){
     if(item?.key)byKey.set(String(item.key),item);
   }
   for(const card of targets){
-    const result=byKey.get(String(card.id));
-    if(!result)continue;
+    const result=byKey.get(String(card.id))||{
+      ok:false,
+      error:String(payload?.error||"batch_resolver_no_result"),
+      source:"MYP Cards",
+      provider:"MYP batch10"
+    };
+    // Every member receives a terminal result from this ONE batch attempt.
+    // Missing payload must never trigger an independent per-card search.
     card._batchMypMarket=result;
     const link=String(result?.link||"").trim();
     if(link&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
