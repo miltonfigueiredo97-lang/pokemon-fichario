@@ -102,10 +102,24 @@ async function lookupMyp(page,wanted,urls,deadline){
     };
     probes.push(probe);
     if(probe.challenged||Number(probe.status)>=400)continue;
-    if(!productIdentityOk(data,wanted))continue;
+    let effective=wanted;
+    if(!productIdentityOk(data,wanted)){
+      // Reprint collections keep the ORIGINAL printed number on MYP (Classic
+      // Collection: "Umbreon ☆ (017/17)" for the catalog's 15/25). The worker
+      // only sets relax=1 when the name is unique in that collection; then an
+      // exact name + the page's own set code identify the product.
+      const pageCode=((String(data.code||'').match(/^pokemon_([a-z0-9]+)_/i)||[])[1]||'').toLowerCase();
+      const pageName=normalize(String(data.title||'').replace(/\([^)]*\)/g,''));
+      const pageNumber=(String(data.title||'').match(/\(([^)]*\d[^)]*)\)/)||[])[1]||'';
+      const relaxed=wanted.relax&&wanted.setCode&&pageCode===wanted.setCode.toLowerCase()
+        &&pageName&&pageName===normalize(wanted.name)&&pageNumber;
+      if(!relaxed)continue;
+      effective={...wanted,number:pageNumber};
+      probe.relaxed=true;
+    }
 
     probe.match=true;
-    let market=summarizeProduct(data,wanted);
+    let market=summarizeProduct(data,effective);
     if(market.ok)return{market:{...market,link:finalUrl,source:'MYP Cards'},probes};
     identityOnly={ok:false,error:market.error||'variant_not_found',link:finalUrl,title:data.title,edition:data.edition,message:market.message||'Produto MYP correto, sem oferta compatível com condição/acabamento.'};
     break;
@@ -228,6 +242,7 @@ module.exports=async(req,res)=>{
     finish:String(q.finish||'Normal').trim(),
     condition:String(q.condition||'Nova').trim(),
     ligaName:String(q.ligaName||'').trim(),
+    relax:String(q.relax||'')==='1',
     quick:true
   };
   if(!wanted.name||!wanted.number)return res.status(400).json({ok:false,error:'name_number_required'});
@@ -253,7 +268,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.6',
+      build:'17.7',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
