@@ -967,8 +967,14 @@ function cleanCatalogDedupe(cards){
   return [...byKey.values()];
 }
 
+// An explicit search (button, Enter, collection) queries MYP too and takes a
+// few seconds. A live typing search must not start meanwhile: it would get a
+// newer sequence number and make the explicit results be discarded.
+let catalogExplicitSearch=false;
 async function searchCards(options={}){
   const live=!!options.live;
+  if(live&&catalogExplicitSearch)return;
+  if(!live){clearTimeout(catalogSearchTimer);catalogExplicitSearch=true}
   const requestId=++catalogSearchSeq;
 
   let name=$("searchName").value.trim();
@@ -992,6 +998,7 @@ async function searchCards(options={}){
   }
 
   if(!name&&!number&&!hasSet&&!hasGeneration){
+    catalogExplicitSearch=false;
     catalogResults=[];
     populateRarityFilter();
     renderCatalog();
@@ -1009,7 +1016,7 @@ async function searchCards(options={}){
 
   const button=$("btnSearchCards");
   if(!live)busy(button,true,"Buscando...");
-  $("searchStatus").textContent=live?"Buscando…":"Buscando cartas…";
+  $("searchStatus").textContent=live?"Buscando…":(name?"Buscando no TCGdex e na MYP…":"Buscando cartas…");
 
   try{
     const langs=language==="all"?["pt-br","en","ja"]:[language];
@@ -1122,7 +1129,7 @@ async function searchCards(options={}){
     renderCatalog();
     $("searchStatus").textContent="Erro ao buscar cartas.";
   }finally{
-    if(!live&&requestId===catalogSearchSeq)busy(button,false);
+    if(!live&&requestId===catalogSearchSeq){catalogExplicitSearch=false;busy(button,false)}
   }
 }
 
