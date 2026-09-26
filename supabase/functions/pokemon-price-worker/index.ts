@@ -443,6 +443,69 @@ async function nextWalkPage(db: any, card: any, code: string, near: number) {
   return fresh[0] || "";
 }
 
+// ---------------------------------------------------------------- MYP card API
+//
+// One lookup per card, by name, through MYP's public card API (opened by the
+// engine as a normal page). It lists every printing with its exact code
+// (pokemon_<set>_<number>) and link, so promos, special sets and reprints are
+// found directly. Every printing returned is stored in the learned catalog.
+// A lookup is remembered as -1 in myp_link_tried so it runs once per card.
+const API_MARK = -1;
+
+function parseMypCode(code: unknown) {
+  const parts = String(code || "").toLowerCase().split("_");
+  if (parts.length < 3 || parts[0] !== "pokemon") return null;
+  const numberPart = parts[parts.length - 1];
+  const [n, d] = numberPart.split("/");
+  return { set: parts[1], reprint: parts.length > 3, num: collectorToken(n), den: d ? collectorToken(d) : "" };
+}
+
+async function engineApi(name: string) {
+  const q = new URLSearchParams({ name, number: "0", apiName: name, myp: "0" });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 40000);
+  try {
+    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
+    const data = await r.json().catch(() => null);
+    return Array.isArray(data?.cards) ? data.cards : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function apiLookup(db: any, card: any, code: string) {
+  const names = [String(card.name || "").trim()];
+  const apiId = String(card?.api_id || "").trim();
+  if (apiId) {
+    const en = await tcgdex("/en/cards/" + encodeURIComponent(apiId));
+    if (en?.name) names.push(String(en.name).trim());
+  }
+  const num = collectorToken(card.number), den = denOf(card), target = nameKey(card.name);
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const rows: CatalogRow[] = [];
+  let best: { link: string; score: number } | null = null;
+  for (const name of [...new Set(names.filter(Boolean))].slice(0, 2)) {
+    for (const c of await engineApi(name)) {
+      const pc = parseMypCode(c.code);
+      const id = Number(c.productId) || productId(c.link);
+      if (!pc || !id || !slugOf(c.link)) continue;
+      rows.push({ product_id: id, slug: slugOf(c.link), title: c.name + " (" + (pc.den ? pc.num + "/" + pc.den : pc.num) + ")", name_key: nameKey(c.name),
+        num: pc.num, den: pc.den, set_code: pc.set, info: [c.edition, c.editionCode, c.code].join(" ").toLowerCase().slice(0, 300) });
+      if (tried.has(id) || pc.num !== num || (den && pc.den && pc.den !== den)) continue;
+      let score = 1;
+      if (code && pc.set === code) score += 8;
+      if (!pc.reprint) score += 2;
+      if (nameKey(c.name) === target || nameKey(c.nameEn) === target) score += 1;
+      if (code && pc.set !== code && !pc.reprint) score -= 4;
+      if (!best || score > best.score) best = { link: c.link, score };
+    }
+  }
+  if (rows.length) { try { await db.from("myp_products").upsert(rows, { onConflict: "product_id" }); } catch { /* catalog is best effort */ } }
+  return best && best.score > 0 ? best.link : "";
+}
+
 // ---------------------------------------------------------------- engine
 
 type ReadCtx = { code: string; relax: boolean; offerQuery?: string; exactOnly?: boolean };
@@ -583,7 +646,16 @@ async function processCard(db: any, card: any) {
       const code = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
       const unique = await nameUniqueInSet(card);
       const exact = (await catalogMatch(db, card, code, (anchors || []).map((a) => a.id))) || (unique ? await catalogByName(db, card, code) : null);
-      if (exact) {
+      if (!exact && !(card.myp_link_tried || []).map(Number).includes(API_MARK)) {
+        await setProgress(db, card.id, 30, "resolving_link");
+        const found = await apiLookup(db, card, code);
+        card.myp_link_tried = [...(card.myp_link_tried || []), API_MARK];
+        await db.from("pokemon_cards").update({ myp_link_tried: card.myp_link_tried }).eq("id", card.id);
+        if (found) link = found;
+      }
+      if (link) {
+        // found by the card API
+      } else if (exact) {
         link = productUrl(exact);
       } else {
         const learned = await catalogAnchors(db, code);
@@ -691,5 +763,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.7", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.8", claimed, states, elapsedMs: Date.now() - started });
 });
