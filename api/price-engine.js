@@ -121,7 +121,10 @@ async function lookupMyp(page,wanted,urls,deadline){
     probe.match=true;
     let market=summarizeProduct(data,effective);
     if(market.ok)return{market:{...market,link:finalUrl,source:'MYP Cards'},probes};
-    identityOnly={ok:false,error:market.error||'variant_not_found',link:finalUrl,title:data.title,edition:data.edition,message:market.message||'Produto MYP correto, sem oferta compatível com condição/acabamento.'};
+    identityOnly={ok:false,error:market.error||'variant_not_found',link:finalUrl,title:data.title,edition:data.edition,
+      rows:(data.offers||[]).length,language:market.language,availableLanguages:market.availableLanguages,defaultFinish:market.defaultFinish,
+      finish:market.finish,condition:market.condition,diagnostics:(market.diagnostics||[]).slice(0,12),
+      message:market.message||'Produto MYP correto, sem oferta compatível com condição/acabamento.'};
     break;
   }
   if(identityOnly)return{market:identityOnly,probes};
@@ -268,7 +271,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.7',
+      build:'17.8',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
