@@ -1177,7 +1177,8 @@ async function resolveBatchMypHttp(items=[]){
     lang:String(item?.lang||'').trim(),
     finish:String(item?.finish||'Normal').trim(),
     condition:String(item?.condition||'Nova').trim(),
-    link:safeMypProductUrl(item?.link||'')
+    link:safeMypProductUrl(item?.link||''),
+    _trustedLink:!!safeMypProductUrl(item?.link||'')
   }));
   const started=Date.now();
   if(!rows.length)return{ok:true,items:[],elapsedMs:0};
@@ -1187,7 +1188,7 @@ async function resolveBatchMypHttp(items=[]){
     if(item.link)continue;
     const slug=slugify(item.set);
     const key=[slug,item.setId].join('|');
-    if(!setGroups.has(key))setGroups.set(key,{slug,setId:item.setId,items:[]});
+    if(!setGroups.has(key))setGroups.set(key,{slug,set:item.set,setId:item.setId,items:[]});
     setGroups.get(key).items.push(item);
   }
 
@@ -1233,6 +1234,46 @@ async function resolveBatchMypHttp(items=[]){
     }
   }));
 
+  // V16.30: exact collection search for every still-unresolved card. This is
+  // still the SAME batch attempt: all requests run concurrently and no card is
+  // requeued. The query is scoped to the edition and collector number, so the
+  // returned product link is deterministic instead of page-position guessing.
+  await Promise.all([...setGroups.values()].map(async group=>{
+    if(!group.items.some(item=>!item.link))return;
+    let discoveredBase='';
+    try{
+      discoveredBase=await Promise.race([
+        mypEditionUrl({setId:group.setId,set:group.set}),
+        new Promise(resolve=>setTimeout(()=>resolve(''),2200))
+      ]);
+    }catch{}
+    const bases=[...new Set([discoveredBase,group.slug?ROOT+'/pokemon/'+group.slug:''].filter(Boolean))].slice(0,2);
+
+    await Promise.all(group.items.filter(item=>!item.link).map(async item=>{
+      const queries=[
+        String(item.number||'').trim(),
+        [item.name,item.number].filter(Boolean).join(' ')
+      ].filter(Boolean);
+      const requests=[];
+      for(const base of bases){
+        for(const query of queries){
+          const join=base.includes('?')?'&':'?';
+          const url=base+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query)+'&per-page=48&sort=-codigoproduto';
+          requests.push(fetchJina(url,4200).catch(()=>''));
+        }
+      }
+      const bodies=await Promise.all(requests);
+      for(const body of bodies){
+        const candidates=collectionProductCandidatesFromText(body,item.number,[item.name]);
+        if(candidates.length){
+          item.link=candidates[0];
+          item._trustedLink=true;
+          break;
+        }
+      }
+    }));
+  }));
+
   const results=await Promise.all(rows.map(async item=>{
     if(!item.link){
       return{key:item.key,name:item.name,number:item.number,ok:false,error:'batch_exact_product_not_found',elapsedMs:Date.now()-started};
@@ -1241,7 +1282,14 @@ async function resolveBatchMypHttp(items=[]){
       const raw=await fetchText(item.link,4200);
       const identity=pageIdentity(raw);
       const wanted={name:item.name,nameAliases:[item.name],number:item.number,set:item.set,setId:item.setId,lang:item.lang};
-      if(!matchesWanted(identity,wanted)){
+      const strictOk=matchesWanted(identity,wanted);
+      const rawText=stripTags(raw);
+      const slugKey=slugify(item.name).replace(/-/g,'');
+      const productSlug=(String(item.link).split('/').filter(Boolean).pop()||'').replace(/[^a-z0-9]/gi,'').toLowerCase();
+      const deterministicOk=!!item._trustedLink
+        && textHasCollectorNumber(rawText,item.number)
+        && (!slugKey||productSlug.includes(slugKey)||slugKey.includes(productSlug)||normalize(rawText).includes(normalize(item.name)));
+      if(!strictOk&&!deterministicOk){
         return{key:item.key,name:item.name,number:item.number,ok:false,error:'batch_wrong_product',link:item.link,elapsedMs:Date.now()-started};
       }
       let market=extractMarket(identity,item.finish,item.condition);
