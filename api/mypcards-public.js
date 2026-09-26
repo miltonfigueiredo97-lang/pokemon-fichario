@@ -882,27 +882,12 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
     }
 
     if(!candidates.length){
-      // Último caminho, ainda para ESTA MESMA carta: reproduz no Chromium
-      // stealth exatamente a busca humana "Nome (numero/total)" na MYP.
-      const browserHit=await searchExactMypBrowser(wanted).catch(()=>null);
-      if(browserHit?.ok&&hasAnyMarket(browserHit)){
-        return{
-          ...browserHit,
-          source:'MYP Cards',
-          provider:'MYP browser exact search',
-          checkedAt:new Date().toISOString(),
-          elapsedMs:Date.now()-started
-        };
-      }
-      productLink=safeMypProductUrl(browserHit?.link||'');
-      if(!productLink){
-        return{
-          ok:false,error:browserHit?.error||'simple_product_not_found',source:'MYP Cards',
-          provider:'MYP exact search',query,searchUrl,
-          message:browserHit?.message||'A busca exata não conseguiu obter o link do produto.',
-          elapsedMs:Date.now()-started
-        };
-      }
+      return{
+        ok:false,error:'simple_product_not_found',source:'MYP Cards',
+        provider:'MYP exact search',query,searchUrl,
+        message:'A busca exata não conseguiu obter o link do produto.',
+        elapsedMs:Date.now()-started
+      };
     }
 
     // Valida os candidatos em paralelo. Isso é importante para Pokémon com
@@ -931,23 +916,10 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
     const raw=await fetchText(productLink,10000);
     const identity=pageIdentity(raw);
     if(!matchesWanted(identity,wanted)){
-      // Leitura HTTP/Reader pode ter recebido a tela do Cloudflare mesmo com
-      // o link exato. Reabre somente ESTE produto no Chromium stealth.
-      const browserMarket=await findAndScrapeMypBrowser(productLink,{...wanted,strictDirect:true,quick:true}).catch(()=>null);
-      if(browserMarket?.ok&&hasAnyMarket(browserMarket)){
-        return{
-          ...browserMarket,
-          source:'MYP Cards',
-          provider:'MYP browser exact product',
-          link:safeMypProductUrl(browserMarket.link)||productLink,
-          checkedAt:new Date().toISOString(),
-          elapsedMs:Date.now()-started
-        };
-      }
       return{
-        ok:false,error:browserMarket?.error||'simple_wrong_product',source:'MYP Cards',
+        ok:false,error:'simple_wrong_product',source:'MYP Cards',
         provider:'MYP exact search',link:productLink,
-        message:browserMarket?.message||'O produto aberto não corresponde ao nome e número solicitados.',
+        message:'O produto aberto não corresponde ao nome e número solicitados.',
         elapsedMs:Date.now()-started
       };
     }
@@ -961,23 +933,12 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
     }
 
     if(!hasAnyMarket(market)){
-      const browserMarket=await findAndScrapeMypBrowser(productLink,{...wanted,strictDirect:true,quick:true}).catch(()=>null);
-      if(browserMarket?.ok&&hasAnyMarket(browserMarket)){
-        return{
-          ...browserMarket,
-          source:'MYP Cards',
-          provider:'MYP browser exact product',
-          link:safeMypProductUrl(browserMarket.link)||productLink,
-          checkedAt:new Date().toISOString(),
-          elapsedMs:Date.now()-started
-        };
-      }
       return{
-        ok:false,error:browserMarket?.error||'simple_no_price',source:'MYP Cards',
+        ok:false,error:'simple_no_price',source:'MYP Cards',
         provider:'MYP exact search',mode:'name-number-first-result',
         name:identity?.name||name,number:identity?.number||number,
         edition:identity?.edition||set,finish,condition,link:productLink,
-        message:browserMarket?.message||'Produto exato localizado, mas sem oferta compatível.',
+        message:'Produto exato localizado, mas sem oferta compatível.',
         elapsedMs:Date.now()-started
       };
     }
