@@ -124,6 +124,7 @@ async function lookupMyp(page,wanted,urls,deadline){
     identityOnly={ok:false,error:market.error||'variant_not_found',link:finalUrl,title:data.title,edition:data.edition,
       rows:(data.offers||[]).length,language:market.language,availableLanguages:market.availableLanguages,defaultFinish:market.defaultFinish,
       finish:market.finish,condition:market.condition,diagnostics:(market.diagnostics||[]).slice(0,12),
+      filters:(data.filters||[]).slice(0,20),pagination:(data.pagination||[]).slice(0,20),
       message:market.message||'Produto MYP correto, sem oferta compatível com condição/acabamento.'};
     break;
   }
@@ -271,7 +272,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.8',
+      build:'17.9',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
