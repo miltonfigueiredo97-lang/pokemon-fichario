@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 1;
 const MAX_RUN_MS = 48 * 1000;
 const STALE_MS = 75 * 1000;
 
@@ -40,15 +40,15 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   if(base===MYP_API&&fast)q.set("fast","1");
   if(base===MYP_API&&allowSavedLink){
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
-    if(link&&/mypcards\.com/i.test(link)){
-      q.set("link",link);
-      if(!fast)q.set("directBrowser","1");
-    }
+    if(link&&/mypcards\.com/i.test(link))q.set("link",link);
+    // Reliability mode uses the real browser resolver for a single card,
+    // whether the exact product URL is already known or still needs discovery.
+    if(!fast)q.set("directBrowser","1");
   }
   const controller=new AbortController();
   // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
   // Só esse caminho ganha orçamento maior; links conhecidos continuam rápidos.
-  const timeoutMs=base===MYP_API?11500:7000;
+  const timeoutMs=base===MYP_API?45000:7000;
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
@@ -348,13 +348,11 @@ function choosePrimary(liga:any,myp:any){
 }
 async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promise<void>=async()=>{}){
   await onProgress(55,"querying_sources");
-  // V16.34: each of the ten cards performs one independent bounded lookup.
-  // No preliminary batch resolver, retry or requeue.
-  const knownMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
-    .map((v:any)=>String(v||"").trim())
-    .find((v:string)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(v))||"";
+  // Exactly one card is active. Use the same browser-backed MYP resolver used
+  // by a successful individual refresh. It must finish this card before the
+  // database can release the next one.
   const [myp,liga]=await Promise.all([
-    fetchSource(MYP_API,card,true,!!knownMypLink)
+    fetchSource(MYP_API,card,true,false)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"one_shot_timeout":String(e?.message||"myp_one_shot_error")})),
     fetchSource(LIGA_API,card,false,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
@@ -490,9 +488,8 @@ Deno.serve(async(req:Request)=>{
     }
 
   }  async function claimBatch(){
-    // V16.34: one fixed group of ten. The next group cannot be claimed until
-    // all ten current rows have cleared price_processing_at.
-    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:10});
+    // The database itself hard-limits this claim to ONE row.
+    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:1});
     if(error)throw error;
     return Array.isArray(data)?data:[];
   }
@@ -503,8 +500,8 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Fixed barrier: all ten start together, each with its own one-shot
-      // resolver. The next ten are not claimed until all current ten terminate.
+      // A batch is physically one row. No second card is claimed until this
+      // one reaches complete/no_quote and clears price_processing_at.
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
