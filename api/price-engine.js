@@ -20,12 +20,12 @@
 // Liga is opt-in (liga=1): it currently challenges the browser on the first
 // page, so the queue does not spend time on it.
 
-const {launch,readProduct,summarizeProduct,productIdentityOk,finishKind,numberParts}=require('../lib/myp-browser');
+const {searchMypResults,launch,readProduct,summarizeProduct,productIdentityOk,finishKind,numberParts}=require('../lib/myp-browser');
 
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
 const MAX_CANDIDATES=1;
-const BUILD='18.3';
+const BUILD='18.4';
 const DEADLINE_MS=52000;
 
 function normalize(v){
@@ -305,32 +305,10 @@ module.exports=async(req,res)=>{
     // session's first page. Returns the product tiles (link + title + set).
     const searchQuery=String(q.searchQuery||'').trim();
     if(searchQuery){
-      const searchUrl=MYP_ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(searchQuery);
-      let status=0,title='';
-      try{
-        const resp=await page.goto(searchUrl,{waitUntil:'domcontentloaded',timeout:20000});
-        status=resp?.status()||0;
-        title=await page.title().catch(()=> '');
-        if(/just a moment|um momento/i.test(title)){
-          await waitChallenge(page,12000);
-          title=await page.title().catch(()=> '');
-        }
-        await page.waitForSelector('a[href*="/pokemon/produto/"]',{timeout:6000}).catch(()=>{});
-      }catch(error){
-        return res.status(200).json({ok:false,build:BUILD,mode:'search',error:'search_error',message:String(error?.message||error).slice(0,160),elapsedMs:Date.now()-started});
-      }
-      const tiles=await page.evaluate(()=>{
-        const out=new Map();
-        for(const a of document.querySelectorAll('a[href*="/pokemon/produto/"]')){
-          const box=a.closest('article,li,.card,[class*="produto"],div');
-          const text=[(box?.innerText||a.innerText||'').replace(/\s+/g,' ').trim(),a.getAttribute('title')||''].join(' · ').slice(0,200);
-          const prev=out.get(a.href);
-          if(!prev||(/\([^()]*\d[^()]*\)/.test(text)&&!/\([^()]*\d[^()]*\)/.test(prev)))out.set(a.href,text);
-        }
-        return [...out].map(([href,text])=>({href,text}));
-      }).catch(()=>[]);
-      const cards=tiles.map(t=>({productId:productIdOf(t.href),link:safeMypProductUrl(t.href),text:t.text})).filter(c=>c.link);
-      return res.status(200).json({ok:!!cards.length,build:BUILD,mode:'search',status,title:String(title).slice(0,80),blocked:/just a moment|um momento/i.test(title),cards,elapsedMs:Date.now()-started});
+      await browser.close().catch(()=>{});browser=null;
+      const found=await searchMypResults(searchQuery);
+      const cards=(found.cards||[]).map(t=>({productId:productIdOf(t.href),link:safeMypProductUrl(t.href),text:t.text,image:t.image})).filter(c=>c.link);
+      return res.status(200).json({ok:!!cards.length,build:BUILD,mode:'search',status:found.status||0,blocked:!!found.blocked,error:found.error||null,cards,elapsedMs:Date.now()-started});
     }
 
     // Catalog lookup by name through MYP's public card API, opened as the
