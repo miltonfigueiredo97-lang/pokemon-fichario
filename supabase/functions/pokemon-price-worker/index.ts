@@ -83,16 +83,29 @@ async function hydrateBatchMypLinks(db:any,batch:any[]){
   const targets=batch.slice(0,10);
   if(!targets.length)return;
 
-  const items=targets.map(card=>({
-    key:String(card.id),
-    name:String(card.name||""),
-    number:String(card.number||""),
-    set:String(card.set_name||""),
-    setId:String(card.set_id||""),
-    lang:String(card.language_code||""),
-    finish:String(card.finish||"Normal"),
-    condition:String(card.condition||"Nova"),
-    link:String(card.myp_price_link||card.price_br_link||card.price_link||"")
+  // Reuse a validated product link from the sibling finish (Normal/Reverse/Foil)
+  // before any remote discovery. Same set + language + collector number is the
+  // same MYP product page, only the market subsection differs by finish.
+  const items=await Promise.all(targets.map(async card=>{
+    let link=String(card.myp_price_link||card.price_br_link||card.price_link||"");
+    if(!/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
+      link=await siblingMypLink(db,card).catch(()=> "");
+      if(link){
+        card.myp_price_link=link;
+        await db.from("pokemon_cards").update({myp_price_link:link}).eq("id",card.id);
+      }
+    }
+    return{
+      key:String(card.id),
+      name:String(card.name||""),
+      number:String(card.number||""),
+      set:String(card.set_name||""),
+      setId:String(card.set_id||""),
+      lang:String(card.language_code||""),
+      finish:String(card.finish||"Normal"),
+      condition:String(card.condition||"Nova"),
+      link
+    };
   }));
   const q=new URLSearchParams({
     batchResolve:"1",
