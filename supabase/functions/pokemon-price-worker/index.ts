@@ -80,11 +80,10 @@ function base64UrlUtf8(value:string){
 }
 
 async function hydrateBatchMypLinks(db:any,batch:any[]){
-  const targets=batch.filter(card=>![card.myp_price_link,card.price_br_link,card.price_link]
-    .map((v:any)=>String(v||"").trim()).some((v:string)=>/mypcards\.com/i.test(v)));
+  const targets=batch.slice(0,10);
   if(!targets.length)return;
 
-  const items=targets.slice(0,10).map(card=>({
+  const items=targets.map(card=>({
     key:String(card.id),
     name:String(card.name||""),
     number:String(card.number||""),
@@ -92,7 +91,8 @@ async function hydrateBatchMypLinks(db:any,batch:any[]){
     setId:String(card.set_id||""),
     lang:String(card.language_code||""),
     finish:String(card.finish||"Normal"),
-    condition:String(card.condition||"Nova")
+    condition:String(card.condition||"Nova"),
+    link:String(card.myp_price_link||card.price_br_link||card.price_link||"")
   }));
   const q=new URLSearchParams({
     batchResolve:"1",
@@ -111,16 +111,19 @@ async function hydrateBatchMypLinks(db:any,batch:any[]){
   }catch{}
   finally{clearTimeout(timer)}
 
-  const byKey=new Map<string,string>();
+  const byKey=new Map<string,any>();
   for(const item of Array.isArray(payload?.items)?payload.items:[]){
-    const link=String(item?.link||"").trim();
-    if(item?.key&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link))byKey.set(String(item.key),link);
+    if(item?.key)byKey.set(String(item.key),item);
   }
   for(const card of targets){
-    const link=byKey.get(String(card.id))||"";
-    if(!link)continue;
-    card.myp_price_link=link;
-    await db.from("pokemon_cards").update({myp_price_link:link}).eq("id",card.id);
+    const result=byKey.get(String(card.id));
+    if(!result)continue;
+    card._batchMypMarket=result;
+    const link=String(result?.link||"").trim();
+    if(link&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
+      card.myp_price_link=link;
+      await db.from("pokemon_cards").update({myp_price_link:link}).eq("id",card.id);
+    }
   }
 }
 const learnedSetLinkCache=new Map<string,{offset:number,anchors:number,expires:number}|null>();
@@ -324,6 +327,16 @@ function choosePrimary(liga:any,myp:any){
 }
 async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promise<void>=async()=>{}){
   await onProgress(55,"querying_sources");
+  const batched=card?._batchMypMarket;
+  if(batched){
+    await onProgress(86,"sources_returned");
+    return{
+      myp:batched,
+      liga:{ok:false,error:"skipped_batch_primary_myp"}
+    };
+  }
+
+  // Compatibility path for a single-card refresh outside the fixed bulk batch.
   const [myp,liga]=await Promise.all([
     fetchSource(MYP_API,card,true,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"one_shot_timeout":String(e?.message||"myp_one_shot_error")})),
@@ -486,11 +499,11 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Fixed batch barrier: all ten are claimed together and each one runs
-      // the same one-shot exact resolver in parallel. No card is requeued.
-      // The next ten are not claimed until every member of this batch ended.
-      // Fixed batch barrier: all ten are claimed together, processed together,
-      // and the next ten are not claimed until every member of this batch ended.
+      // One authoritative attempt for all ten. This call resolves the exact MYP
+      // product and reads the market for the ten cards in one browser session.
+      // No member leaves this batch, no member is requeued, and the next ten
+      // cannot be claimed until all ten current rows have been finalized.
+      await hydrateBatchMypLinks(db,batch);
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
