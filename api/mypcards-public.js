@@ -1598,7 +1598,24 @@ module.exports=async function handler(req,res){
   const setReaderDebug=String(req.query.setReaderDebug||'')==='1';
   const sitemapDebug=String(req.query.sitemapDebug||'')==='1';
   const webSearchDebug=String(req.query.webSearchDebug||'')==='1';
+  const actorRawDebug=String(req.query.actorRawDebug||'')==='1';
   if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
+  if(actorRawDebug){
+    const wanted={
+      name:String(name||'Rotom'),nameAliases:[String(name||'Rotom')],
+      number:String(number||'061/191'),set:String(set||'Fagulhas Impetuosas'),
+      setId:String(setId||'sv08'),apiId,
+      lang:'',finish:'Normal',condition:'',
+      maxQueries:1,timeoutSeconds:20
+    };
+    try{
+      const result=await queryMyp(wanted);
+      return res.status(200).json({ok:true,result});
+    }catch(error){
+      return res.status(200).json({ok:false,error:String(error?.code||error?.message||error)});
+    }
+  }
+
   if(webSearchDebug){
     const wanted={
       name:String(name||'Rotom'),nameAliases:[String(name||'Rotom')],
