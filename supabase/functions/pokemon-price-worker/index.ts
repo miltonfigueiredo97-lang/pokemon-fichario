@@ -42,12 +42,13 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
     if(link&&/mypcards\.com/i.test(link)){
       q.set("link",link);
+      if(!fast)q.set("directBrowser","1");
     }
   }
   const controller=new AbortController();
   // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
   // Só esse caminho ganha orçamento maior; links conhecidos continuam rápidos.
-  const timeoutMs=base===MYP_API?22000:7000;
+  const timeoutMs=base===MYP_API?32000:7000;
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
@@ -357,14 +358,14 @@ async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promi
   }
 
   // Compatibility path for a single-card refresh outside the fixed bulk batch.
-  // One-card queue: if the exact MYP product URL is already known, use the
-  // fast direct reader. If identity is still unknown, use the full resolver.
-  // Never force Chromium just because a saved link exists.
+  // One-card queue: once the exact MYP URL is known, use the SAME browser-
+  // backed product read that succeeds in an individual refresh. The old static
+  // fast reader can identify the page but often cannot see the live seller rows.
   const knownMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
     .map((v:any)=>String(v||"").trim())
     .find((v:string)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(v))||"";
   const [myp,liga]=await Promise.all([
-    fetchSource(MYP_API,card,true,!!knownMypLink)
+    fetchSource(MYP_API,card,true,false)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"one_shot_timeout":String(e?.message||"myp_one_shot_error")})),
     fetchSource(LIGA_API,card,false,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
@@ -517,7 +518,9 @@ Deno.serve(async(req:Request)=>{
       // for the exact MYP product/quote. If it cannot finish the card, the same
       // card immediately falls through to the individual resolver before any
       // next queue item may be claimed.
-      await hydrateBatchMypLinks(db,batch);
+      const needsIdentity=batch.filter((card:any)=>![card.myp_price_link,card.price_br_link,card.price_link]
+        .some((v:any)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(String(v||""))));
+      if(needsIdentity.length)await hydrateBatchMypLinks(db,needsIdentity);
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
