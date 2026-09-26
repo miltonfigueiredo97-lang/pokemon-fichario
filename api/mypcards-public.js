@@ -846,6 +846,9 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
     if(!candidates.length){
       candidates=await externalSearchCandidates({name,nameAliases:[name],number,set});
     }
+    if(!candidates.length){
+      try{candidates=await sitemapCandidates(name)}catch{}
+    }
 
     if(!candidates.length){
       return{
@@ -856,17 +859,17 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
       };
     }
 
-    // Normalmente o primeiro resultado já é a carta correta. Validamos apenas
-    // os primeiros resultados para evitar aceitar homônimos/edições erradas.
-    for(const candidate of candidates.slice(0,3)){
+    // Valida os candidatos em paralelo. Isso é importante para Pokémon com
+    // muitas reimpressões (Rotom, Pikachu etc.), onde o link correto pode não ser
+    // o primeiro no sitemap/índice.
+    const checked=await Promise.all(candidates.slice(0,12).map(async candidate=>{
       try{
-        const raw=await fetchText(candidate,9000);
+        const raw=await fetchText(candidate,7000);
         const identity=pageIdentity(raw);
-        if(!matchesWanted(identity,wanted))continue;
-        productLink=safeMypProductUrl(candidate);
-        break;
-      }catch{}
-    }
+        return matchesWanted(identity,wanted)?safeMypProductUrl(candidate):'';
+      }catch{return''}
+    }));
+    productLink=checked.find(Boolean)||'';
 
     if(!productLink){
       return{
