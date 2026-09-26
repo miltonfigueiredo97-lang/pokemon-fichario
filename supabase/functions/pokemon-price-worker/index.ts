@@ -55,7 +55,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.36"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.37"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -206,7 +206,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.36"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.37"},
             signal:controller.signal
           });
           if(r.ok){
@@ -383,8 +383,16 @@ async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promi
     return{myp:{...fastMyp,...directMyp,link:String(directMyp?.link||resolvedLink)},liga:null};
   }
 
+  // Se o resolvedor rápido ainda não achou o produto, NÃO abandona a carta.
+  // Faz uma única descoberta browser exata para ESTA MESMA carta e só depois
+  // encerra como sem cotação. Continua estritamente 1 carta por vez.
+  await onProgress(68,"discovering_myp_link");
+  const discoveredMyp=await fetchSource(MYP_API,card,true,false)
+    .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"discovery_timeout":String(e?.message||"myp_discovery_error")}));
+
   await onProgress(86,"myp_returned");
-  return{myp:fastMyp,liga:null};
+  if(hasMarketPrice(discoveredMyp))return{myp:discoveredMyp,liga:null};
+  return{myp:{...fastMyp,...discoveredMyp,link:String(discoveredMyp?.link||fastMyp?.link||"")},liga:null};
 }
 
 Deno.serve(async(req:Request)=>{
