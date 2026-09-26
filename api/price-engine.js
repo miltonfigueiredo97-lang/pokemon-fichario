@@ -80,7 +80,13 @@ async function lookupMyp(page,wanted,urls,deadline){
       title:String(data.title||'').slice(0,160),
       edition:String(data.edition||'').slice(0,160),
       code:String(data.code||'').slice(0,80),
-      challenged:challenged(data)
+      challenged:challenged(data),
+      // Other MYP products linked from this page ("Outras Edições" etc.):
+      // every one is a free catalog entry for the worker to learn from.
+      related:[...new Map((data.related||[])
+        .map(r=>[safeMypProductUrl(r.href),String(r.text||'').replace(/\s+/g,' ').trim().slice(0,140)])
+        .filter(([href])=>href&&href!==finalUrl)).entries()]
+        .slice(0,80).map(([href,text])=>({productId:productIdOf(href),href,text}))
     };
     probes.push(probe);
     if(probe.challenged||Number(probe.status)>=400)continue;
@@ -235,7 +241,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.4',
+      build:'17.5',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
