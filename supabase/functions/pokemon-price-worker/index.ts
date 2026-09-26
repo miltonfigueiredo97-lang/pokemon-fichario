@@ -107,28 +107,6 @@ function tcgdex(path: string) {
   return tcgCache.get(path)!;
 }
 
-// MYP product slugs are the Portuguese card title.
-async function mypSlug(card: any) {
-  const setId = String(card?.set_id || "").trim().toLowerCase();
-  const lang = String(card?.language_code || "").trim().toLowerCase();
-  const number = String(card?.number || "").replace(/\s/g, "").toLowerCase();
-  if (setId === "g1" && number === "73a/83") return "grunhido-da-equipe-flare";
-  const combined = nameKey(card?.name);
-  if ((lang === "pt-br" || lang === "pt") && /\b(?:energy|energia)\b/.test(combined) && /\b(?:psychic|psiquic[ao])\b/.test(combined)) {
-    return "energia-psiquica";
-  }
-  if (lang === "ja") {
-    const digits = String(card?.number || "").replace(/[^0-9]/g, "");
-    return [slugify(card?.name) || "card", digits].filter(Boolean).join("-");
-  }
-  const apiId = String(card?.api_id || "").trim();
-  if (apiId && lang !== "pt-br" && lang !== "pt") {
-    const pt = await tcgdex("/pt-br/cards/" + encodeURIComponent(apiId));
-    if (pt?.name) return slugify(pt.name);
-  }
-  return slugify(card?.name) || "card";
-}
-
 // ---------------------------------------------------------------- links
 
 // Fixed product id ranges MYP uses for these sets (validated earlier).
@@ -320,6 +298,11 @@ function parseTitle(text: unknown) {
 function slugOf(href: unknown) {
   const m = String(href || "").match(/\/pokemon\/produto\/\d+\/([^/?#]+)/i);
   return m ? m[1].toLowerCase() : "";
+}
+// MYP redirects /pokemon/produto/<id>/ to the canonical slug, so a guessed id
+// never fails because of a guessed slug (JP slugs, "ex" suffixes...).
+function idUrl(id: number) {
+  return "https://mypcards.com/pokemon/produto/" + id + "/";
 }
 function productUrl(row: { product_id: number; slug: string }) {
   return "https://mypcards.com/pokemon/produto/" + row.product_id + "/" + row.slug;
@@ -584,14 +567,14 @@ async function processCard(db: any, card: any) {
     let discovered = false;
     const canonicalId = canonicalProductId(card);
     if (canonicalId && productId(link) !== canonicalId) {
-      link = `https://mypcards.com/pokemon/produto/${canonicalId}/${await mypSlug(card)}`;
+      link = idUrl(canonicalId);
     }
     let anchors: { token: string; id: number }[] | null = null;
     let seeding = false;
     if (!link) {
       anchors = await setAnchors(db, card);
       const sibling = anchors.find((a) => a.token === collectorToken(card.number));
-      if (sibling) link = `https://mypcards.com/pokemon/produto/${sibling.id}/${await mypSlug(card)}`;
+      if (sibling) link = idUrl(sibling.id);
     }
     if (!link) {
       if ((card.myp_link_tried || []).length >= MAX_TRIED_IDS) {
@@ -610,7 +593,7 @@ async function processCard(db: any, card: any) {
         const candidates = await discoverCandidates(card, allAnchors);
         const predictedTries = (card.myp_link_tried || []).length;
         if (candidates.length && predictedTries < MAX_PREDICTED_TRIES) {
-          link = `https://mypcards.com/pokemon/produto/${candidates[0]}/${await mypSlug(card)}`;
+          link = idUrl(candidates[0]);
         } else {
           const near = candidates[0] || allAnchors[0]?.id || 0;
           link = await nextWalkPage(db, card, code, near);
@@ -708,5 +691,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.6", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.7", claimed, states, elapsedMs: Date.now() - started });
 });
