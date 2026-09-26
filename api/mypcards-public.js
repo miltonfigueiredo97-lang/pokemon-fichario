@@ -1958,7 +1958,7 @@ module.exports=async function handler(req,res){
         return res.status(200).json({
           ok:true,source:'MYP Cards',provider:'Direct MYP browser fallback',mode:market.mode||'browser-direct-known',
           name,number,edition:market.edition||set,finish,condition,
-          link:safeMypProductUrl(market.link)||directLink,
+          link:safeMypProductUrl(market.link)||directLink||'',
           min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
           samples:market.samples??null,availableQuantity:market.availableQuantity??null,
           exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
@@ -1981,14 +1981,19 @@ module.exports=async function handler(req,res){
   }
 
   const directBrowser=String(req.query.directBrowser||'')==='1';
-  if(directBrowser&&directLink){
+  if(directBrowser){
     try{
-      const market=await findAndScrapeMypBrowser(directLink,{
-        name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:true
+      // Serialized queue path: use the same real browser resolver for BOTH
+      // known and unknown products. With no link it searches by exact card
+      // identity (name + collector number + set); with a link it opens that
+      // product directly. This avoids the static-reader path that can see the
+      // product but miss the live seller rows.
+      const market=await findAndScrapeMypBrowser(directLink||'',{
+        name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:!!directLink
       });
       if(market?.ok&&hasAnyMarket(market)){
         return res.status(200).json({
-          ok:true,source:'MYP Cards',provider:'Chromium direct',mode:market.mode||'browser-direct-known',
+          ok:true,source:'MYP Cards',provider:'Chromium queue resolver',mode:market.mode||(directLink?'browser-direct-known':'browser-search-exact'),
           name,number,edition:market.edition||set,finish,condition,
           link:safeMypProductUrl(market.link)||directLink,
           min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
@@ -2001,7 +2006,7 @@ module.exports=async function handler(req,res){
       }
       return res.status(200).json({
         ok:false,error:market?.error||'variant_not_found',source:'MYP Cards',
-        provider:'Chromium direct',link:directLink,
+        provider:'Chromium queue resolver',link:safeMypProductUrl(market?.link)||directLink||'',
         rows:market?.rows??null,
         language:market?.language??null,
         availableLanguages:market?.availableLanguages??[],
@@ -2017,7 +2022,7 @@ module.exports=async function handler(req,res){
     }catch(error){
       return res.status(200).json({
         ok:false,error:error?.name==='TimeoutError'?'timeout':'browser_error',
-        source:'MYP Cards',provider:'Chromium direct',link:directLink,
+        source:'MYP Cards',provider:'Chromium queue resolver',link:directLink||'',
         message:error?.message||String(error)
       });
     }
