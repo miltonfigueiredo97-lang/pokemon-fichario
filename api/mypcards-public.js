@@ -817,6 +817,30 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
   const wanted={name,nameAliases:[name],number,set,setId,apiId,lang,finish,condition};
   let productLink=safeMypProductUrl(link);
 
+  // Primeiro caminho: API oficial da própria MYP. Se o token estiver configurado,
+  // isso resolve identidade + preços sem scraper, sem Chromium e sem Cloudflare.
+  if(!productLink){
+    try{
+      const official=await officialMypIdentity({name,number,set,setId});
+      const card=official?.product;
+      if(official?.link&&card){
+        const min=Number(card.min_price||0),avg=Number(card.avg_price||0),max=Number(card.max_price||0);
+        if(min||avg||max){
+          return{
+            ok:true,source:'MYP Cards',provider:'MYP official API',mode:'official-api-exact',
+            name:card.name_pt||card.name_en||name,number,edition:card.edition_pt||card.edition_en||set,
+            finish,condition,link:official.link,
+            min,avg:avg||min||max,max,
+            samples:null,availableQuantity:Number(card.available_quantity||0)||null,
+            exactVariant:true,variantFallback:false,complete:!!(min||avg||max),
+            checkedAt:new Date().toISOString(),elapsedMs:Date.now()-started
+          };
+        }
+        productLink=official.link;
+      }
+    }catch{}
+  }
+
   // V16.38: fila "Cartas para ajustar" usa exatamente o fluxo manual:
   // NOME + " (" + NÚMERO + ")" -> busca da própria MYP -> primeiro produto
   // compatível -> abre a página do produto -> lê a cotação.
