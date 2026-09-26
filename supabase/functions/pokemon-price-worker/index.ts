@@ -443,6 +443,64 @@ async function nextWalkPage(db: any, card: any, code: string, near: number) {
   return fresh[0] || "";
 }
 
+// ---------------------------------------------------------------- MYP search
+//
+// Exactly what a person does: search "Name (number)" on MYP and pick the result
+// whose number, name and set match. The engine opens the results page as its
+// first navigation (that passes; a second navigation would be challenged).
+// Runs once per card (marker -2 in myp_link_tried). Results feed the catalog.
+const SEARCH_MARK = -2;
+
+async function engineSearch(query: string) {
+  const q = new URLSearchParams({ name: query, number: "0", searchQuery: query, myp: "0" });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
+    const data = await r.json().catch(() => null);
+    return { cards: Array.isArray(data?.cards) ? data.cards : [], blocked: !!data?.blocked || !data };
+  } catch {
+    return { cards: [], blocked: true };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// "Cetitan - 069/064 (069/064) SV7A Outros idiomas 3 un R$ 39,99" -> set token "sv7a"
+function tileSetToken(text: string) {
+  const m = String(text || "").match(/\)\s+([A-Za-z0-9-]{2,8})\b/);
+  return m ? m[1].toLowerCase() : "";
+}
+
+async function searchLookup(db: any, card: any, code: string) {
+  const num = collectorToken(card.number), den = denOf(card), target = nameKey(card.name);
+  const setToken = String(card?.set_id || "").toLowerCase();
+  const query = String(card.name || "").trim() + (card.number ? " (" + String(card.number).trim() + ")" : "");
+  const { cards, blocked } = await engineSearch(query);
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const rows: CatalogRow[] = [];
+  let best: { link: string; score: number } | null = null;
+  for (const c of cards) {
+    const t = parseTitle(c.text);
+    const id = Number(c.productId) || productId(c.link);
+    if (!t || !id || !slugOf(c.link)) continue;
+    const token = tileSetToken(c.text);
+    rows.push({ product_id: id, slug: slugOf(c.link), title: String(c.text).split(" · ")[0].slice(0, 160), name_key: nameKey(t.name),
+      num: t.num, den: t.den, set_code: token || null, info: String(c.text).toLowerCase().slice(0, 300) });
+    if (tried.has(id) || t.num !== num || (den && t.den && t.den !== den)) continue;
+    const key = nameKey(t.name);
+    let score = 1;
+    if (key === target || key.startsWith(target + " ") || target.startsWith(key)) score += 3;
+    else if (key.includes(target) || target.includes(key)) score += 1;
+    else score -= 3;
+    if (token && (token === code || token === setToken)) score += 8;
+    else if (code && token && token !== code) score -= 2;
+    if (!best || score > best.score) best = { link: c.link, score };
+  }
+  if (rows.length) { try { await db.from("myp_products").upsert(rows, { onConflict: "product_id", ignoreDuplicates: true }); } catch { /* best effort */ } }
+  return { link: best && best.score > 0 ? best.link : "", blocked };
+}
+
 // ---------------------------------------------------------------- MYP card API
 //
 // One lookup per card, by name, through MYP's public card API (opened by the
@@ -646,7 +704,18 @@ async function processCard(db: any, card: any) {
       const code = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
       const unique = await nameUniqueInSet(card);
       const exact = (await catalogMatch(db, card, code, (anchors || []).map((a) => a.id))) || (unique ? await catalogByName(db, card, code) : null);
-      if (!exact && !(card.myp_link_tried || []).map(Number).includes(API_MARK)) {
+      if (!exact && !(card.myp_link_tried || []).map(Number).includes(SEARCH_MARK)) {
+        await setProgress(db, card.id, 25, "resolving_link");
+        const found = await searchLookup(db, card, code);
+        if (found.blocked && !found.link && attempts < 4) {
+          // MYP search did not load: retry later instead of giving up on it.
+          return await requeue(db, card, 30, "retry_wait", "myp:search_blocked");
+        }
+        card.myp_link_tried = [...(card.myp_link_tried || []), SEARCH_MARK];
+        await db.from("pokemon_cards").update({ myp_link_tried: card.myp_link_tried }).eq("id", card.id);
+        if (found.link) link = found.link;
+      }
+      if (!link && !exact && !(card.myp_link_tried || []).map(Number).includes(API_MARK)) {
         await setProgress(db, card.id, 30, "resolving_link");
         const found = await apiLookup(db, card, code);
         card.myp_link_tried = [...(card.myp_link_tried || []), API_MARK];
@@ -763,5 +832,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.8", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.9", claimed, states, elapsedMs: Date.now() - started });
 });

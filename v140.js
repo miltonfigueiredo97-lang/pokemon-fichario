@@ -4469,7 +4469,7 @@
       // V17 worker reasons: "myp:<code>:<human message>"
       const m=rawError.match(/^myp:([a-z_]+):?(.*)$/i);
       const reasons={
-        sem_oferta:'Produto certo na MYP, mas sem oferta à venda neste acabamento agora',
+        sem_oferta:'Ninguém vendendo esta carta na MYP agora · use “Editar cotação manualmente”',
         link_not_found:'Página da carta não encontrada na MYP',
         indisponivel:'MYP indisponível agora; tente atualizar mais tarde'
       };
@@ -4599,7 +4599,7 @@
         '<em>'+esc(priceAuditDetailTextV1606(card))+'</em></span>'+
         '<span class="v1468-unpriced-open"><small>Conferir</small><b>›</b></span>';
       row.onclick=()=>{ensureUnpricedDialogV1468().close();byId('summaryPanel')?.classList.remove('mobile-open');openExistingCard(card,true)};
-      if(stage.key==='noquote'){
+      if(stage.key==='noquote'&&/^myp:link_not_found/i.test(String(card.price_last_error||''))){
         // The worker could not reach this product (e.g. Japanese printings
         // titled "Name - 069/064"). One search in the user's browser + paste.
         const wrap=document.createElement('div');wrap.className='v17-row-wrap';
