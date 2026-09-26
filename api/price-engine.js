@@ -64,6 +64,21 @@ async function readMypPage(page,url,wanted){
   return data;
 }
 
+// Several anchors can point to the same product ("Ver ofertas", image, title);
+// keep, per product, the text that carries "Name (number)".
+function relatedProducts(rows,self){
+  const byHref=new Map();
+  for(const r of Array.isArray(rows)?rows:[]){
+    const href=safeMypProductUrl(r?.href);
+    if(!href||href===self)continue;
+    const text=String(r?.text||'').replace(/\s+/g,' ').trim().slice(0,160);
+    const prev=byHref.get(href);
+    const titled=/\([^()]*\d[^()]*\)/.test(text);
+    if(!prev||(titled&&!prev.titled))byHref.set(href,{href,text,titled});
+  }
+  return [...byHref.values()].slice(0,80).map(({href,text})=>({productId:productIdOf(href),href,text}));
+}
+
 async function lookupMyp(page,wanted,urls,deadline){
   const probes=[];
   let identityOnly=null;
@@ -83,10 +98,7 @@ async function lookupMyp(page,wanted,urls,deadline){
       challenged:challenged(data),
       // Other MYP products linked from this page ("Outras Edições" etc.):
       // every one is a free catalog entry for the worker to learn from.
-      related:[...new Map((data.related||[])
-        .map(r=>[safeMypProductUrl(r.href),String(r.text||'').replace(/\s+/g,' ').trim().slice(0,140)])
-        .filter(([href])=>href&&href!==finalUrl)).entries()]
-        .slice(0,80).map(([href,text])=>({productId:productIdOf(href),href,text}))
+      related:relatedProducts(data.related,finalUrl)
     };
     probes.push(probe);
     if(probe.challenged||Number(probe.status)>=400)continue;
@@ -241,7 +253,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.5',
+      build:'17.6',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
