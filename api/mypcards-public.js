@@ -843,6 +843,9 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
     if(!candidates.length){
       candidates=await exactMypGoogleReaderCandidates({name,number});
     }
+    if(!candidates.length){
+      candidates=await externalSearchCandidates({name,nameAliases:[name],number,set});
+    }
 
     if(!candidates.length){
       return{
