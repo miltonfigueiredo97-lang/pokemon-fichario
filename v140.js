@@ -4321,7 +4321,7 @@
 
   // Stages written by the server worker while it is working on a card.
   const PRICE_ACTIVE_STAGES_V17=new Set([
-    'claimed','resolving_link','checking_candidate','next_candidate','relinking','reading_myp','saving_quote',
+    'claimed','resolving_link','checking_candidate','next_candidate','relinking','reading_myp','reading_offer_pages','saving_quote',
     // legacy worker stages (rows written before V17)
     'batch_resolving','batch_resolved','resolving_identity','identity_ready','link_ready','querying_sources',
     'batch_miss_exact_retry','exact_lookup','exact_lookup_retry','discovering_myp_link','searching_myp',
@@ -4432,6 +4432,7 @@
       checking_candidate:'Conferindo o produto candidato na MYP',
       next_candidate:'Candidato não era esta carta; testando o próximo',
       relinking:'Link salvo não confere com a carta; procurando o correto',
+      reading_offer_pages:'Lendo as outras páginas de ofertas deste produto',
       batch_resolving:'Resolvendo lote de 10 na MYP',
       batch_resolved:'Lote de 10 respondido',
       claimed:'Worker iniciou esta carta',
@@ -4464,6 +4465,16 @@
     const attempt=Number(card?.price_attempts||0);
     const suffix=attempt?' · tentativa '+attempt:'';
     if(stage==='failed'&&rawError)return (labels.failed||'Falhou')+' · '+rawError.replace(/_/g,' ')+suffix;
+    if(stage==='no_quote'&&rawError){
+      // V17 worker reasons: "myp:<code>:<human message>"
+      const m=rawError.match(/^myp:([a-z_]+):?(.*)$/i);
+      const reasons={
+        sem_oferta:'Produto certo na MYP, mas sem oferta à venda neste acabamento agora',
+        link_not_found:'Página da carta não encontrada na MYP',
+        indisponivel:'MYP indisponível agora; tente atualizar mais tarde'
+      };
+      if(m)return (reasons[m[1]]||'Sem cotação')+(m[1]==='link_not_found'&&m[2]?' · '+m[2].trim():'');
+    }
     return (labels[stage]||priceProblemTextV1466(card))+suffix;
   }
 

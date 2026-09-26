@@ -462,7 +462,8 @@ async function nextWalkPage(db: any, card: any, code: string, near: number) {
 
 // ---------------------------------------------------------------- engine
 
-async function readProduct(card: any, link: string, ctx: { code: string; relax: boolean } = { code: "", relax: false }) {
+type ReadCtx = { code: string; relax: boolean; offerQuery?: string; exactOnly?: boolean };
+async function readProduct(card: any, link: string, ctx: ReadCtx = { code: "", relax: false }) {
   const q = new URLSearchParams({
     name: String(card.name || ""),
     number: String(card.number || ""),
@@ -474,6 +475,8 @@ async function readProduct(card: any, link: string, ctx: { code: string; relax: 
     mypLink: link,
     setCode: ctx.code,
     relax: ctx.relax ? "1" : "0",
+    offerQuery: ctx.offerQuery || "",
+    exactOnly: ctx.exactOnly ? "1" : "0",
   });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_MS);
@@ -490,15 +493,52 @@ async function readProduct(card: any, link: string, ctx: { code: string; relax: 
   }
 }
 
+// Page 1 of a product lists only 20 offers per seller list. When it had no
+// exact match (or only an approximate one), read the other offer pages, each
+// as its own engine call, and merge the exact matches.
+const MAX_OFFER_PAGES = 4;
+async function readOtherOfferPages(card: any, link: string, ctx: ReadCtx, first: any, probes: any[]) {
+  const matchedProbe = (probes || []).find((p: any) => p?.match);
+  const queries: string[] = (matchedProbe?.offerPageQueries || []).slice(0, MAX_OFFER_PAGES);
+  if (!queries.length) return first;
+  if (first?.ok && !first?.approx) return first;
+  const pages = await Promise.all(queries.map((offerQuery) => readProduct(card, link, { ...ctx, offerQuery, exactOnly: true })));
+  const prices: number[] = [];
+  let qty = 0;
+  for (const p of pages) {
+    const m = p.market;
+    if (!m?.ok) continue;
+    for (const row of Array.isArray(m.matched) ? m.matched : []) {
+      const price = num(row?.price);
+      if (price > 0) prices.push(price);
+      const q = String(row?.qty || "").match(/(\d+)/);
+      if (q) qty += Number(q[1]);
+    }
+  }
+  if (!prices.length) return first;
+  prices.sort((a, b) => a - b);
+  const avg = prices.length >= 2 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+  return {
+    ok: true, source: "MYP Cards", link: first?.link || link,
+    min: prices[0], avg, max: prices.length >= 2 ? prices[prices.length - 1] : 0,
+    samples: prices.length, availableQuantity: qty || null, exactVariant: true, mode: "offer-pages",
+  };
+}
+
 // ---------------------------------------------------------------- outcomes
 
 async function saveQuote(db: any, card: any, market: any) {
   const now = new Date().toISOString();
   const link = validLink(market.link);
   const avg = num(market.avg) || num(market.min) || num(market.max);
+  // Closest condition/language when no exact offer exists (e.g. only SP copies).
+  const approx = market.approx
+    ? " · aprox. (" + [market.approx.condition, market.approx.language !== String(card.language_code || "") ? market.approx.language : ""].filter(Boolean).join(", ") + ")"
+    : "";
+  const source = "MYP Cards" + approx;
   const patch: any = {
     price_min: num(market.min), price_avg: avg, price_max: num(market.max), currency: "BRL",
-    price_source: "MYP Cards", price_link: link, price_br_source: "MYP Cards", price_br_link: link || null,
+    price_source: source, price_link: link, price_br_source: source, price_br_link: link || null,
     price_checked_at: now,
     myp_price_min: num(market.min), myp_price_avg: avg, myp_price_max: num(market.max),
     myp_price_link: link || null, myp_price_checked_at: now,
@@ -586,9 +626,14 @@ async function processCard(db: any, card: any) {
 
     await setProgress(db, card.id, 50, seeding ? "resolving_link" : discovered ? "checking_candidate" : "reading_myp");
     const idCode = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
-    const read = await readProduct(card, link, { code: idCode, relax: !!idCode && (await nameUniqueInSet(card)) });
-    const market = read.market;
+    const ctx: ReadCtx = { code: idCode, relax: !!idCode && (await nameUniqueInSet(card)) };
+    const read = await readProduct(card, link, ctx);
     await learnFromProbes(db, read.probes).catch(() => {});
+    let market = read.market;
+    if ((read.probes || []).some((p: any) => p?.match)) {
+      await setProgress(db, card.id, 70, "reading_offer_pages");
+      market = await readOtherOfferPages(card, market?.link || link, ctx, market, read.probes);
+    }
 
     if (market?.ok && hasPrice(market)) {
       await setProgress(db, card.id, 90, "saving_quote");
@@ -663,5 +708,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.5", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.6", claimed, states, elapsedMs: Date.now() - started });
 });
