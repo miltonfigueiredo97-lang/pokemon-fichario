@@ -1579,6 +1579,15 @@ module.exports=async function handler(req,res){
   const identityDebug=String(req.query.identityDebug||'')==='1';
   const queueSimple=String(req.query.queueSimple||'')==='1';
   if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
+  if(String(req.query.rotomDebug||'')==='1'){
+    const result=await searchExactMypBrowser({
+      name:'Rotom',nameAliases:['Rotom'],number:'061/191',
+      set:'Fagulhas Impetuosas',setId:'sv08',apiId:'sv08-061',
+      lang:'pt-br',finish:'Normal',condition:'Nova',quick:true
+    });
+    return res.status(200).json({build:'16.40-debug',result});
+  }
+
 
   if(queueSimple){
     if(!name||!number)return res.status(400).json({ok:false,error:'name_number_required'});
