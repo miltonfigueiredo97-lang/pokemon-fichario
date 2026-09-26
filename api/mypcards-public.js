@@ -1595,7 +1595,24 @@ module.exports=async function handler(req,res){
   const identityOnly=String(req.query.identityOnly||'')==='1';
   const identityDebug=String(req.query.identityDebug||'')==='1';
   const queueSimple=String(req.query.queueSimple||'')==='1';
+  const setReaderDebug=String(req.query.setReaderDebug||'')==='1';
   if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
+  if(setReaderDebug){
+    const slug=slugify(set||'Fagulhas Impetuosas');
+    const pageNo=Math.max(1,Number(req.query.page||1)||1);
+    const target=ROOT+'/pokemon/'+slug+'?page='+pageNo+'&per-page=48&sort=-codigoproduto';
+    let body='';
+    try{body=await fetchJina(target,12000)}catch(error){
+      return res.status(200).json({ok:false,error:String(error?.code||error?.message||error),target});
+    }
+    const urls=productUrlsFromText(body,[]);
+    return res.status(200).json({
+      ok:true,target,length:body.length,count:urls.length,
+      urls:urls.slice(0,120),
+      sample:body.slice(0,1800)
+    });
+  }
+
   if(String(req.query.rotomDebug||'')==='1'){
     const result=await searchExactMypBrowser({
       name:'Rotom',nameAliases:['Rotom'],number:'061/191',
