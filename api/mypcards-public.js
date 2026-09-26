@@ -745,7 +745,8 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
   if(!exact||!number)return[];
 
   const queries=[...new Set([
-    [exact,number,set,'MYP Cards'].filter(Boolean).join(' '),
+    'site:mypcards.com/pokemon/produto "'+exact+' ('+number+')"',
+    [exact,'('+number+')','MYP Cards'].filter(Boolean).join(' '),
     ['site:mypcards.com/pokemon/produto',exact,number].filter(Boolean).join(' ')
   ])];
   const urls=[];
@@ -1593,26 +1594,51 @@ module.exports=async function handler(req,res){
     if(!name||!number)return res.status(400).json({ok:false,error:'name_number_required'});
     const wanted={
       name,nameAliases:[name],number,set,setId,apiId,lang,finish,condition,
-      quick:true,strictDirect:!!safeMypProductUrl(link)
+      quick:true,strictDirect:true
     };
-
-    // V16.39: este é literalmente o fluxo humano informado pelo usuário.
-    // Sem Google/Bing, sem catálogo inteiro, sem lote:
-    //   1. abre a busca da própria MYP por "Nome (número/total)";
-    //   2. pega o primeiro resultado que bate nome+número;
-    //   3. abre o produto;
-    //   4. lê e devolve a cotação.
-    // searchExactMypBrowser() já executa exatamente essa URL da MYP.
     const direct=safeMypProductUrl(link);
-    const result=direct
-      ?await findAndScrapeMypBrowser(direct,wanted)
-      :await searchExactMypBrowser(wanted);
+
+    if(direct){
+      const result=await findAndScrapeMypBrowser(direct,wanted);
+      return res.status(200).json({
+        ...result,source:'MYP Cards',provider:'MYP direct product',
+        mode:result?.mode||'browser-direct-product'
+      });
+    }
+
+    // V16.41: a busca /pokemon da MYP mostra Cloudflare para servidores.
+    // Então a fila não insiste nela. Faz UMA busca indexada exata por
+    // "Nome (número/total)", pega o primeiro URL mypcards.com/produto que
+    // corresponda e abre DIRETAMENTE essa página da MYP para ler a cotação.
+    const candidates=await externalSearchCandidates({
+      name,nameAliases:[name],number,set
+    }).catch(()=>[]);
+
+    if(!Array.isArray(candidates)||!candidates.length){
+      return res.status(200).json({
+        ok:false,error:'exact_myp_product_not_found',
+        source:'MYP Cards',provider:'MYP exact indexed lookup',
+        message:'Nenhum produto MYP indexado foi localizado para '+name+' ('+number+').'
+      });
+    }
+
+    for(const candidate of candidates.slice(0,3)){
+      const result=await findAndScrapeMypBrowser(candidate,wanted).catch(error=>({
+        ok:false,error:'direct_product_error',message:String(error?.message||error),link:candidate
+      }));
+      if(result?.ok){
+        return res.status(200).json({
+          ...result,source:'MYP Cards',provider:'MYP exact indexed lookup',
+          mode:result?.mode||'indexed-exact-product',link:result?.link||candidate
+        });
+      }
+    }
 
     return res.status(200).json({
-      ...result,
-      source:'MYP Cards',
-      provider:'MYP exact browser search',
-      mode:result?.mode||(direct?'browser-direct-product':'browser-exact-only')
+      ok:false,error:'exact_myp_product_unreadable',
+      source:'MYP Cards',provider:'MYP exact indexed lookup',
+      link:candidates[0]||'',
+      message:'O produto exato foi localizado, mas a página não retornou uma cotação compatível.'
     });
   }
 
