@@ -47,7 +47,7 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   const controller=new AbortController();
   // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
   // Só esse caminho ganha orçamento maior; links conhecidos continuam rápidos.
-  const timeoutMs=base===MYP_API?11500:7000;
+  const timeoutMs=base===MYP_API?22000:7000;
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
@@ -134,9 +134,11 @@ async function hydrateBatchMypLinks(db:any,batch:any[]){
       source:"MYP Cards",
       provider:"MYP batch10"
     };
-    // Every member receives a terminal result from this ONE batch attempt.
-    // Missing payload must never trigger an independent per-card search.
-    card._batchMypMarket=result;
+    // In reliability mode batchResolve is only the FIRST identity/market source.
+    // A valid quote can finish immediately; a miss must fall through to the
+    // individual resolver instead of becoming a fake terminal "no quote".
+    card._batchMypMarket=(result?.ok&&hasMarketPrice(result))?result:null;
+    card._batchMypDiagnostic=String(result?.error||"");
     const link=String(result?.link||"").trim();
     if(link&&/mypcards\.com\/pokemon\/produto\/\d+\//i.test(link)){
       card.myp_price_link=link;
@@ -511,8 +513,11 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Exactly ONE claimed row goes through the normal individual MYP resolver.
-      // No batch resolver, no slot refill, no retry hopping.
+      // Exactly ONE card is active. First ask the bounded set-catalog resolver
+      // for the exact MYP product/quote. If it cannot finish the card, the same
+      // card immediately falls through to the individual resolver before any
+      // next queue item may be claimed.
+      await hydrateBatchMypLinks(db,batch);
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
