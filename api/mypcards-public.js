@@ -795,6 +795,112 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
 }
 
 
+async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,condition,link}) {
+  const started=Date.now();
+  const wanted={name,nameAliases:[name],number,set,setId,apiId,lang,finish,condition};
+  let productLink=safeMypProductUrl(link);
+
+  // V16.38: fila "Cartas para ajustar" usa exatamente o fluxo manual:
+  // NOME + " (" + NÚMERO + ")" -> busca da própria MYP -> primeiro produto
+  // compatível -> abre a página do produto -> lê a cotação.
+  if(!productLink){
+    const query=String(name||'').trim()+' ('+String(number||'').trim()+')';
+    const searchUrl=ROOT+'/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+
+    let searchBody='';
+    try{searchBody=await fetchText(searchUrl,9000)}catch(error){
+      return{
+        ok:false,error:'simple_search_unavailable',source:'MYP Cards',
+        provider:'MYP exact search',query,searchUrl,
+        message:String(error?.message||'Não foi possível abrir a busca exata da MYP.'),
+        elapsedMs:Date.now()-started
+      };
+    }
+
+    const candidates=productUrlsFromText(searchBody,[name]).slice(0,5);
+    if(!candidates.length){
+      return{
+        ok:false,error:'simple_product_not_found',source:'MYP Cards',
+        provider:'MYP exact search',query,searchUrl,
+        message:'A busca exata da MYP não retornou um produto.',
+        elapsedMs:Date.now()-started
+      };
+    }
+
+    // Normalmente o primeiro resultado já é a carta correta. Validamos apenas
+    // os primeiros resultados para evitar aceitar homônimos/edições erradas.
+    for(const candidate of candidates){
+      try{
+        const raw=await fetchText(candidate,9000);
+        const identity=pageIdentity(raw);
+        if(!matchesWanted(identity,wanted))continue;
+        productLink=safeMypProductUrl(candidate);
+        break;
+      }catch{}
+    }
+
+    if(!productLink){
+      return{
+        ok:false,error:'simple_wrong_product',source:'MYP Cards',
+        provider:'MYP exact search',query,searchUrl,
+        message:'A MYP retornou resultados, mas nenhum bateu com nome e número.',
+        elapsedMs:Date.now()-started
+      };
+    }
+  }
+
+  try{
+    const raw=await fetchText(productLink,10000);
+    const identity=pageIdentity(raw);
+    if(!matchesWanted(identity,wanted)){
+      return{
+        ok:false,error:'simple_wrong_product',source:'MYP Cards',
+        provider:'MYP exact search',link:productLink,
+        message:'O produto aberto não corresponde ao nome e número solicitados.',
+        elapsedMs:Date.now()-started
+      };
+    }
+
+    let market=extractMarket(identity,finish,condition);
+    if(!marketFitsFinish(market,finish)&&finishKind(finish)!=='normal'){
+      market=await marketAcrossSellerPages(productLink,raw,identity,wanted,finish,condition);
+    }
+    if(!marketFitsFinish(market,finish)&&!requiresExactMewPtBrVariant({setId,lang,finish})){
+      market=sameProductFallbackMarket(identity,finish,condition);
+    }
+
+    if(!hasAnyMarket(market)){
+      return{
+        ok:false,error:'simple_no_price',source:'MYP Cards',
+        provider:'MYP exact search',mode:'name-number-first-result',
+        name:identity?.name||name,number:identity?.number||number,
+        edition:identity?.edition||set,finish,condition,link:productLink,
+        message:'Produto exato localizado, mas sem oferta compatível.',
+        elapsedMs:Date.now()-started
+      };
+    }
+
+    return{
+      ok:true,source:'MYP Cards',provider:'MYP exact search',mode:'name-number-first-result',
+      name:identity?.name||name,number:identity?.number||number,
+      edition:identity?.edition||set,finish,condition,link:productLink,
+      min:Number(market.min||0),avg:Number(market.avg||0),max:Number(market.max||0),
+      samples:market.samples??null,availableQuantity:market.availableQuantity??null,
+      exactVariant:market.exactVariant===true,variantFallback:market.variantFallback===true,
+      complete:!!(Number(market.min)>0||Number(market.avg)>0||Number(market.max)>0),
+      checkedAt:new Date().toISOString(),
+      elapsedMs:Date.now()-started
+    };
+  }catch(error){
+    return{
+      ok:false,error:error?.name==='AbortError'?'simple_timeout':'simple_read_error',
+      source:'MYP Cards',provider:'MYP exact search',link:productLink,
+      message:String(error?.message||'Falha ao abrir o produto da MYP.'),
+      elapsedMs:Date.now()-started
+    };
+  }
+}
+
 async function fastExactReaderCandidates({name,nameAliases=[],number,set,setId}){
   const names=[...new Set([name,...nameAliases].map(x=>String(x||'').trim()).filter(Boolean))];
   const exact=names[0]||String(name||'').trim();
@@ -1471,7 +1577,14 @@ module.exports=async function handler(req,res){
   const browserBatch=String(req.query.browserBatch||'')==='1';
   const identityOnly=String(req.query.identityOnly||'')==='1';
   const identityDebug=String(req.query.identityDebug||'')==='1';
-  if(fast||catalog||identityOnly||identityDebug)res.setHeader('Cache-Control','no-store, max-age=0');
+  const queueSimple=String(req.query.queueSimple||'')==='1';
+  if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
+
+  if(queueSimple){
+    if(!name||!number)return res.status(400).json({ok:false,error:'name_number_required'});
+    const result=await simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,condition,link});
+    return res.status(200).json(result);
+  }
 
   if(browserBatch){
     let items=[];
