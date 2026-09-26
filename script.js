@@ -980,7 +980,7 @@ let catalogExplicitSearch=false;
 async function searchCards(options={}){
   const live=!!options.live;
   if(live&&catalogExplicitSearch)return;
-  if(!live){clearTimeout(catalogSearchTimer);catalogExplicitSearch=true}
+  if(!live){clearTimeout(catalogSearchTimer);clearTimeout(catalogAutoFullTimer);catalogExplicitSearch=true}
   const requestId=++catalogSearchSeq;
 
   let name=$("searchName").value.trim();
@@ -1139,9 +1139,16 @@ async function searchCards(options={}){
   }
 }
 
+let catalogAutoFullTimer=null;
 function queueLiveCatalogSearch(delay=420){
   clearTimeout(catalogSearchTimer);
   catalogSearchTimer=setTimeout(()=>searchCards({live:true}),delay);
+  // When typing pauses, run the full search (TCGdex + MYP) automatically, so
+  // new sets and promos appear without clicking "Buscar".
+  clearTimeout(catalogAutoFullTimer);
+  catalogAutoFullTimer=setTimeout(()=>{
+    if(norm($("searchName")?.value||"").replace(/s+/g,"").length>=3)searchCards({live:false});
+  },1500);
 }
 function isPromoCard(c){
   if(!c)return false;
