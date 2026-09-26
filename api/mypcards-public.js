@@ -1192,78 +1192,71 @@ async function resolveBatchMypHttp(items=[]){
     setGroups.get(key).items.push(item);
   }
 
-  // Resolve exact product URLs from the MYP edition pages first. One first-page
-  // request per set gives the real item count; only the page(s) needed for these
-  // ten collector numbers are fetched after that.
-  await Promise.all([...setGroups.values()].map(async group=>{
-    if(!group.slug)return;
-    const base=ROOT+'/pokemon/'+group.slug;
-    let first='';
-    try{first=await fetchText(base+'?page=1&per-page=30&sort=-codigoproduto',3600)}catch{}
-    const firstText=stripTags(first);
-    const totalMatch=firstText.match(/(\d+)\s+itens\s+encontrados/i);
-    const maxCollector=Math.max(0,...group.items.map(x=>{
-      const np=numberParts(x.number);return /^\d+$/.test(np.n)?Number(np.n):0;
-    }));
-    const pageSize=30;
-    const total=Math.max(Number(totalMatch?.[1]||0),maxCollector,pageSize);
-    const pages=new Map([[1,first]]);
-
-    for(const item of group.items){
-      if(item.link)continue;
-      const direct=collectionProductCandidatesFromText(first,item.number,[item.name]);
-      if(direct.length){item.link=direct[0];continue}
-      const np=numberParts(item.number);
-      const collector=/^\d+$/.test(np.n)?Number(np.n):0;
-      if(!collector)continue;
-      const estimated=Math.max(1,Math.floor(Math.max(0,total-collector)/pageSize)+1);
-      item._estimatedPage=estimated;
-    }
-
-    const needed=[...new Set(group.items.map(x=>x._estimatedPage).filter(x=>x&&x!==1))].slice(0,4);
-    await Promise.all(needed.map(async page=>{
-      try{pages.set(page,await fetchText(base+'?page='+page+'&per-page=30&sort=-codigoproduto',3600))}
-      catch{pages.set(page,'')}
-    }));
-
-    for(const item of group.items){
-      if(item.link)continue;
-      const page=Number(item._estimatedPage||1);
-      const candidates=collectionProductCandidatesFromText(pages.get(page)||'',item.number,[item.name]);
-      if(candidates.length)item.link=candidates[0];
-    }
-  }));
-
-  // V16.30: exact collection search for every still-unresolved card. This is
-  // still the SAME batch attempt: all requests run concurrently and no card is
-  // requeued. The query is scoped to the edition and collector number, so the
-  // returned product link is deterministic instead of page-position guessing.
+  // V16.32: resolve every card in the current ten from the COMPLETE edition
+  // catalog, fetched in parallel. We do not guess an estimated page and we do
+  // not schedule another attempt. For a 191-card set this is ~5-7 catalog pages,
+  // all requested at once, then the ten exact product pages are read in parallel.
   await Promise.all([...setGroups.values()].map(async group=>{
     if(!group.items.some(item=>!item.link))return;
+
+    let meta={total:0,names:[]};
     let discoveredBase='';
     try{
-      discoveredBase=await Promise.race([
-        mypEditionUrl({setId:group.setId,set:group.set}),
-        new Promise(resolve=>setTimeout(()=>resolve(''),2200))
+      [meta,discoveredBase]=await Promise.all([
+        resolveSetMeta('',group.set,group.setId).catch(()=>({total:0,names:[]})),
+        Promise.race([
+          mypEditionUrl({setId:group.setId,set:group.set}),
+          new Promise(resolve=>setTimeout(()=>resolve(''),2200))
+        ]).catch(()=> '')
       ]);
     }catch{}
-    const bases=[...new Set([discoveredBase,group.slug?ROOT+'/pokemon/'+group.slug:''].filter(Boolean))].slice(0,2);
 
-    await Promise.all(group.items.filter(item=>!item.link).map(async item=>{
-      const queries=[
-        String(item.number||'').trim(),
-        [item.name,item.number].filter(Boolean).join(' ')
-      ].filter(Boolean);
-      const requests=[];
-      for(const base of bases){
-        for(const query of queries){
-          const join=base.includes('?')?'&':'?';
-          const url=base+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query)+'&per-page=48&sort=-codigoproduto';
-          requests.push(fetchJina(url,4200).catch(()=>''));
+    const bases=[...new Set([
+      discoveredBase,
+      group.slug?ROOT+'/pokemon/'+group.slug:'',
+      ...(Array.isArray(meta?.names)?meta.names:[]).map(name=>ROOT+'/pokemon/'+slugify(name))
+    ].filter(Boolean))].slice(0,3);
+
+    const maxCollector=Math.max(0,...group.items.map(item=>{
+      const np=numberParts(item.number);
+      return /^\d+$/.test(np.n)?Number(np.n):0;
+    }));
+    const pageSize=48;
+    const total=Math.max(Number(meta?.total||0),maxCollector,pageSize);
+    const pageCount=Math.max(1,Math.min(12,Math.ceil(total/pageSize)+1));
+
+    const requests=[];
+    for(const base of bases){
+      for(let page=1;page<=pageCount;page++){
+        const join=base.includes('?')?'&':'?';
+        const url=base+join+'page='+page+'&per-page='+pageSize+'&sort=-codigoproduto';
+        requests.push(fetchJina(url,4300).catch(()=>''));
+      }
+    }
+    const bodies=await Promise.all(requests);
+
+    for(const item of group.items){
+      if(item.link)continue;
+      for(const body of bodies){
+        const candidates=collectionProductCandidatesFromText(body,item.number,[item.name]);
+        if(candidates.length){
+          item.link=candidates[0];
+          item._trustedLink=true;
+          break;
         }
       }
-      const bodies=await Promise.all(requests);
-      for(const body of bodies){
+    }
+
+    // Exact edition search is a same-attempt fallback only for cards not present
+    // in the catalog pages returned above (promos/odd numbering). Still parallel.
+    await Promise.all(group.items.filter(item=>!item.link).map(async item=>{
+      const query=[item.name,item.number].filter(Boolean).join(' ');
+      const searches=bases.map(base=>{
+        const join=base.includes('?')?'&':'?';
+        return fetchJina(base+join+'ProdutoSearch%5Bquery%5D='+encodeURIComponent(query)+'&per-page=48&sort=-codigoproduto',3500).catch(()=>'');
+      });
+      const searchBodies=await Promise.all(searches);
+      for(const body of searchBodies){
         const candidates=collectionProductCandidatesFromText(body,item.number,[item.name]);
         if(candidates.length){
           item.link=candidates[0];
