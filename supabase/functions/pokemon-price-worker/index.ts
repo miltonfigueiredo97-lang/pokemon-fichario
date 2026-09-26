@@ -169,8 +169,8 @@ async function setAnchors(db: any, card: any) {
 
 // MYP creates a set's products in alphabetical order of the ENGLISH card name
 // (ties by collector number), so product ids are monotonic in that order.
-// Validated on Surging Sparks: 63/63 anchors monotonic, and 60/61 anchors were
-// predicted exactly from their neighbours with two candidates.
+// Validated on Surging Sparks: 63/63 anchors monotonic, and 61/63 anchors were
+// predicted exactly on the first try from their neighbours.
 async function discoverCandidates(card: any, anchors: { token: string; id: number }[]) {
   const setId = String(card?.set_id || "").trim();
   if (!setId || isJapanese(card) || !anchors.length) return [];

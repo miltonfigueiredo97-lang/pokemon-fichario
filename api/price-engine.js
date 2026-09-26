@@ -56,10 +56,10 @@ async function waitChallenge(page,ms){
 }
 
 async function readMypPage(page,url,wanted){
-  let data=await readProduct(page,url,{quick:true});
+  let data=await readProduct(page,url,{quick:false});
   if(challenged(data)){
     await waitChallenge(page,9000);
-    data=await readProduct(page,url,{quick:true});
+    data=await readProduct(page,url,{quick:false});
   }
   return data;
 }
@@ -225,7 +225,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.1',
+      build:'17.2',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
