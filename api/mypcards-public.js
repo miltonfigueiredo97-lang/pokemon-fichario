@@ -1606,39 +1606,46 @@ module.exports=async function handler(req,res){
       });
     }
 
-    // V16.41: a busca /pokemon da MYP mostra Cloudflare para servidores.
-    // Então a fila não insiste nela. Faz UMA busca indexada exata por
-    // "Nome (número/total)", pega o primeiro URL mypcards.com/produto que
-    // corresponda e abre DIRETAMENTE essa página da MYP para ler a cotação.
-    const candidates=await externalSearchCandidates({
-      name,nameAliases:[name],number,set
-    }).catch(()=>[]);
+    // V16.42: caminho único da fila.
+    // O servidor da Vercel recebe challenge do Cloudflare na busca /pokemon,
+    // então usamos o scraper MYP com proxy para executar EXATAMENTE uma busca:
+    // "Nome (número/total)". Sem segunda consulta, sem catálogo, sem Liga.
+    let actor=null;
+    try{
+      actor=await queryMyp({...wanted,maxQueries:1,timeoutSeconds:11});
+    }catch(error){
+      actor={error:String(error?.code||error?.message||'apify_error'),message:String(error?.message||error||'')};
+    }
 
-    if(!Array.isArray(candidates)||!candidates.length){
+    if(hasAnyMarket(actor)){
       return res.status(200).json({
-        ok:false,error:'exact_myp_product_not_found',
-        source:'MYP Cards',provider:'MYP exact indexed lookup',
-        message:'Nenhum produto MYP indexado foi localizado para '+name+' ('+number+').'
+        ok:true,source:'MYP Cards',provider:'MYP exact proxy search',
+        mode:'exact-name-number-one-shot',
+        name,number,edition:set,finish,condition,
+        link:safeMypProductUrl(actor?.link)||'',
+        min:Number(actor?.min||0),avg:Number(actor?.avg||0),max:Number(actor?.max||0),
+        samples:actor?.samples??null,availableQuantity:actor?.availableQuantity??null,
+        exactVariant:actor?.exactVariant===true,variantFallback:actor?.variantFallback===true,
+        complete:!!(Number(actor?.min||0)||Number(actor?.avg||0)||Number(actor?.max||0)),
+        checkedAt:new Date().toISOString()
       });
     }
 
-    for(const candidate of candidates.slice(0,3)){
-      const result=await findAndScrapeMypBrowser(candidate,wanted).catch(error=>({
-        ok:false,error:'direct_product_error',message:String(error?.message||error),link:candidate
+    const actorLink=safeMypProductUrl(actor?.link);
+    if(actorLink){
+      const result=await findAndScrapeMypBrowser(actorLink,wanted).catch(error=>({
+        ok:false,error:'direct_product_error',message:String(error?.message||error),link:actorLink
       }));
-      if(result?.ok){
-        return res.status(200).json({
-          ...result,source:'MYP Cards',provider:'MYP exact indexed lookup',
-          mode:result?.mode||'indexed-exact-product',link:result?.link||candidate
-        });
-      }
+      return res.status(200).json({
+        ...result,source:'MYP Cards',provider:'MYP exact proxy search',
+        mode:result?.mode||'exact-name-number-direct-read',link:result?.link||actorLink
+      });
     }
 
     return res.status(200).json({
-      ok:false,error:'exact_myp_product_unreadable',
-      source:'MYP Cards',provider:'MYP exact indexed lookup',
-      link:candidates[0]||'',
-      message:'O produto exato foi localizado, mas a página não retornou uma cotação compatível.'
+      ok:false,error:String(actor?.error||'exact_myp_product_not_found'),
+      source:'MYP Cards',provider:'MYP exact proxy search',
+      message:String(actor?.message||'A busca exata Nome (número) não localizou a carta.')
     });
   }
 
