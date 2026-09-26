@@ -1296,8 +1296,8 @@ module.exports=async function handler(req,res){
       items=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
     }catch{}
     const result=await Promise.race([
-      resolveBatchMypHttp(items),
-      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),10800))
+      resolveBatchMypLinksBrowser(items),
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),11000))
     ]);
     return res.status(200).json(result);
   }
