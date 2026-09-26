@@ -13,14 +13,18 @@
 // which is why link discovery happens in the worker (catalog neighbours) and
 // this endpoint only ever opens product pages.
 //
-// Every probed MYP product is returned in `probes` so the worker can learn the
-// MYP catalog (product id -> title/number/edition) and narrow future lookups.
+// Only ONE MYP page is opened per request: MYP answers a second navigation in
+// the same session with a Cloudflare challenge, and we do not try to evade it.
+// The worker picks the single most likely product id per attempt.
+//
+// Liga is opt-in (liga=1): it currently challenges the browser on the first
+// page, so the queue does not spend time on it.
 
 const {launch,readProduct,summarizeProduct,productIdentityOk,finishKind,numberParts}=require('../lib/myp-browser');
 
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
-const MAX_CANDIDATES=8;
+const MAX_CANDIDATES=1;
 const DEADLINE_MS=52000;
 
 function normalize(v){
@@ -60,25 +64,6 @@ async function readMypPage(page,url,wanted){
   return data;
 }
 
-// Non-normal finishes (reverse, poké ball...) are often only listed on later
-// seller pages of the same product.
-async function sellerPagesMarket(page,url,wanted,deadline){
-  const base=String(url).split('?')[0];
-  const pages=[];
-  for(let n=2;n<=4;n++){pages.push(base+'?estoque-outros-page='+n);pages.push(base+'?estoque-cert-page='+n)}
-  for(const pageUrl of pages){
-    if(Date.now()>deadline)break;
-    try{
-      const data=await readProduct(page,pageUrl,{quick:true});
-      if(!(data.offers||[]).length)continue;
-      if(!productIdentityOk(data,wanted))continue;
-      const m=summarizeProduct(data,wanted);
-      if(m.ok)return{...m,link:base,mode:'browser-seller-pagination'};
-    }catch{}
-  }
-  return null;
-}
-
 async function lookupMyp(page,wanted,urls,deadline){
   const probes=[];
   let identityOnly=null;
@@ -103,17 +88,19 @@ async function lookupMyp(page,wanted,urls,deadline){
 
     probe.match=true;
     let market=summarizeProduct(data,wanted);
-    if(!market.ok&&finishKind(wanted.finish)!=='normal'){
-      market=await sellerPagesMarket(page,finalUrl,wanted,deadline)||market;
-    }
     if(market.ok)return{market:{...market,link:finalUrl,source:'MYP Cards'},probes};
     identityOnly={ok:false,error:market.error||'variant_not_found',link:finalUrl,title:data.title,edition:data.edition,message:market.message||'Produto MYP correto, sem oferta compatível com condição/acabamento.'};
     break;
   }
   if(identityOnly)return{market:identityOnly,probes};
-  const blocked=probes.length&&probes.every(p=>p.challenged||p.error||Number(p.status)>=400||p.skipped);
+  // not_found: the page answered (404 or another card) -> try the next id.
+  // myp_blocked: challenge / network error -> transient, retry later.
+  const p=probes[0]||{};
+  const notFound=!p.challenged&&!p.error&&!p.skipped&&(Number(p.status)===404||(Number(p.status)===200&&!p.match));
   return{
-    market:{ok:false,error:blocked?'myp_blocked':'product_not_found',message:blocked?'A MYP não abriu as páginas candidatas.':'Nenhum candidato MYP corresponde a nome + número.'},
+    market:notFound
+      ?{ok:false,error:'product_not_found',message:'O produto MYP candidato não corresponde a nome + número.'}
+      :{ok:false,error:'myp_blocked',message:'A MYP não abriu a página agora ('+(p.challenged?'verificação de segurança':(p.error||p.skipped||('HTTP '+(p.status||0))))+').'},
     probes
   };
 }
@@ -217,7 +204,7 @@ module.exports=async(req,res)=>{
   };
   if(!wanted.name||!wanted.number)return res.status(400).json({ok:false,error:'name_number_required'});
   const wantMyp=String(q.myp??'1')!=='0';
-  const wantLiga=String(q.liga??'1')!=='0';
+  const wantLiga=String(q.liga??'0')==='1';
   const urls=wantMyp?candidateUrls(q):[];
   const started=Date.now();
   const deadline=started+DEADLINE_MS;
@@ -238,7 +225,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.0',
+      build:'17.1',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
