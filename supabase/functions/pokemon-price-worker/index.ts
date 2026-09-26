@@ -356,8 +356,11 @@ async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promi
   }
 
   // Compatibility path for a single-card refresh outside the fixed bulk batch.
+  // One-card queue must use the same complete MYP resolver used by a normal
+  // card lookup. The old fast/batch resolver was the reason valid cards were
+  // being finalized as "no_quote" before the richer identity lookup ran.
   const [myp,liga]=await Promise.all([
-    fetchSource(MYP_API,card,true,true)
+    fetchSource(MYP_API,card,true,false)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"one_shot_timeout":String(e?.message||"myp_one_shot_error")})),
     fetchSource(LIGA_API,card,false,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
