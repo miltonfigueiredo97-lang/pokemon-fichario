@@ -22,7 +22,7 @@ const TCGDEX = "https://api.tcgdex.net/v2";
 const CLAIM_SIZE = 5;
 const RUN_BUDGET_MS = 85 * 1000;
 const ENGINE_TIMEOUT_MS = 58 * 1000;
-const MAX_TRIED_IDS = 8;
+const MAX_TRIED_IDS = 20;
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
 // Shared secret for /api/price-engine, read once per run from the database
@@ -112,6 +112,10 @@ async function mypSlug(card: any) {
   const combined = nameKey(card?.name);
   if ((lang === "pt-br" || lang === "pt") && /\b(?:energy|energia)\b/.test(combined) && /\b(?:psychic|psiquic[ao])\b/.test(combined)) {
     return "energia-psiquica";
+  }
+  if (lang === "ja") {
+    const digits = String(card?.number || "").replace(/[^0-9]/g, "");
+    return [slugify(card?.name) || "card", digits].filter(Boolean).join("-");
   }
   const apiId = String(card?.api_id || "").trim();
   if (apiId && lang !== "pt-br" && lang !== "pt") {
@@ -211,7 +215,7 @@ function numericCandidates(card: any, anchors: { token: string; id: number }[]):
   const fromLo = lo ? t.n + lo.id - lo.p!.n : 0;
   const fromHi = hi ? t.n + hi.id - hi.p!.n : 0;
   push(fromLo); push(fromHi);
-  for (const d of [1, 2]) {
+  for (const d of [1, 2, 3, 4, 5, 6]) {
     if (fromLo) { push(fromLo + d); push(fromLo - d); }
     if (fromHi) { push(fromHi + d); push(fromHi - d); }
   }
@@ -219,7 +223,7 @@ function numericCandidates(card: any, anchors: { token: string; id: number }[]):
 }
 
 async function discoverCandidates(card: any, anchors: { token: string; id: number }[]) {
-  if (isJapanese(card) || !anchors.length) return [];
+  if (!anchors.length) return [];
   const numeric = numericCandidates(card, anchors);
   const alpha = await alphabeticalCandidates(card, anchors);
   const [first, second] = numeric.fit >= alpha.fit ? [numeric, alpha] : [alpha, numeric];
@@ -229,7 +233,7 @@ async function discoverCandidates(card: any, anchors: { token: string; id: numbe
 async function alphabeticalCandidates(card: any, anchors: { token: string; id: number }[]): Promise<Candidates> {
   const none = { list: [], fit: 0 };
   const setId = String(card?.set_id || "").trim();
-  if (!setId) return none;
+  if (!setId || isJapanese(card)) return none;
   const set = await tcgdex("/en/sets/" + encodeURIComponent(setId));
   const cards: any[] = Array.isArray(set?.cards) ? set.cards : [];
   if (!cards.length) return none;
@@ -293,6 +297,119 @@ async function alphabeticalCandidates(card: any, anchors: { token: string; id: n
   return { list: out, fit };
 }
 
+// ---------------------------------------------------------------- learned catalog
+//
+// Every MYP page the engine opens lists its previous/next product and "Outras
+// Edições" with exact URLs and "Name (number)". They are stored in
+// myp_products, so each read (even of a wrong candidate) teaches neighbours.
+
+type CatalogRow = { product_id: number; slug: string; title: string; name_key: string; num: string; den: string; set_code: string | null; info: string };
+
+function parseTitle(text: unknown) {
+  const s = String(text || "");
+  let m = s.match(/^\s*(.+?)\s*\(\s*([A-Za-z]*\d+[A-Za-z]*)\s*\/\s*([A-Za-z]*\d+[A-Za-z]*)\s*\)/);
+  if (m) return { name: m[1].trim(), num: collectorToken(m[2]), den: collectorToken(m[3]) };
+  m = s.match(/^\s*(.+?)\s*\(\s*([A-Za-z]*\d+[A-Za-z]*)\s*\)/);
+  if (m) return { name: m[1].trim(), num: collectorToken(m[2]), den: "" };
+  return null;
+}
+function slugOf(href: unknown) {
+  const m = String(href || "").match(/\/pokemon\/produto\/\d+\/([^/?#]+)/i);
+  return m ? m[1].toLowerCase() : "";
+}
+function productUrl(row: { product_id: number; slug: string }) {
+  return "https://mypcards.com/pokemon/produto/" + row.product_id + "/" + row.slug;
+}
+function denOf(card: any) {
+  const parts = String(card?.number || "").split("/");
+  return parts.length > 1 ? collectorToken(parts[1]) : "";
+}
+
+async function learnFromProbes(db: any, probes: any[]) {
+  const coded: CatalogRow[] = [], loose: CatalogRow[] = [];
+  for (const p of Array.isArray(probes) ? probes : []) {
+    if (Number(p?.status) !== 200 || p?.challenged) continue;
+    const t = parseTitle(p.title);
+    const code = (String(p.code || "").match(/^pokemon_([a-z0-9]+)_/i) || [])[1]?.toLowerCase() || null;
+    const id = Number(p.productId) || productId(p.url);
+    if (t && id) {
+      coded.push({ product_id: id, slug: slugOf(p.url), title: String(p.title).trim().slice(0, 160), name_key: nameKey(t.name), num: t.num, den: t.den,
+        set_code: code, info: [p.edition, p.code].filter(Boolean).join(" ").toLowerCase().slice(0, 300) });
+    }
+    for (const r of Array.isArray(p?.related) ? p.related : []) {
+      const rt = parseTitle(r.text);
+      const rid = Number(r.productId) || productId(r.href);
+      if (!rt || !rid || !slugOf(r.href)) continue;
+      // The previous/next product of the page belongs to the same set.
+      const sameSet = code && t && Math.abs(rid - id) === 1 && rt.den === t.den;
+      const row = { product_id: rid, slug: slugOf(r.href), title: String(r.text).split(" · ")[0].slice(0, 160), name_key: nameKey(rt.name), num: rt.num, den: rt.den,
+        set_code: sameSet ? code : null, info: String(r.text).toLowerCase().slice(0, 300) };
+      (row.set_code ? coded : loose).push(row);
+    }
+  }
+  if (coded.length) await db.from("myp_products").upsert(coded, { onConflict: "product_id" });
+  if (loose.length) await db.from("myp_products").upsert(loose, { onConflict: "product_id", ignoreDuplicates: true });
+}
+
+// Official set code (SIT, SSP, BLK...) = MYP's "pokemon_<code>_" prefix.
+async function setCodeOf(db: any, card: any, anchorIds: number[]) {
+  const setId = String(card?.set_id || "").trim();
+  if (!setId) return "";
+  if (!isJapanese(card)) {
+    const set = await tcgdex("/en/sets/" + encodeURIComponent(setId));
+    const official = String(set?.abbreviation?.official || "").toLowerCase();
+    if (official) return official;
+  }
+  if (!anchorIds.length) return "";
+  const { data } = await db.from("myp_products").select("set_code").in("product_id", anchorIds.slice(0, 200)).not("set_code", "is", null);
+  const counts = new Map<string, number>();
+  for (const r of data || []) counts.set(r.set_code, (counts.get(r.set_code) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+}
+
+// The card's own product, if any page already listed it.
+async function catalogMatch(db: any, card: any, code: string, anchorIds: number[]) {
+  const num = collectorToken(card.number), den = denOf(card);
+  if (!num) return null;
+  let q = db.from("myp_products").select("*").eq("num", num).limit(50);
+  if (den) q = q.eq("den", den);
+  const { data } = await q;
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const target = nameKey(card.name);
+  const rows: CatalogRow[] = (data || []).filter((r: CatalogRow) => !tried.has(r.product_id));
+  if (!rows.length) return null;
+  const nameOk = (r: CatalogRow) => !target || r.name_key === target || r.name_key.startsWith(target) || target.startsWith(r.name_key);
+  const lo = anchorIds.length ? Math.min(...anchorIds) - 400 : 0, hi = anchorIds.length ? Math.max(...anchorIds) + 400 : 0;
+  const score = (r: CatalogRow) =>
+    (code && r.set_code === code ? 8 : 0) +
+    (code && !r.set_code && new RegExp("\\b" + code + "\\b").test(r.info) ? 6 : 0) +
+    (anchorIds.length && r.product_id >= lo && r.product_id <= hi ? 4 : 0) +
+    (nameOk(r) ? 2 : 0) +
+    (code && r.set_code && r.set_code !== code ? -20 : 0);
+  const ranked = rows.map((r) => ({ r, s: score(r) })).filter((x) => x.s >= 4 || (x.s >= 2 && !code)).sort((a, b) => b.s - a.s);
+  return ranked[0]?.r || null;
+}
+
+// Catalog entries of this set become extra anchors for the models.
+async function catalogAnchors(db: any, code: string) {
+  if (!code) return [];
+  const { data } = await db.from("myp_products").select("product_id,num").eq("set_code", code).limit(1000);
+  return (data || []).map((r: any) => ({ token: String(r.num), id: Number(r.product_id) }));
+}
+
+// A same-name product from any set: its "Outras Edições" lead to this card.
+async function sameNameSeed(db: any, card: any) {
+  const target = nameKey(card.name);
+  if (!target) return "";
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const { data } = await db.from("myp_products").select("product_id,slug").eq("name_key", target).limit(20);
+  const row = (data || []).find((r: any) => !tried.has(Number(r.product_id)));
+  if (row) return productUrl(row);
+  const { data: cards } = await db.from("pokemon_cards").select("name,myp_price_link").ilike("name", String(card.name || "").trim()).like("myp_price_link", "%/pokemon/produto/%").limit(20);
+  const hit = (cards || []).find((c: any) => nameKey(c.name) === target && !tried.has(productId(c.myp_price_link)));
+  return hit ? validLink(hit.myp_price_link) : "";
+}
+
 // ---------------------------------------------------------------- engine
 
 async function readProduct(card: any, link: string) {
@@ -311,11 +428,11 @@ async function readProduct(card: any, link: string) {
   try {
     const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
     const data = await r.json().catch(() => null);
-    if (!r.ok || !data) return { ok: false, error: "engine_http_" + r.status };
-    if (data.error === "engine_error") return { ok: false, error: "engine_error", message: data.message };
-    return data.myp || { ok: false, error: "engine_no_result" };
+    if (!r.ok || !data) return { market: { ok: false, error: "engine_http_" + r.status }, probes: [] };
+    if (data.error === "engine_error") return { market: { ok: false, error: "engine_error", message: data.message }, probes: [] };
+    return { market: data.myp || { ok: false, error: "engine_no_result" }, probes: data.probes || [] };
   } catch (e: any) {
-    return { ok: false, error: e?.name === "AbortError" ? "engine_timeout" : "engine_fetch_error", message: String(e?.message || e) };
+    return { market: { ok: false, error: e?.name === "AbortError" ? "engine_timeout" : "engine_fetch_error", message: String(e?.message || e) }, probes: [] };
   } finally {
     clearTimeout(timer);
   }
@@ -378,25 +495,43 @@ async function processCard(db: any, card: any) {
       link = `https://mypcards.com/pokemon/produto/${canonicalId}/${await mypSlug(card)}`;
     }
     let anchors: { token: string; id: number }[] | null = null;
+    let seeding = false;
     if (!link) {
       anchors = await setAnchors(db, card);
       const sibling = anchors.find((a) => a.token === collectorToken(card.number));
       if (sibling) link = `https://mypcards.com/pokemon/produto/${sibling.id}/${await mypSlug(card)}`;
     }
     if (!link) {
-      const candidates = await discoverCandidates(card, anchors || []);
-      if (!candidates.length || (card.myp_link_tried || []).length >= MAX_TRIED_IDS) {
-        const reason = (anchors || []).length
-          ? "Link MYP não encontrado pelos vizinhos da coleção."
-          : "Coleção ainda sem nenhuma carta com link MYP para servir de referência.";
-        return await finishNoQuote(db, card, "myp:link_not_found:" + reason + " Cole o link do produto MYP na carta.");
+      if ((card.myp_link_tried || []).length >= MAX_TRIED_IDS) {
+        return await finishNoQuote(db, card, "myp:link_not_found:" + MAX_TRIED_IDS + " páginas da MYP conferidas sem achar esta carta. Cole o link do produto MYP na carta.");
       }
-      link = `https://mypcards.com/pokemon/produto/${candidates[0]}/${await mypSlug(card)}`;
+      const code = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
+      const exact = await catalogMatch(db, card, code, (anchors || []).map((a) => a.id));
+      if (exact) {
+        link = productUrl(exact);
+      } else {
+        const learned = await catalogAnchors(db, code);
+        const merged = new Map<string, number>();
+        for (const a of [...(anchors || []), ...learned]) if (!merged.has(a.token)) merged.set(a.token, a.id);
+        const allAnchors = [...merged].map(([token, id]) => ({ token, id }));
+        const candidates = await discoverCandidates(card, allAnchors);
+        if (candidates.length) {
+          link = `https://mypcards.com/pokemon/produto/${candidates[0]}/${await mypSlug(card)}`;
+        } else {
+          link = await sameNameSeed(db, card);
+          seeding = !!link;
+        }
+      }
+      if (!link) {
+        return await finishNoQuote(db, card, "myp:link_not_found:Nenhuma referência desta coleção nem desta carta na MYP ainda. Cole o link do produto MYP na carta.");
+      }
       discovered = true;
     }
 
-    await setProgress(db, card.id, 50, discovered ? "checking_candidate" : "reading_myp");
-    const market = await readProduct(card, link);
+    await setProgress(db, card.id, 50, seeding ? "resolving_link" : discovered ? "checking_candidate" : "reading_myp");
+    const read = await readProduct(card, link);
+    const market = read.market;
+    await learnFromProbes(db, read.probes).catch(() => {});
 
     if (market?.ok && hasPrice(market)) {
       await setProgress(db, card.id, 90, "saving_quote");
@@ -471,5 +606,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.3", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.4", claimed, states, elapsedMs: Date.now() - started });
 });
