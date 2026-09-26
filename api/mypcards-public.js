@@ -2031,9 +2031,13 @@ module.exports=async function handler(req,res){
       // identity (name + collector number + set); with a link it opens that
       // product directly. This avoids the static-reader path that can see the
       // product but miss the live seller rows.
-      const market=await findAndScrapeMypBrowser(directLink||'',{
-        name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:!!directLink
-      });
+      const wanted={name,nameAliases,number,set,setId,apiId,lang,finish,condition,strictDirect:!!directLink};
+      // A direct MYP product is read directly. When the product URL is unknown,
+      // do NOT crawl MYP's Cloudflare-protected collection/search pages; resolve
+      // the exact indexed product through a normal web search, then read it.
+      const market=directLink
+        ? await findAndScrapeMypBrowser(directLink,wanted)
+        : await searchWebExactMypBrowser(wanted,'');
       if(market?.ok&&hasAnyMarket(market)){
         return res.status(200).json({
           ok:true,source:'MYP Cards',provider:'Chromium queue resolver',mode:market.mode||(directLink?'browser-direct-known':'browser-search-exact'),
