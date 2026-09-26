@@ -783,10 +783,17 @@ async function externalSearchCandidates({name,nameAliases=[],number,set}){
           if(/mypcards\.com\/pokemon\/produto\/\d+\//i.test(target))urls.push(target);
         }catch{}
       }
+      for(const m of text.matchAll(/(?:\/url\?q=|[?&]q=)(https?%3A%2F%2F(?:www\.)?mypcards\.com%2Fpokemon%2Fproduto%2F\d+%2F[^&"'<>\s]+)/gi)){
+        try{
+          const target=decodeURIComponent(m[1]);
+          if(/mypcards\.com\/pokemon\/produto\/\d+\//i.test(target))urls.push(target);
+        }catch{}
+      }
     }
   };
 
   const searchUrls=queries.flatMap(q=>[
+    'https://www.google.com/search?num=10&filter=0&q='+encodeURIComponent(q),
     'https://html.duckduckgo.com/html/?q='+encodeURIComponent(q),
     'https://www.bing.com/search?count=10&q='+encodeURIComponent(q)
   ]);
