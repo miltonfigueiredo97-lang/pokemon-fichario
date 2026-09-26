@@ -1193,7 +1193,7 @@ module.exports=async function handler(req,res){
     }catch{}
     const result=await Promise.race([
       resolveBatchMypLinksBrowser(items),
-      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_link_timeout',items:[]}),10500))
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),11000))
     ]);
     return res.status(200).json(result);
   }

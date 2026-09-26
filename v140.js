@@ -4243,7 +4243,7 @@
 
   function priceAuditStageV1604(card){
     const raw=String(card?.price_progress_stage||'').trim().toLowerCase();
-    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
+    const active=new Set(['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
     // Active backend state always wins over an older saved quote. A refresh of
     // an already-priced card must visibly be queued/processing until THIS job ends.
     if(active.has(raw)||card?.price_processing_at)return{key:'processing',rank:0,label:'PROCESSANDO'};
@@ -4296,7 +4296,7 @@
     let done=0,processing=0,retrying=0,queued=0,priced=0,noQuote=0,failed=0;
     const activeStages=new Set([
       'claimed','resolving_identity','identity_ready','link_ready','querying_sources',
-      'discovering_myp_link','searching_myp','myp_link_found','reading_myp',
+      'discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready',
       'myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'
     ]);
 
@@ -4345,6 +4345,7 @@
       claimed:'Worker iniciou esta carta',
       resolving_identity:'Localizando/confirmando a impressão',
       identity_ready:'Impressão identificada',
+      batch_market_ready:'Lote de 10 resolvido na MYP',
       link_ready:'Página MYP identificada',
       querying_sources:'Preparando consultas de preço',
       discovering_myp_link:'Localizando a página exata na MYP',
@@ -4522,7 +4523,7 @@
         .eq('user_id',currentUser.id).in('id',ids);
       if(Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
-        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())||!!row.price_processing_at).length;
+        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())||!!row.price_processing_at).length;
         const retrying=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='retry_wait').length;
         const queued=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='queued').length;
         const priced=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='complete'&&hasBrazilQuoteV1466(row)).length;
