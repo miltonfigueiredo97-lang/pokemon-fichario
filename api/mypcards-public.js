@@ -1468,7 +1468,8 @@ module.exports=async function handler(req,res){
   const fast=String(req.query.fast||'')==='1';
   const catalog=String(req.query.catalog||'')==='1';
   const batchResolve=String(req.query.batchResolve||'')==='1';
-  if(fast||catalog)res.setHeader('Cache-Control','no-store, max-age=0');
+  const identityOnly=String(req.query.identityOnly||'')==='1';
+  if(fast||catalog||identityOnly)res.setHeader('Cache-Control','no-store, max-age=0');
 
   if(batchResolve){
     let items=[];
@@ -1544,6 +1545,17 @@ module.exports=async function handler(req,res){
   }
 
   if(!name)return res.status(400).json({ok:false,error:'name_required'});
+
+  if(identityOnly){
+    const official=await officialMypIdentity({name,number,set,setId});
+    return res.status(200).json({
+      ok:!!official?.link,
+      link:safeMypProductUrl(official?.link||''),
+      provider:official?.provider||'',
+      score:Number(official?.score||0),
+      error:official?.link?'':'official_identity_not_found'
+    });
+  }
 
   let directLink=safeMypProductUrl(link);
   let catalogResolvedLink=false;
