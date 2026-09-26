@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH_SIZE = 1;
+const BATCH_SIZE = 10;
 const MAX_RUN_MS = 48 * 1000;
 const STALE_MS = 75 * 1000;
 
@@ -493,7 +493,9 @@ Deno.serve(async(req:Request)=>{
     }
 
   }  async function claimBatch(){
-    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:BATCH_SIZE});
+    // V16.31 invariant: bulk pricing is ALWAYS claimed in fixed groups of ten.
+    // Do not lower this value dynamically or refill individual slots mid-batch.
+    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:10});
     if(error)throw error;
     return Array.isArray(data)?data:[];
   }
