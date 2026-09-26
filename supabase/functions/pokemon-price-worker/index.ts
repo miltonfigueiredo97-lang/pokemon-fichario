@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 1;
 const MAX_RUN_MS = 48 * 1000;
 const STALE_MS = 75 * 1000;
 
@@ -491,10 +491,9 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // One authoritative attempt for all ten. This call resolves the exact MYP
-      // product and reads the market for the ten cards in one browser session.
-      // No member leaves this batch, no member is requeued, and the next ten
-      // cannot be claimed until all ten current rows have been finalized.
+      // Diagnostic reliability mode: claim exactly ONE card at a time.
+      // The lookup itself is unchanged; only after this card reaches a terminal
+      // state (complete/no_quote) may the worker claim the next queued card.
       await hydrateBatchMypLinks(db,batch);
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
