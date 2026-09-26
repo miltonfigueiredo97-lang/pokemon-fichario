@@ -1091,6 +1091,21 @@
       lang.addEventListener('change',()=>loadCatalogGenerationOptionsV1450(true));
     }
     loadCatalogGenerationOptionsV1450(false);
+
+    // V17: one search engine. The "Buscar" button and Enter used v8's older
+    // smartSearchCards, which ignored the name filter inside a collection and
+    // raced the live search. Route both to searchCards (full filters + MYP).
+    const button=byId('btnSearchCards');
+    if(button)button.onclick=()=>{try{clearTimeout(catalogSearchTimer)}catch{}searchCards({live:false})};
+    if(!document.documentElement.dataset.v17SearchEnter){
+      document.documentElement.dataset.v17SearchEnter='1';
+      document.addEventListener('keydown',e=>{
+        if(e.key!=='Enter'||!['searchName','searchNumber'].includes(e.target?.id))return;
+        e.preventDefault();e.stopImmediatePropagation();
+        try{clearTimeout(catalogSearchTimer)}catch{}
+        searchCards({live:false});
+      },true);
+    }
   }
 
   const ANNIVERSARY_COMPLETE_MASTER_SETS=[

@@ -161,7 +161,78 @@ async function addPage(){const n=Math.max(1,+settings.binder_pages||1)+1;await u
 function goToPage(p){currentPage=Math.min(Math.max(1,+p||1),Math.max(1,+settings.binder_pages||1));renderBinder();renderPagesGrid()}
 function renderPagesGrid(){const g=$("pagesGrid");if(!g)return;g.innerHTML="";for(let p=1;p<=Math.max(1,+settings.binder_pages||1);p++){const b=document.createElement("button");b.className="page-thumb"+(p===currentPage?" active":"");const cells=[];for(let s=1;s<=9;s++){const c=getCardAt(p,s),img=c?cardImage(c):"";cells.push(`<span class="page-mini-pocket">${img?`<img src="${esc(img)}">`:""}</span>`)}b.innerHTML=`<strong>Página ${p}</strong><div class="page-mini-grid">${cells.join("")}</div><small>${cardsOnPage(p).length}/9</small>`;b.onclick=()=>{goToPage(p);closeDialog("pagesDialog")};g.appendChild(b)}}
 function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{page,slot}:freePositions(page,1)[0];catalogSelection.clear();updateSelectionTray();$("searchName").value="";$("searchNumber").value="";$("searchSet").value="";$("resultsList").innerHTML="";$("searchStatus").textContent=`Primeira carta irá para página ${pendingPosition.page}, bolso ${pendingPosition.slot}.`;openDialog("addDialog");setTimeout(()=>$("searchName").focus(),100)}
-async function searchMypCards(name,number,setHint){if(!name)return{cards:[],needsToken:false};try{const p=new URLSearchParams({name});if(number)p.set("number",number);if(setHint)p.set("set",setHint);const r=await fetch(`/api/mypcards?${p}`,{cache:"no-store"}),j=await r.json();return j.ok?{cards:(j.cards||[]).map(mapMyp),needsToken:false}:{cards:[],needsToken:!!j.needsToken,message:j.message||""}}catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}}
+// V17: MYP lists every printing it sells (new sets, promos, Japanese, reprint
+// collections) under its own search. /api/myp-search runs that search on the
+// server for signed-in users and returns one entry per product.
+async function searchMypCards(name,number,setHint,language){
+  if(!name)return{cards:[],needsToken:false};
+  try{
+    const {data:{session}}=await db.auth.getSession();
+    if(!session?.access_token)return{cards:[],needsToken:false};
+    const q=String(name).trim()+(number?" ("+String(number).trim()+")":"");
+    const r=await fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}});
+    const j=await r.json().catch(()=>null);
+    if(!j?.ok)return{cards:[],needsToken:false,message:j?.blocked?"MYP indisponível agora.":""};
+    const chosen=language&&language!=="all"?language:"pt-br";
+    return{cards:(j.cards||[]).map(c=>{
+      const lang=c.japanese?"ja":(chosen==="ja"?"pt-br":chosen);
+      return{
+        source:"MYP Cards",apiId:"myp-"+c.productId,marketInternalCode:c.productId,
+        name:c.name,namePt:c.name,nameEn:"",languageCode:lang,language:LANG[lang]||lang,
+        setName:c.setCode,setId:c.setCode,setCode:c.setCode,
+        number:c.number,internalNumber:c.numberToken,originalNumber:c.number,numberAliases:[c.number],
+        rarity:"",type:"",imageUrl:c.image||"",imagePt:c.image||"",
+        mypLink:c.link,
+        market:c.lowestPrice?{source:"MYP Cards",min:c.lowestPrice,avg:0,max:0,link:c.link,availableQuantity:c.stock,internalCode:c.productId}:null,
+        marketScore:c.stock?10:0
+      };
+    }),needsToken:false};
+  }catch(e){return{cards:[],needsToken:false,message:"Mercado BR indisponível."}}
+}
+
+// MYP set codes for TCGdex set ids: TCGdex "abbreviation.official" (SIT, SSP...)
+// plus the collections whose MYP code differs or that TCGdex leaves blank.
+const MYP_SET_CODE_OVERRIDES={"30th":"30C","30th-c":"30CC","cel25":"CEL","cel25cc":"CCC","mep":"MEP","svp":"SVP"};
+const mypSetCodeCache=new Map();
+function mypCodeForSet(id){
+  const key=String(id||"").trim();
+  if(!key)return Promise.resolve("");
+  if(MYP_SET_CODE_OVERRIDES[key])return Promise.resolve(MYP_SET_CODE_OVERRIDES[key]);
+  if(!mypSetCodeCache.has(key)){
+    mypSetCodeCache.set(key,fetch(TCGDEX_BASE+"/en/sets/"+encodeURIComponent(key)).then(r=>r.ok?r.json():null).then(s=>String(s?.abbreviation?.official||"").toUpperCase()).catch(()=>""));
+  }
+  return mypSetCodeCache.get(key);
+}
+async function mypCodesForSets(setIds){
+  const codes=await Promise.all((setIds||[]).slice(0,40).map(mypCodeForSet));
+  return new Set(codes.filter(Boolean));
+}
+
+// The same printing from TCGdex and MYP becomes one result: TCGdex keeps its
+// data, and gains MYP's image (when it has none) and product link.
+function mergeMypIntoCatalog(pool,setCodeOf){
+  const myp=pool.filter(c=>c.source==="MYP Cards"),rest=pool.filter(c=>c.source!=="MYP Cards");
+  const used=new Set();
+  for(const card of rest){
+    const n=numParts(card.number||card.internalNumber);
+    const match=myp.find(m=>{
+      if(used.has(m))return false;
+      const mn=numParts(m.number);
+      if(!n.n||mn.n!==n.n)return false;
+      if(n.d&&mn.d&&n.d!==mn.d)return false;
+      if(!catalogNameMatches(card.name,m)&&!catalogNameMatches(m.name,card))return false;
+      const code=setCodeOf(card);
+      return !code||!m.setCode||code===m.setCode;
+    });
+    if(!match)continue;
+    used.add(match);
+    if(!cardImage(card)&&match.imageUrl){card.imageUrl=match.imageUrl;card.imageFallbackSource="MYP Cards"}
+    card.mypLink=match.mypLink;
+    card.marketInternalCode=card.marketInternalCode||match.marketInternalCode;
+    if(match.market&&!card.market)card.market=match.market;
+  }
+  return [...rest,...myp.filter(m=>!used.has(m))];
+}
 async function searchMypCatalogPublic(name,number,setHint,language,options={}){
   const raw=String(name||"").trim();
   if(raw.length<2)return[];
@@ -938,15 +1009,18 @@ async function searchCards(options={}){
 
     // MYP is a secondary PT-BR source. It may add old/special printings that
     // TCGdex lacks, but it never bypasses the same final filters.
-    const mypPromise=(name&&(language==="all"||language==="pt-br"))
-      ? searchMypCards(name,number,hasSet?selectedSetLabel:"")
+    // MYP (server-side search) only on explicit searches: button, Enter,
+    // collection change. Live typing stays on TCGdex.
+    const mypPromise=(name&&!live)
+      ? searchMypCards(name,number,hasSet?selectedSetLabel:"",language)
       : Promise.resolve({cards:[],needsToken:false});
+    const mypCodesPromise=setIds.length?mypCodesForSets(setIds):Promise.resolve(new Set());
 
     const jpPromise=(name&&(language==="all"||language==="ja"))
       ? searchJapaneseOfficial(name,number,hasSet?selectedSetLabel:"",{live})
       : Promise.resolve([]);
 
-    const [tcgGroups,mypResult,jpCards]=await Promise.all([tcgPromise,mypPromise,jpPromise]);
+    const [tcgGroups,mypResult,jpCards,wantedMypCodes]=await Promise.all([tcgPromise,mypPromise,jpPromise,mypCodesPromise]);
     if(requestId!==catalogSearchSeq)return;
 
     let pool=[
@@ -963,18 +1037,19 @@ async function searchCards(options={}){
       if(setIds.length){
         const cid=String(card.setId||card.set_id||"");
         if(cid&&setIds.includes(cid))return true;
-        // MYP sometimes has no canonical TCGdex set id; only accept it when
-        // the actual selected collection label matches its edition name.
-        if(card.source==="MYP Cards"&&hasSet){
-          const edition=norm(card.setName||card.setTitle||"");
-          const wantedSet=norm(selectedSetLabel);
-          return !!wantedSet&&(edition===wantedSet||edition.includes(wantedSet)||wantedSet.includes(edition));
+        // MYP results carry MYP set codes (30CC, SIT...): accept them when the
+        // code belongs to the selected collection(s).
+        if(card.source==="MYP Cards"){
+          return !!card.setCode&&wantedMypCodes.has(String(card.setCode).toUpperCase());
         }
         return false;
       }
       return true;
     });
 
+    const poolSets=[...new Set(pool.filter(c=>c.source!=="MYP Cards").map(c=>String(c.setId||"")).filter(Boolean))].slice(0,40);
+    const codeBySet=new Map(await Promise.all(poolSets.map(async id=>[id,await mypCodeForSet(id)])));
+    pool=mergeMypIntoCatalog(pool,card=>codeBySet.get(String(card.setId||""))||"");
     pool=cleanCatalogDedupe(pool);
 
     // Rank only after filtering; ranking can never make an unrelated card appear.
