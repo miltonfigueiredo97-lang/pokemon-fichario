@@ -186,8 +186,18 @@ function candidateUrls(q){
   return [...new Set(urls)].slice(0,MAX_CANDIDATES);
 }
 
+function authorized(req){
+  // Only the price worker may launch browsers here (shared secret header).
+  const secret=String(process.env.PRICE_ENGINE_SECRET||'');
+  if(!secret)return true;
+  const given=Buffer.from(String(req.headers['x-engine-key']||''));
+  const want=Buffer.from(secret);
+  return given.length===want.length&&require('crypto').timingSafeEqual(given,want);
+}
+
 module.exports=async(req,res)=>{
   res.setHeader('Cache-Control','no-store, max-age=0');
+  if(!authorized(req))return res.status(401).json({ok:false,error:'unauthorized'});
   const q=req.method==='POST'&&req.body&&typeof req.body==='object'?{...req.query,...req.body}:req.query;
   const wanted={
     name:String(q.name||'').trim(),
@@ -225,7 +235,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'17.3',
+      build:'17.4',
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started

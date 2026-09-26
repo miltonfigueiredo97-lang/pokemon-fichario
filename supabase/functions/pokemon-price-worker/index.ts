@@ -25,6 +25,9 @@ const ENGINE_TIMEOUT_MS = 58 * 1000;
 const MAX_TRIED_IDS = 6;
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
+// Shared secret for /api/price-engine, read once per run from the database
+// (function pokemon_price_engine_secret, service_role only).
+let ENGINE_KEY = "";
 const PRODUCT_RE = /mypcards\.com\/pokemon\/produto\/(\d+)\//i;
 
 const CORS = {
@@ -247,7 +250,7 @@ async function readProduct(card: any, link: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_MS);
   try {
-    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json" }, signal: controller.signal });
+    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
     const data = await r.json().catch(() => null);
     if (!r.ok || !data) return { ok: false, error: "engine_http_" + r.status };
     if (data.error === "engine_error") return { ok: false, error: "engine_error", message: data.message };
@@ -385,6 +388,10 @@ Deno.serve(async (req: Request) => {
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !service) return json({ ok: false, error: "missing_supabase_env" }, 500);
   const db = createClient(url, service, { auth: { persistSession: false } });
+  if (!ENGINE_KEY) {
+    const { data: key } = await db.rpc("pokemon_price_engine_secret");
+    ENGINE_KEY = String(key || "");
+  }
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -405,5 +412,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.1", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.2", claimed, states, elapsedMs: Date.now() - started });
 });

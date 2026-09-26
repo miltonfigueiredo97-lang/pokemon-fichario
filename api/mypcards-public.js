@@ -1639,74 +1639,12 @@ module.exports=async function handler(req,res){
   const batchResolve=String(req.query.batchResolve||'')==='1';
   const browserBatch=String(req.query.browserBatch||'')==='1';
   const identityOnly=String(req.query.identityOnly||'')==='1';
-  const identityDebug=String(req.query.identityDebug||'')==='1';
   const queueSimple=String(req.query.queueSimple||'')==='1';
-  const setReaderDebug=String(req.query.setReaderDebug||'')==='1';
-  const sitemapDebug=String(req.query.sitemapDebug||'')==='1';
-  const webSearchDebug=String(req.query.webSearchDebug||'')==='1';
-  const actorRawDebug=String(req.query.actorRawDebug||'')==='1';
-  if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
-  if(actorRawDebug){
-    const wanted={
-      name:String(name||'Rotom'),nameAliases:[String(name||'Rotom')],
-      number:String(number||'061/191'),set:String(set||'Fagulhas Impetuosas'),
-      setId:String(setId||'sv08'),apiId,
-      lang:'',finish:'Normal',condition:'',
-      maxQueries:1,timeoutSeconds:20
-    };
-    try{
-      const result=await queryMyp(wanted);
-      return res.status(200).json({ok:true,result});
-    }catch(error){
-      return res.status(200).json({ok:false,error:String(error?.code||error?.message||error)});
-    }
-  }
+  if(fast||catalog||identityOnly||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
 
-  if(webSearchDebug){
-    const wanted={
-      name:String(name||'Rotom'),nameAliases:[String(name||'Rotom')],
-      number:String(number||'061/191'),set:String(set||'Fagulhas Impetuosas'),
-      setId:String(setId||'sv08'),apiId,lang:String(lang||'pt-br'),
-      finish:String(finish||'Normal'),condition:String(condition||'Nova'),quick:true
-    };
-    const result=await searchWebExactMypBrowser(wanted,'');
-    return res.status(200).json({ok:!!result?.ok,result});
-  }
 
-  if(sitemapDebug){
-    const targetName=String(req.query.name||name||'Rotom').trim();
-    try{
-      const urls=await sitemapCandidates(targetName);
-      return res.status(200).json({ok:true,name:targetName,count:urls.length,urls:urls.slice(0,80)});
-    }catch(error){
-      return res.status(200).json({ok:false,error:String(error?.code||error?.message||error)});
-    }
-  }
 
-  if(setReaderDebug){
-    const slug=slugify(set||'Fagulhas Impetuosas');
-    const pageNo=Math.max(1,Number(req.query.page||1)||1);
-    const target=ROOT+'/pokemon/'+slug+'?page='+pageNo+'&per-page=48&sort=-codigoproduto';
-    let body='';
-    try{body=await fetchJina(target,12000)}catch(error){
-      return res.status(200).json({ok:false,error:String(error?.code||error?.message||error),target});
-    }
-    const urls=productUrlsFromText(body,[]);
-    return res.status(200).json({
-      ok:true,target,length:body.length,count:urls.length,
-      urls:urls.slice(0,120),
-      sample:body.slice(0,1800)
-    });
-  }
 
-  if(String(req.query.rotomDebug||'')==='1'){
-    const result=await searchExactMypBrowser({
-      name:'Rotom',nameAliases:['Rotom'],number:'061/191',
-      set:'Fagulhas Impetuosas',setId:'sv08',apiId:'sv08-061',
-      lang:'pt-br',finish:'Normal',condition:'Nova',quick:true
-    });
-    return res.status(200).json({build:'16.40-debug',result});
-  }
 
 
   if(queueSimple){
@@ -1821,21 +1759,6 @@ module.exports=async function handler(req,res){
     });
   }
 
-  if(identityDebug){
-    const started=Date.now();
-    const run=async(label,fn)=>{
-      const t=Date.now();
-      try{return{label,ms:Date.now()-t,links:await fn()}}
-      catch(error){return{label,ms:Date.now()-t,links:[],error:String(error?.message||error)}}
-    };
-    const [exact,collection,external,setpage]=await Promise.all([
-      run('exact-reader',()=>fastExactReaderCandidates({name,nameAliases:[name],number,set,setId})),
-      run('collection-reader',()=>fastCollectionReaderCandidates({name,nameAliases:[name],number,set,setId})),
-      run('external-search',()=>externalSearchCandidates({name,nameAliases:[name],number,set})),
-      run('set-page',()=>fastSetPageCandidates({apiId,setId,set,number,name,nameAliases:[name]}))
-    ]);
-    return res.status(200).json({ok:true,totalMs:Date.now()-started,exact,collection,external,setpage});
-  }
 
   let directLink=safeMypProductUrl(link);
   let catalogResolvedLink=false;
@@ -2111,7 +2034,7 @@ module.exports=async function handler(req,res){
   // produto assim que o catálogo oficial da MYP o localizar; o worker então
   // usa esse link conhecido na leitura direta, sem perder a descoberta em um
   // timeout de uma requisição monolítica.
-  if(catalogResolvedLink&&String(req.query.actorOnly||'')!=='1'){
+  if(catalogResolvedLink){
     return res.status(200).json({
       ok:false,error:'link_resolved',source:'MYP Cards',provider:'MYP Generations catalog',
       name,number,edition:set,finish,condition,link:directLink,
@@ -2119,26 +2042,6 @@ module.exports=async function handler(req,res){
     });
   }
 
-  if(String(req.query.actorOnly||'')==='1'){
-    if(!process.env.APIFY_API_TOKEN){
-      return res.status(200).json({ok:false,error:'apify_not_configured'});
-    }
-    try{
-      const found=await queryMyp({name,nameAliases,number,set,setId,lang,finish,condition});
-      return res.status(200).json({
-        ok:hasAnyMarket(found),
-        source:'MYP Cards',
-        provider:'Apify actor only',
-        name,number,set,setId,finish,condition,
-        ...found
-      });
-    }catch(error){
-      return res.status(200).json({
-        ok:false,error:error?.name==='AbortError'?'timeout':String(error?.code||error?.message||'apify_error'),
-        provider:'Apify actor only'
-      });
-    }
-  }
 
   // Atualização manual de uma única carta: nunca prende a interface por
   // Chromium/Apify. Se já sabemos a página da MYP, tentamos uma leitura direta
