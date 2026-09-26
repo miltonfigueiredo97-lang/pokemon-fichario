@@ -1596,7 +1596,18 @@ module.exports=async function handler(req,res){
   const identityDebug=String(req.query.identityDebug||'')==='1';
   const queueSimple=String(req.query.queueSimple||'')==='1';
   const setReaderDebug=String(req.query.setReaderDebug||'')==='1';
+  const sitemapDebug=String(req.query.sitemapDebug||'')==='1';
   if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
+  if(sitemapDebug){
+    const targetName=String(req.query.name||name||'Rotom').trim();
+    try{
+      const urls=await sitemapCandidates(targetName);
+      return res.status(200).json({ok:true,name:targetName,count:urls.length,urls:urls.slice(0,80)});
+    }catch(error){
+      return res.status(200).json({ok:false,error:String(error?.code||error?.message||error)});
+    }
+  }
+
   if(setReaderDebug){
     const slug=slugify(set||'Fagulhas Impetuosas');
     const pageNo=Math.max(1,Number(req.query.page||1)||1);
