@@ -1198,13 +1198,14 @@ async function resolveBatchMypHttp(items=[]){
     if(!group.slug)return;
     const base=ROOT+'/pokemon/'+group.slug;
     let first='';
-    try{first=await fetchText(base+'?page=1&per-page=96&sort=-codigoproduto',3600)}catch{}
+    try{first=await fetchText(base+'?page=1&per-page=30&sort=-codigoproduto',3600)}catch{}
     const firstText=stripTags(first);
     const totalMatch=firstText.match(/(\d+)\s+itens\s+encontrados/i);
     const maxCollector=Math.max(0,...group.items.map(x=>{
       const np=numberParts(x.number);return /^\d+$/.test(np.n)?Number(np.n):0;
     }));
-    const total=Math.max(Number(totalMatch?.[1]||0),maxCollector,96);
+    const pageSize=30;
+    const total=Math.max(Number(totalMatch?.[1]||0),maxCollector,pageSize);
     const pages=new Map([[1,first]]);
 
     for(const item of group.items){
@@ -1214,13 +1215,13 @@ async function resolveBatchMypHttp(items=[]){
       const np=numberParts(item.number);
       const collector=/^\d+$/.test(np.n)?Number(np.n):0;
       if(!collector)continue;
-      const estimated=Math.max(1,Math.floor(Math.max(0,total-collector)/96)+1);
+      const estimated=Math.max(1,Math.floor(Math.max(0,total-collector)/pageSize)+1);
       item._estimatedPage=estimated;
     }
 
     const needed=[...new Set(group.items.map(x=>x._estimatedPage).filter(x=>x&&x!==1))].slice(0,4);
     await Promise.all(needed.map(async page=>{
-      try{pages.set(page,await fetchText(base+'?page='+page+'&per-page=96&sort=-codigoproduto',3600))}
+      try{pages.set(page,await fetchText(base+'?page='+page+'&per-page=30&sort=-codigoproduto',3600))}
       catch{pages.set(page,'')}
     }));
 
