@@ -25,6 +25,7 @@ const {launch,readProduct,summarizeProduct,productIdentityOk,finishKind,numberPa
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
 const MAX_CANDIDATES=1;
+const BUILD='18.2';
 const DEADLINE_MS=52000;
 
 function normalize(v){
@@ -300,6 +301,32 @@ module.exports=async(req,res)=>{
     const page=launched.page;
     page.setDefaultNavigationTimeout(15000);
 
+    // Catalog lookup by name through MYP's public card API, opened as the
+    // session's first (and only) page. Returns every printing with its link.
+    const apiName=String(q.apiName||'').trim();
+    if(apiName){
+      const apiUrl=MYP_ROOT+'/api/v1/pokemon/carta/'+encodeURIComponent(apiName);
+      let status=0,text='';
+      try{
+        const resp=await page.goto(apiUrl,{waitUntil:'domcontentloaded',timeout:20000});
+        status=resp?.status()||0;
+        text=await page.evaluate(()=>document.body?.innerText||'').catch(()=> '');
+        if(/just a moment|um momento/i.test(text.slice(0,300))){
+          await waitChallenge(page,9000);
+          text=await page.evaluate(()=>document.body?.innerText||'').catch(()=> '');
+        }
+      }catch(error){
+        return res.status(200).json({ok:false,build:BUILD,error:'api_error',message:String(error?.message||error).slice(0,160),elapsedMs:Date.now()-started});
+      }
+      let body=null;try{body=JSON.parse(text)}catch{}
+      const cards=(Array.isArray(body?.cards)?body.cards:[]).map(c=>({
+        productId:Number(c.internal_code)||productIdOf(c.link),link:safeMypProductUrl(c.link),code:String(c.card_code||''),
+        name:String(c.name_pt||c.name_en||''),nameEn:String(c.name_en||''),edition:String(c.edition_pt||c.edition_en||''),
+        editionCode:String(c.edition_code||''),labels:Array.isArray(c.deck_labels)?c.deck_labels.slice(0,4):[]
+      })).filter(c=>c.link);
+      return res.status(200).json({ok:!!cards.length,build:BUILD,mode:'api',status,cards,blocked:!body,elapsedMs:Date.now()-started});
+    }
+
     let myp={ok:false,error:wantMyp?'no_myp_candidates':'skipped'},probes=[];
     if(urls.length){
       // Leave time for Liga after MYP.
@@ -309,7 +336,7 @@ module.exports=async(req,res)=>{
     const liga=wantLiga?await lookupLiga(page,wanted,deadline):{ok:false,error:'skipped'};
     return res.status(200).json({
       ok:!!(myp.ok||liga.ok),
-      build:'18.1',
+      build:BUILD,
       myp,liga,probes,
       checkedAt:new Date().toISOString(),
       elapsedMs:Date.now()-started
