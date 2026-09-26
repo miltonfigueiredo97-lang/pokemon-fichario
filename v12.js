@@ -110,16 +110,19 @@
 
     const myp=$q('#mypcardsLink');
     if(myp){
-      let href='';
-      const candidates=[
+      // V17: prefer the saved product page; without one, open the MYP search
+      // for this exact card (it works in the user's browser). Never hide it.
+      const product=[
+        card.myp_price_link,
         card.price_br_link,
-        card.myp_link,
-        card.market_link,
+        card.price_link,
         (()=>{try{return typeof selectedMarket!=='undefined'?selectedMarket?.link:''}catch{return ''}})()
-      ];
-      href=candidates.find(isMypUrl)||'';
-      if(href){myp.href=href;myp.classList.remove('hidden')}
-      else{myp.removeAttribute('href');myp.classList.add('hidden')}
+      ].find(v=>isMypUrl(v)&&/\/pokemon\/produto\/\d+\//i.test(String(v)))||'';
+      const fullNumber=await resolveFullNumber(card).catch(()=>card.number||'');
+      const query=String(card.name||'').trim()+(fullNumber?' ('+fullNumber+')':'');
+      myp.href=product||'https://mypcards.com/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
+      myp.textContent=product?'MYP Cards':'Buscar na MYP';
+      myp.classList.remove('hidden');
     }
   }
 
@@ -286,7 +289,7 @@
     }
     document.addEventListener('click',e=>{
       const liga=e.target.closest?.('#ligaSearchLink');
-      if(liga){
+      if(liga&&!/ligapokemon.com.br/i.test(String(liga.href||''))){
         const card=currentCardForLinks();
         if(card)liga.href=ligaUrlV12(card);
       }

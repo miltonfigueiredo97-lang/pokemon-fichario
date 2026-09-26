@@ -22,7 +22,7 @@ const TCGDEX = "https://api.tcgdex.net/v2";
 const CLAIM_SIZE = 5;
 const RUN_BUDGET_MS = 85 * 1000;
 const ENGINE_TIMEOUT_MS = 58 * 1000;
-const MAX_TRIED_IDS = 6;
+const MAX_TRIED_IDS = 8;
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
 // Shared secret for /api/price-engine, read once per run from the database
@@ -170,16 +170,69 @@ async function setAnchors(db: any, card: any) {
   return [...byToken].map(([token, id]) => ({ token, id }));
 }
 
-// MYP creates a set's products in alphabetical order of the ENGLISH card name
-// (ties by collector number), so product ids are monotonic in that order.
-// Validated on Surging Sparks: 63/63 anchors monotonic, and 61/63 anchors were
-// predicted exactly on the first try from their neighbours.
+// MYP numbers a set's products in one of two orders, and the anchors (cards of
+// the same set that already have a validated link) tell which one:
+//   - collector number: id = number + constant offset (most sets, e.g. Silver
+//     Tempest 138->174895, 186->174943, 211->174968);
+//   - alphabetical ENGLISH name (e.g. Surging Sparks: 61/63 predicted exactly).
+// Each model reports how well it fits the anchors; the better one goes first.
+type Candidates = { list: number[]; fit: number };
+
+function tokenParts(token: string) {
+  const m = String(token || "").match(/^([a-z]*)(\d+)([a-z]*)$/);
+  return m ? { prefix: m[1], n: Number(m[2]), suffix: m[3] } : null;
+}
+
+function numericCandidates(card: any, anchors: { token: string; id: number }[]): Candidates {
+  const t = tokenParts(collectorToken(card.number));
+  if (!t || t.suffix) return { list: [], fit: 0 };
+  const same = anchors
+    .map((a) => ({ ...a, p: tokenParts(a.token) }))
+    .filter((a) => a.p && a.p.prefix === t.prefix && !a.p.suffix)
+    .sort((a, b) => a.p!.n - b.p!.n);
+  if (!same.length) return { list: [], fit: 0 };
+  let pairs = 0, equal = 0;
+  for (let i = 1; i < same.length; i++) {
+    pairs++;
+    if (same[i].id - same[i].p!.n === same[i - 1].id - same[i - 1].p!.n) equal++;
+  }
+  const fit = pairs ? equal / pairs : 0.5;
+  let lo: (typeof same)[number] | null = null, hi: (typeof same)[number] | null = null;
+  for (const a of same) {
+    if (a.p!.n < t.n) lo = a;
+    else if (a.p!.n > t.n && !hi) hi = a;
+  }
+  const known = new Set(anchors.map((a) => a.id));
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const list: number[] = [];
+  const push = (id: number) => {
+    if (Number.isInteger(id) && id > 0 && !known.has(id) && !tried.has(id) && !list.includes(id)) list.push(id);
+  };
+  const fromLo = lo ? t.n + lo.id - lo.p!.n : 0;
+  const fromHi = hi ? t.n + hi.id - hi.p!.n : 0;
+  push(fromLo); push(fromHi);
+  for (const d of [1, 2]) {
+    if (fromLo) { push(fromLo + d); push(fromLo - d); }
+    if (fromHi) { push(fromHi + d); push(fromHi - d); }
+  }
+  return { list, fit };
+}
+
 async function discoverCandidates(card: any, anchors: { token: string; id: number }[]) {
+  if (isJapanese(card) || !anchors.length) return [];
+  const numeric = numericCandidates(card, anchors);
+  const alpha = await alphabeticalCandidates(card, anchors);
+  const [first, second] = numeric.fit >= alpha.fit ? [numeric, alpha] : [alpha, numeric];
+  return [...new Set([...first.list, ...second.list])];
+}
+
+async function alphabeticalCandidates(card: any, anchors: { token: string; id: number }[]): Promise<Candidates> {
+  const none = { list: [], fit: 0 };
   const setId = String(card?.set_id || "").trim();
-  if (!setId || isJapanese(card) || !anchors.length) return [];
+  if (!setId) return none;
   const set = await tcgdex("/en/sets/" + encodeURIComponent(setId));
   const cards: any[] = Array.isArray(set?.cards) ? set.cards : [];
-  if (!cards.length) return [];
+  if (!cards.length) return none;
   const ordered = cards
     .map((c) => ({ token: collectorToken(c.localId), key: nameKey(c.name), n: Number(String(c.localId).replace(/\D/g, "")) || 0 }))
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.n - b.n));
@@ -187,7 +240,7 @@ async function discoverCandidates(card: any, anchors: { token: string; id: numbe
   ordered.forEach((c, i) => { if (!rank.has(c.token)) rank.set(c.token, i); });
 
   const target = rank.get(collectorToken(card.number));
-  if (target === undefined) return [];
+  if (target === undefined) return none;
 
   // Keep the longest chain of anchors whose ids increase with rank; products
   // MYP added later (e.g. reprints) sit outside the block and are dropped.
@@ -208,7 +261,13 @@ async function discoverCandidates(card: any, anchors: { token: string; id: numbe
   best.forEach((v, i) => { if (end < 0 || v > best[end]) end = i; });
   const chain: typeof ranked = [];
   for (let i = end; i >= 0; i = prev[i]) chain.unshift(ranked[i]);
-  if (!chain.length) return [];
+  if (!chain.length) return none;
+  let pairs = 0, exact = 0;
+  for (let i = 1; i < chain.length; i++) {
+    pairs++;
+    if (chain[i].id - chain[i - 1].id === chain[i].r - chain[i - 1].r) exact++;
+  }
+  const fit = pairs ? exact / pairs : 0.4;
 
   let lo: (typeof chain)[number] | null = null, hi: (typeof chain)[number] | null = null;
   for (const a of chain) {
@@ -231,7 +290,7 @@ async function discoverCandidates(card: any, anchors: { token: string; id: numbe
     if (fromLo) { push(fromLo + d); push(fromLo - d); }
     if (fromHi) { push(fromHi - d); push(fromHi + d); }
   }
-  return out;
+  return { list: out, fit };
 }
 
 // ---------------------------------------------------------------- engine
@@ -412,5 +471,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.2", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.3", claimed, states, elapsedMs: Date.now() - started });
 });
