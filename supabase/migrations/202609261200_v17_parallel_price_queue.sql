@@ -2,7 +2,7 @@
 --
 -- claim_pokemon_price_jobs replaces the fully serialized
 -- claim_pokemon_price_batch (one card in flight across ALL users). It claims
--- up to p_limit cards while keeping at most 8 cards in flight globally, so
+-- up to p_limit cards while keeping at most 5 cards in flight globally, so
 -- overlapping worker runs (cron every 30 s + frontend kicks) cannot flood the
 -- price engine. Stale locks from a crashed run are released after 3 minutes,
 -- so a card can never stay "processing" forever.
@@ -36,7 +36,7 @@ begin
    where price_pending = true
      and price_processing_at is not null;
 
-  slots := least(greatest(coalesce(p_limit, 5), 1), 10, 8 - in_flight);
+  slots := least(greatest(coalesce(p_limit, 5), 1), 10, 5 - in_flight);
   if slots <= 0 then
     return;
   end if;

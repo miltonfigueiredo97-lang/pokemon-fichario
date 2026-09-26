@@ -826,25 +826,14 @@
 
     const mypEl=$v('#mypcardsLink');
     if(!mypEl)return;
-    let u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)||'https://mypcards.com/pokemon';
+    // V17: the server price worker owns link discovery. Opening the editor only
+    // shows the saved product link, or the MYP search for this card (it works in
+    // the user's own browser), and never writes to the row.
+    const query=String(card.name||'').trim()+(full?' ('+full+')':'');
+    const u=[card.myp_price_link,card.price_br_link,card.price_link].find(isMypUrl)
+      ||'https://mypcards.com/pokemon?ProdutoSearch%5Bmarca%5D=pokemon&ProdutoSearch%5Bquery%5D='+encodeURIComponent(query);
     mypEl.href=u;
     mypEl.classList.remove('hidden');
-
-    try{
-      const resolved=await querySource('/api/mypcards-public','myp',card,normalizeFinish(card.finish||'Normal'),card.condition||'Nova');
-      if(resolved?.link&&isMypUrl(resolved.link)){
-        u=resolved.link;
-        mypEl.href=u;
-        card.myp_price_link=u;
-        card.price_last_error=null;
-        if(card.id&&typeof db!=='undefined'&&currentUser){
-          db.from('pokemon_cards')
-            .update({myp_price_link:u,price_last_error:null})
-            .eq('id',card.id).eq('user_id',currentUser.id)
-            .then(()=>{}).catch(()=>{});
-        }
-      }
-    }catch{}
   }
 
   function installExistingCardMarketView(){

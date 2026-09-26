@@ -1846,6 +1846,8 @@
         payload.price_requested_at=requestedAt;
         payload.price_next_retry_at=requestedAt;
         payload.price_attempts=0;
+        payload.price_progress=0;payload.price_progress_stage='queued';
+        payload.price_batch_id='master-'+requestedAt;payload.price_batch_started_at=requestedAt;
         // Master Set pode criar centenas de linhas de uma vez. Mantém prioridade
         // abaixo de cartas adicionadas manualmente para não bloquear a fila.
         payload.price_priority=500;
@@ -1972,11 +1974,13 @@
       wishlist.pages=pos.page;
     }
     const payload={...card};delete payload.id;delete payload.created_at;delete payload.updated_at;
+    delete payload.price_batch_id;delete payload.price_batch_started_at;payload.myp_link_tried=[];
     payload.user_id=currentUser.id;payload.binder_id=wishlist.id;payload.binder_page=pos.page;payload.binder_slot=pos.slot;
     payload.collection_status='wanted';payload.quantity=0;payload.price_processing_at=null;
     payload.price_pending=!Number(card.price_min||card.price_avg||card.price_max||0);
     payload.price_requested_at=new Date().toISOString();payload.price_next_retry_at=payload.price_pending?payload.price_requested_at:null;
     payload.price_attempts=0;payload.price_priority=payload.price_pending?5000:0;
+    payload.price_progress=payload.price_pending?0:100;payload.price_progress_stage=payload.price_pending?'queued':'complete';
     const {data,error}=await db.from('pokemon_cards').insert(payload).select('*').single();
     if(error)return toast('Não consegui adicionar à Lista de Desejos.');
     V14.allCards.push(data);collection=physicalCollection();renderAll();toast('Adicionada à Lista de Desejos.');
@@ -2375,6 +2379,7 @@
         // Master Sets; o usuário acabou de adicioná-la e espera cotação rápida.
         payload.price_priority=5000;
         payload.price_last_error=null;
+        payload.price_progress=0;payload.price_progress_stage='queued';
 
         // One database row = one physical card in one pocket.
         // Never merge by card_key/condition/finish inside a real binder.
@@ -2476,7 +2481,7 @@
       price_pending:true,price_processing_at:null,price_requested_at:now,price_next_retry_at:now,
       price_attempts:0,price_priority:priority,price_last_error:null,
       price_progress:0,price_progress_stage:'queued',price_progress_updated_at:now,
-      price_batch_id:batchId,price_batch_started_at:now
+      price_batch_id:batchId,price_batch_started_at:now,myp_link_tried:[]
     };
     const enqueuedIds=new Set();
     for(let i=0;i<list.length;i+=150){
@@ -2485,8 +2490,7 @@
         .update(patch)
         .eq('user_id',currentUser.id)
         .in('id',ids)
-        .or('price_pending.is.false,price_pending.is.null')
-        .is('price_processing_at',null)
+        .or('price_processing_at.is.null,price_processing_at.lt.'+new Date(Date.now()-3*60*1000).toISOString())
         .select('id');
       if(error)throw error;
       for(const row of data||[])enqueuedIds.add(row.id);
@@ -2874,7 +2878,8 @@
       myp_price_min:min,myp_price_avg:avg,myp_price_max:max,myp_price_link:finalLink,myp_price_checked_at:now,
       price_min:min,price_avg:avg,price_max:max,price_source:'MYP Cards · manual',price_link:finalLink,
       price_br_source:'MYP Cards · manual',price_br_link:finalLink,price_checked_at:now,
-      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_attempts:0,price_last_error:null
+      price_pending:false,price_processing_at:null,price_next_retry_at:null,price_priority:0,price_attempts:0,price_last_error:null,
+      price_progress:100,price_progress_stage:'complete',price_progress_updated_at:now,myp_link_tried:[]
     };
     try{
       const {error}=await db.from('pokemon_cards').update(patch).eq('id',card.id).eq('user_id',currentUser.id);
@@ -4029,10 +4034,12 @@
           if(pageError)throw pageError;target.pages=pos.page;
         }
         const payload={...card};delete payload.id;delete payload.created_at;delete payload.updated_at;
+        delete payload.price_batch_id;delete payload.price_batch_started_at;payload.myp_link_tried=[];
         payload.user_id=currentUser.id;payload.binder_id=target.id;payload.binder_page=pos.page;payload.binder_slot=pos.slot;
         payload.collection_status=bought?'owned':'missing';payload.quantity=bought?1:0;payload.price_processing_at=null;
         payload.price_pending=!Number(card.price_min||card.price_avg||card.price_max||0);payload.price_requested_at=new Date().toISOString();
         payload.price_next_retry_at=payload.price_pending?payload.price_requested_at:null;payload.price_attempts=0;payload.price_priority=payload.price_pending?30:0;
+        payload.price_progress=payload.price_pending?0:100;payload.price_progress_stage=payload.price_pending?'queued':'complete';
         const {error}=await db.from('pokemon_cards').insert(payload);if(error)throw error;
       }
       if(bought){const {error}=await db.from('pokemon_cards').delete().eq('id',card.id).eq('user_id',currentUser.id);if(error)throw error}
@@ -4241,9 +4248,18 @@
     select.value=[...select.options].some(o=>o.value===old)?old:'all';
   }
 
+  // Stages written by the server worker while it is working on a card.
+  const PRICE_ACTIVE_STAGES_V17=new Set([
+    'claimed','resolving_link','checking_candidate','next_candidate','relinking','reading_myp','saving_quote',
+    // legacy worker stages (rows written before V17)
+    'batch_resolving','batch_resolved','resolving_identity','identity_ready','link_ready','querying_sources',
+    'batch_miss_exact_retry','exact_lookup','exact_lookup_retry','discovering_myp_link','searching_myp',
+    'myp_link_found','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote'
+  ]);
+
   function priceAuditStageV1604(card){
     const raw=String(card?.price_progress_stage||'').trim().toLowerCase();
-    const active=new Set(['batch_resolving','batch_resolved','claimed','resolving_identity','identity_ready','link_ready','querying_sources','batch_miss_exact_retry','exact_lookup','exact_lookup_retry','discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote']);
+    const active=PRICE_ACTIVE_STAGES_V17;
     // Active backend state always wins over an older saved quote. A refresh of
     // an already-priced card must visibly be queued/processing until THIS job ends.
     if(active.has(raw)||card?.price_processing_at)return{key:'processing',rank:0,label:'PROCESSANDO'};
@@ -4277,6 +4293,8 @@
       ||candidates.find(card=>card.price_batch_id)
       ||V14.allCards.find(card=>card.price_pending&&card.price_batch_id);
     const batchId=activeBatchCard?.price_batch_id||'';
+    const prev=V14.priceAuditQueueSnapshot;
+    if(prev?.total&&prev.key===key&&prev.batchId===batchId)return;
     let scope=batchId
       ?V14.allCards.filter(card=>card.price_batch_id===batchId)
       :candidates;
@@ -4295,12 +4313,7 @@
     const byIdMap=new Map(V14.allCards.map(card=>[card.id,card]));
     let processing=0,retrying=0,queued=0,priced=0,noQuote=0,failed=0;
     let progressSum=0,seen=0;
-    const activeStages=new Set([
-      'batch_resolving','batch_resolved','claimed','resolving_identity','identity_ready','link_ready','querying_sources',
-      'batch_miss_exact_retry','exact_lookup','exact_lookup_retry',
-      'discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready',
-      'myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'
-    ]);
+    const activeStages=PRICE_ACTIVE_STAGES_V17;
 
     for(const id of snapshot.ids||[]){
       const card=byIdMap.get(id);
@@ -4343,7 +4356,11 @@
     const stage=String(card?.price_progress_stage||'').toLowerCase();
     const labels={
       queued:'Aguardando worker',
-      retry_wait:'Aguardando a próxima estratégia de busca',
+      retry_wait:'MYP não respondeu; nova tentativa automática em instantes',
+      resolving_link:'Localizando a página da carta na MYP',
+      checking_candidate:'Conferindo o produto candidato na MYP',
+      next_candidate:'Candidato não era esta carta; testando o próximo',
+      relinking:'Link salvo não confere com a carta; procurando o correto',
       batch_resolving:'Resolvendo lote de 10 na MYP',
       batch_resolved:'Lote de 10 respondido',
       claimed:'Worker iniciou esta carta',
@@ -4531,7 +4548,7 @@
         .eq('user_id',currentUser.id).in('id',ids);
       if(Array.isArray(data)){
         data.forEach(row=>applyLocalPricePatch(row.id,row));
-        const processing=data.filter(row=>['claimed','resolving_identity','identity_ready','link_ready','querying_sources','discovering_myp_link','searching_myp','myp_link_found','reading_myp','batch_market_ready','myp_returned','checking_variant','sources_returned','validating_quote','saving_quote'].includes(String(row.price_progress_stage||'').toLowerCase())||!!row.price_processing_at).length;
+        const processing=data.filter(row=>PRICE_ACTIVE_STAGES_V17.has(String(row.price_progress_stage||'').toLowerCase())||!!row.price_processing_at).length;
         const retrying=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='retry_wait').length;
         const queued=data.filter(row=>row.price_pending&&!row.price_processing_at&&String(row.price_progress_stage||'').toLowerCase()==='queued').length;
         const priced=data.filter(row=>row.price_pending===false&&String(row.price_progress_stage||'').toLowerCase()==='complete'&&hasBrazilQuoteV1466(row)).length;
