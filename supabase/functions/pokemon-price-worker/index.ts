@@ -22,7 +22,11 @@ const TCGDEX = "https://api.tcgdex.net/v2";
 const CLAIM_SIZE = 5;
 const RUN_BUDGET_MS = 85 * 1000;
 const ENGINE_TIMEOUT_MS = 58 * 1000;
-const MAX_TRIED_IDS = 20;
+const MAX_TRIED_IDS = 40;
+// Predicted ids that 404 teach nothing; after this many, walk real pages.
+const MAX_PREDICTED_TRIES = 6;
+// App-only set ids (not on TCGdex) -> MYP set code.
+const APP_SET_CODES: Record<string, string> = { cel25cc: "ccc" };
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
 // Shared secret for /api/price-engine, read once per run from the database
@@ -340,8 +344,11 @@ async function learnFromProbes(db: any, probes: any[]) {
       const rt = parseTitle(r.text);
       const rid = Number(r.productId) || productId(r.href);
       if (!rt || !rid || !slugOf(r.href)) continue;
-      // The previous/next product of the page belongs to the same set.
-      const sameSet = code && t && Math.abs(rid - id) === 1 && rt.den === t.den;
+      // Previous/next links of the page carry only "Name (number) EN name";
+      // "Outras Edições" tiles carry stock/price/offer words. Neighbours share
+      // the page's set.
+      const neighbour = !/\bun\b|r\$|ver ofertas|adicionar|outros idiomas|alta procura/i.test(String(r.text || ""));
+      const sameSet = code && neighbour;
       const row = { product_id: rid, slug: slugOf(r.href), title: String(r.text).split(" · ")[0].slice(0, 160), name_key: nameKey(rt.name), num: rt.num, den: rt.den,
         set_code: sameSet ? code : null, info: String(r.text).toLowerCase().slice(0, 300) };
       (row.set_code ? coded : loose).push(row);
@@ -355,6 +362,7 @@ async function learnFromProbes(db: any, probes: any[]) {
 async function setCodeOf(db: any, card: any, anchorIds: number[]) {
   const setId = String(card?.set_id || "").trim();
   if (!setId) return "";
+  if (APP_SET_CODES[setId.toLowerCase()]) return APP_SET_CODES[setId.toLowerCase()];
   if (!isJapanese(card)) {
     const set = await tcgdex("/en/sets/" + encodeURIComponent(setId));
     const official = String(set?.abbreviation?.official || "").toLowerCase();
@@ -410,9 +418,51 @@ async function sameNameSeed(db: any, card: any) {
   return hit ? validLink(hit.myp_price_link) : "";
 }
 
+// A name that appears once in the set identifies the card even when MYP
+// titles it with a different (original printed) number.
+async function nameUniqueInSet(card: any) {
+  const setId = String(card?.set_id || "").trim();
+  if (!setId) return false;
+  const set = (await tcgdex("/pt-br/sets/" + encodeURIComponent(setId))) || (await tcgdex("/en/sets/" + encodeURIComponent(setId)));
+  const cards: any[] = Array.isArray(set?.cards) ? set.cards : [];
+  if (!cards.length) return true;
+  const key = nameKey(card.name);
+  return cards.filter((c) => nameKey(c.name) === key).length <= 1;
+}
+
+async function catalogByName(db: any, card: any, code: string) {
+  if (!code) return null;
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const { data } = await db.from("myp_products").select("*").eq("set_code", code).eq("name_key", nameKey(card.name)).limit(5);
+  const rows = (data || []).filter((r: CatalogRow) => !tried.has(r.product_id));
+  return rows.length === 1 ? rows[0] : null;
+}
+
+// Next real page to open inside the set: an unvisited neighbour learned from
+// earlier pages (closest to the prediction), else a linked card of the set whose
+// page was never opened. Every opened page reveals more neighbours.
+async function nextWalkPage(db: any, card: any, code: string, near: number) {
+  const tried = new Set<number>((card.myp_link_tried || []).map(Number));
+  const visited = (r: CatalogRow) => /pokemon_[a-z0-9]+_/.test(r.info);
+  if (code) {
+    const { data } = await db.from("myp_products").select("*").eq("set_code", code).limit(1000);
+    const open = (data || []).filter((r: CatalogRow) => !tried.has(r.product_id) && !visited(r));
+    open.sort((a: CatalogRow, b: CatalogRow) => Math.abs(a.product_id - near) - Math.abs(b.product_id - near));
+    if (open[0]) return productUrl(open[0]);
+  }
+  const { data: cards } = await db.from("pokemon_cards").select("myp_price_link,language_code").eq("set_id", String(card.set_id || "")).like("myp_price_link", "%/pokemon/produto/%").limit(300);
+  const links = [...new Set((cards || []).filter((c: any) => isJapanese(c) === isJapanese(card)).map((c: any) => validLink(c.myp_price_link)).filter(Boolean))] as string[];
+  const ids = links.map(productId);
+  const { data: seen } = ids.length ? await db.from("myp_products").select("product_id,info").in("product_id", ids) : { data: [] };
+  const seenIds = new Set((seen || []).filter((r: any) => /pokemon_[a-z0-9]+_/.test(r.info)).map((r: any) => Number(r.product_id)));
+  const fresh = links.filter((l) => !tried.has(productId(l)) && !seenIds.has(productId(l)));
+  fresh.sort((a, b) => Math.abs(productId(a) - near) - Math.abs(productId(b) - near));
+  return fresh[0] || "";
+}
+
 // ---------------------------------------------------------------- engine
 
-async function readProduct(card: any, link: string) {
+async function readProduct(card: any, link: string, ctx: { code: string; relax: boolean } = { code: "", relax: false }) {
   const q = new URLSearchParams({
     name: String(card.name || ""),
     number: String(card.number || ""),
@@ -422,6 +472,8 @@ async function readProduct(card: any, link: string) {
     finish: String(card.finish || "Normal"),
     condition: String(card.condition || "Nova"),
     mypLink: link,
+    setCode: ctx.code,
+    relax: ctx.relax ? "1" : "0",
   });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_MS);
@@ -506,7 +558,8 @@ async function processCard(db: any, card: any) {
         return await finishNoQuote(db, card, "myp:link_not_found:" + MAX_TRIED_IDS + " páginas da MYP conferidas sem achar esta carta. Cole o link do produto MYP na carta.");
       }
       const code = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
-      const exact = await catalogMatch(db, card, code, (anchors || []).map((a) => a.id));
+      const unique = await nameUniqueInSet(card);
+      const exact = (await catalogMatch(db, card, code, (anchors || []).map((a) => a.id))) || (unique ? await catalogByName(db, card, code) : null);
       if (exact) {
         link = productUrl(exact);
       } else {
@@ -515,10 +568,13 @@ async function processCard(db: any, card: any) {
         for (const a of [...(anchors || []), ...learned]) if (!merged.has(a.token)) merged.set(a.token, a.id);
         const allAnchors = [...merged].map(([token, id]) => ({ token, id }));
         const candidates = await discoverCandidates(card, allAnchors);
-        if (candidates.length) {
+        const predictedTries = (card.myp_link_tried || []).length;
+        if (candidates.length && predictedTries < MAX_PREDICTED_TRIES) {
           link = `https://mypcards.com/pokemon/produto/${candidates[0]}/${await mypSlug(card)}`;
         } else {
-          link = await sameNameSeed(db, card);
+          const near = candidates[0] || allAnchors[0]?.id || 0;
+          link = await nextWalkPage(db, card, code, near);
+          if (!link) link = await sameNameSeed(db, card);
           seeding = !!link;
         }
       }
@@ -529,7 +585,8 @@ async function processCard(db: any, card: any) {
     }
 
     await setProgress(db, card.id, 50, seeding ? "resolving_link" : discovered ? "checking_candidate" : "reading_myp");
-    const read = await readProduct(card, link);
+    const idCode = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
+    const read = await readProduct(card, link, { code: idCode, relax: !!idCode && (await nameUniqueInSet(card)) });
     const market = read.market;
     await learnFromProbes(db, read.probes).catch(() => {});
 
@@ -606,5 +663,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.4", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "17.5", claimed, states, elapsedMs: Date.now() - started });
 });
