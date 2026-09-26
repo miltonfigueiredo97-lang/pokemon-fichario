@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MYP_API = "https://pokemon-fichario.vercel.app/api/mypcards-public";
 const LIGA_API = "https://pokemon-fichario.vercel.app/api/liga-public";
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 1;
 const MAX_RUN_MS = 48 * 1000;
 const STALE_MS = 75 * 1000;
 
@@ -496,9 +496,9 @@ Deno.serve(async(req:Request)=>{
     }
 
   }  async function claimBatch(){
-    // V16.31 invariant: bulk pricing is ALWAYS claimed in fixed groups of ten.
-    // Do not lower this value dynamically or refill individual slots mid-batch.
-    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:10});
+    // Reliability mode requested for diagnosis: one physical card at a time.
+    // A second card cannot be claimed until the current one is terminal.
+    const {data,error}=await db.rpc("claim_pokemon_price_batch",{p_limit:1});
     if(error)throw error;
     return Array.isArray(data)?data:[];
   }
@@ -509,10 +509,8 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Reliability mode: claim exactly ONE card and run the proven individual
-      // lookup path. Do NOT pass it through batchResolve: the batch resolver can
-      // fail identity discovery for cards that the individual MYP lookup finds.
-      // Only after this card is finalized may the next queued row be claimed.
+      // Exactly ONE claimed row goes through the normal individual MYP resolver.
+      // No batch resolver, no slot refill, no retry hopping.
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
