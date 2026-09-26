@@ -25,7 +25,7 @@ async function setProgress(db:any,id:string,progress:number,stage:string){
   }).eq("id",id);
 }
 
-async function fetchSource(base:string, card:any, allowSavedLink=true, fast=false){
+async function fetchSource(base:string, card:any, allowSavedLink=true, fast=false, queueSimple=false){
   const q=new URLSearchParams({
     name:String(card.name||""),
     number:String(card.number||""),
@@ -38,12 +38,13 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   });
   if(Number(card.price_priority||0)>=1000)q.set("_",String(Date.now()));
   if(base===MYP_API&&fast)q.set("fast","1");
+  if(base===MYP_API&&queueSimple)q.set("queueSimple","1");
   if(base===MYP_API&&allowSavedLink){
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
     if(link&&/mypcards\.com/i.test(link))q.set("link",link);
-    // Reliability mode uses the real browser resolver for a single card,
-    // whether the exact product URL is already known or still needs discovery.
-    if(!fast)q.set("directBrowser","1");
+    // A fila principal usa queueSimple=1 e NÃO entra no resolvedor browser
+    // histórico. O endpoint faz somente busca exata nome+número na própria MYP.
+    if(!fast&&!queueSimple)q.set("directBrowser","1");
   }
   const controller=new AbortController();
   // Cartas sem link conhecido podem precisar do Actor (até ~55 s).
@@ -51,11 +52,11 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
   // V16.36: a fila tenta primeiro o resolvedor rápido da MESMA carta. Só quando
   // ele já localizou um produto MYP exato é permitido abrir o browser desse link.
   // Isso impede uma busca Chromium de 45 s por carta sem identidade resolvida.
-  const timeoutMs=base===MYP_API?(fast?14000:24000):7000;
+  const timeoutMs=base===MYP_API?(queueSimple?42000:(fast?14000:24000)):7000;
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const rr=await fetch(base+"?"+q.toString(),{
-      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.37"},
+      headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.38"},
       signal:controller.signal
     });
     const body=await rr.text();
@@ -206,7 +207,7 @@ async function mypCardSlug(card:any){
         const timer=setTimeout(()=>controller.abort(),4500);
         try{
           const r=await fetch("https://api.tcgdex.net/v2/"+locale+"/cards/"+encodeURIComponent(apiId),{
-            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.37"},
+            headers:{"Accept":"application/json","User-Agent":"PokemonBinderBR-PriceWorker/16.38"},
             signal:controller.signal
           });
           if(r.ok){
@@ -350,49 +351,15 @@ function choosePrimary(liga:any,myp:any){
   return{market:null,source:"Sem preço BR"};
 }
 async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promise<void>=async()=>{}){
-  // V16.36: UMA carta por vez e somente MYP. A fila usa primeiro o mesmo
-  // resolvedor rápido de nome+número+coleção. Se ele já devolver preço, acabou.
-  // Se localizar o produto exato mas não conseguir ler a variante, fazemos UMA
-  // leitura browser apenas desse link conhecido. Nunca pula para outra carta
-  // enquanto esta ainda está sendo resolvida.
-  await onProgress(55,"searching_myp");
-  const fastMyp=await fetchSource(MYP_API,card,true,true)
-    .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"fast_timeout":String(e?.message||"myp_fast_error")}));
-
-  if(hasMarketPrice(fastMyp)){
-    await onProgress(86,"myp_returned");
-    return{myp:fastMyp,liga:null};
-  }
-
-  const resolvedLink=String(
-    fastMyp?.link||card.myp_price_link||card.price_br_link||card.price_link||""
-  ).trim();
-
-  if(/mypcards\.com\/pokemon\/produto\/\d+\//i.test(resolvedLink)){
-    const directCard={...card,myp_price_link:resolvedLink};
-    await onProgress(72,"reading_myp");
-    const directMyp=await fetchSource(MYP_API,directCard,true,false)
-      .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"direct_timeout":String(e?.message||"myp_direct_error"),link:resolvedLink}));
-
-    if(hasMarketPrice(directMyp)){
-      await onProgress(86,"myp_returned");
-      return{myp:directMyp,liga:null};
-    }
-
-    await onProgress(86,"myp_returned");
-    return{myp:{...fastMyp,...directMyp,link:String(directMyp?.link||resolvedLink)},liga:null};
-  }
-
-  // Se o resolvedor rápido ainda não achou o produto, NÃO abandona a carta.
-  // Faz uma única descoberta browser exata para ESTA MESMA carta e só depois
-  // encerra como sem cotação. Continua estritamente 1 carta por vez.
-  await onProgress(68,"discovering_myp_link");
-  const discoveredMyp=await fetchSource(MYP_API,card,true,false)
-    .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"discovery_timeout":String(e?.message||"myp_discovery_error")}));
-
-  await onProgress(86,"myp_returned");
-  if(hasMarketPrice(discoveredMyp))return{myp:discoveredMyp,liga:null};
-  return{myp:{...fastMyp,...discoveredMyp,link:String(discoveredMyp?.link||fastMyp?.link||"")},liga:null};
+  // V16.38: mesma lógica do uso manual que funciona:
+  // nome + número entre parênteses -> busca MYP -> primeiro produto -> cotação.
+  // Sem Liga, sem DuckDuckGo/Bing, sem batch resolver, sem ficar pulando entre
+  // estratégias diferentes. Uma carta termina antes da próxima começar.
+  await onProgress(35,"simple_search");
+  const myp=await fetchSource(MYP_API,card,true,false,true)
+    .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"simple_timeout":String(e?.message||"simple_myp_error")}));
+  await onProgress(88,"validating_quote");
+  return{myp,liga:null};
 }
 
 Deno.serve(async(req:Request)=>{
