@@ -822,7 +822,16 @@
     renderBinderControls();
   }
 
+  // The summary toggle (created by v11fix) was absolutely positioned over the
+  // binder area and covered the last toolbar button. Keep it inside the
+  // toolbar as a regular item instead.
+  function placeSummaryToggleV17(){
+    const toggle=byId('v113SummaryToggle'),bar=byId('v14BinderControls');
+    if(toggle&&bar&&toggle.parentElement!==bar)bar.appendChild(toggle);
+  }
+
   function renderBinderControls(){
+    placeSummaryToggleV17();
     const sel=byId('v14BinderSelect');
     if(sel){
       sel.innerHTML='<option value="all">Geral — todos os fichários</option><option value="favorites">★ Favoritas</option>'+
