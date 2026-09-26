@@ -504,10 +504,10 @@ Deno.serve(async(req:Request)=>{
       if(!batch.length)break;
       claimed+=batch.length;
 
-      // Diagnostic reliability mode: claim exactly ONE card at a time.
-      // The lookup itself is unchanged; only after this card reaches a terminal
-      // state (complete/no_quote) may the worker claim the next queued card.
-      await hydrateBatchMypLinks(db,batch);
+      // Reliability mode: claim exactly ONE card and run the proven individual
+      // lookup path. Do NOT pass it through batchResolve: the batch resolver can
+      // fail identity discovery for cards that the individual MYP lookup finds.
+      // Only after this card is finalized may the next queued row be claimed.
       const results=await Promise.allSettled(batch.map((card:any)=>processClaimedCard(card)));
       for(const result of results){
         states.push(result.status==="fulfilled"?String(result.value?.state||"unknown"):"rejected");
