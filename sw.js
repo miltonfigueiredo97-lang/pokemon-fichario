@@ -1,20 +1,20 @@
-const BUILD_VERSION = '17.0';
-const CACHE_NAME = 'pokemon-binder-v17-0';
+const BUILD_VERSION = '17.1';
+const CACHE_NAME = 'pokemon-binder-v17-1';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/style.css?v=17.0',
-  '/v8.css?v=17.0',
-  '/v11fix.css?v=17.0',
-  '/v12.css?v=17.0',
-  '/v122.css?v=17.0',
-  '/v140.css?v=17.0',
-  '/script.js?v=17.0',
-  '/v8.js?v=17.0',
-  '/v11fix.js?v=17.0',
-  '/v12.js?v=17.0',
-  '/v122.js?v=17.0',
-  '/v140.js?v=17.0',
+  '/style.css?v=17.1',
+  '/v8.css?v=17.1',
+  '/v11fix.css?v=17.1',
+  '/v12.css?v=17.1',
+  '/v122.css?v=17.1',
+  '/v140.css?v=17.1',
+  '/script.js?v=17.1',
+  '/v8.js?v=17.1',
+  '/v11fix.js?v=17.1',
+  '/v12.js?v=17.1',
+  '/v122.js?v=17.1',
+  '/v140.js?v=17.1',
   '/manifest.webmanifest',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg'
@@ -75,7 +75,10 @@ self.addEventListener('fetch', event => {
         // Absolutely bypass both browser HTTP cache and the old SW cache for
         // executable app assets whenever the network is available.
         const fresh=await fetch(request,{cache:'no-store'});
-        if(fresh.ok){
+        // Only cache canonical asset URLs (?v=...). Build checks and ?pbv=
+        // navigations carry unique query strings and would grow the cache forever.
+        const cacheable=[...url.searchParams.keys()].every(k=>k==='v');
+        if(fresh.ok&&cacheable){
           const cache=await caches.open(CACHE_NAME);
           await cache.put(request,fresh.clone());
         }

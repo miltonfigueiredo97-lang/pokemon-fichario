@@ -566,7 +566,9 @@ window.smartSearchCardsV11=smartSearchCards;
         b.onclick=()=>{
           select.value=value;
           tabs.querySelectorAll('.v11-lang-btn').forEach(x=>x.classList.toggle('active',x.dataset.lang===value));
-          if(($id('searchName')?.value||'').trim()||($id('searchNumber')?.value||'').trim()||($id('searchSet')?.value||'').trim())smartSearchCards();
+          // Fire change so generations/collections reload in the new language and
+          // the live search reruns (one search engine, no race).
+          select.dispatchEvent(new Event('change',{bubbles:true}));
         };
         tabs.appendChild(b);
       });

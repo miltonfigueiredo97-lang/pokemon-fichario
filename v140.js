@@ -30,6 +30,9 @@
     priceAuditQueueSnapshot:null
   };
   window.PB14=V14;
+  // Closing the card editor (×, Esc, backdrop) ends the edit: later imports or
+  // saves must not inherit the last viewed card's binder.
+  document.getElementById('cardDialog')?.addEventListener('close',()=>{try{editingCardId=null}catch{}});
 
   const byId=id=>document.getElementById(id);
   const nrm=v=>String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
@@ -797,7 +800,7 @@
     const payload={user_id:currentUser.id,name:'Meu Fichário',pages:Math.max(1,+settings.binder_pages||1),background:settings.binder_background||'graphite',sort_order:1};
     const {data,error}=await db.from('pokemon_binders').insert(payload).select('*').single();
     if(error)throw error;
-    V14.binders=[data];
+    V14.binders.push(data);
     V14.activeBinderId=data.id;
     await db.from('pokemon_settings').update({current_binder_id:data.id}).eq('user_id',currentUser.id);
   }
@@ -809,9 +812,10 @@
     V14.binders=data||[];
     await ensureWishlistBinder();
     await ensureFirstBinder();
-    if(V14.activeBinderId==null){
-      const stored=settings.current_binder_id;
+    const stored=settings?.current_binder_id;
+    if(V14.activeBinderId==null||(!V14.binderChosenV17&&stored&&V14.activeBinderId==='all')){
       V14.activeBinderId=stored&&V14.binders.some(b=>b.id===stored)?stored:'all';
+      if(stored)V14.binderChosenV17=true;
     }else if(!isGeneral()&&!V14.binders.some(b=>b.id===V14.activeBinderId)){
       V14.activeBinderId=V14.binders[0]?.id||'all';
     }
@@ -839,6 +843,7 @@
   }
 
   async function selectBinder(id){
+    V14.binderChosenV17=true;
     V14.activeBinderId=id||'all';
     V14.favoritesOnly=isFavorites();
     V14.viewScope='all';
@@ -944,11 +949,11 @@
       V14.priceQueue=V14.priceQueue.filter(x=>x.binder_id!==b.id);
       for(const cardId of cardIds)V14.priceJobs.delete(cardId);
 
-      if(!V14.binders.length){
+      if(!V14.binders.some(x=>x.binder_kind!=='wishlist')){
         V14.activeBinderId=null;
         await ensureFirstBinder();
       }else{
-        V14.activeBinderId=V14.binders[0].id;
+        V14.activeBinderId=(V14.binders.find(x=>x.binder_kind!=='wishlist')||V14.binders[0]).id;
       }
       V14.viewScope='all';
       V14.binderSearchQuery='';
@@ -975,6 +980,11 @@
   }
 
   async function createEmptyBinder(){
+    if(V14.creatingBinderV17)return;
+    V14.creatingBinderV17=true;
+    try{await createEmptyBinderOnceV17()}finally{V14.creatingBinderV17=false}
+  }
+  async function createEmptyBinderOnceV17(){
     const name=(byId('v14EmptyName')?.value||'Novo Fichário').trim()||'Novo Fichário';
     const pages=Math.max(1,Math.min(200,+byId('v14EmptyPages')?.value||4));
     const sortOrder=(Math.max(0,...V14.binders.map(b=>+b.sort_order||0))+1);
@@ -1864,6 +1874,7 @@
       hardCloseDialog('v14BinderDialog');
       resetMasterBuilderState({resetCatalog:true});
       releaseMobileInteraction();
+      createdBinder=null;
 
       V14.activeBinderId=binder.id;
       V14.favoritesOnly=false;
@@ -1901,6 +1912,24 @@
 
   async function loadCardsV14(show=true){
     if(!currentUser)return;
+    if(V14.loadCardsRunV17){
+      V14.loadCardsAgainV17=true;
+      await V14.loadCardsRunV17;
+      if(show)toast('Fichário atualizado.');
+      return;
+    }
+    V14.loadCardsRunV17=(async()=>{
+      do{
+        V14.loadCardsAgainV17=false;
+        await loadCardsOnceV14();
+      }while(V14.loadCardsAgainV17&&currentUser);
+    })();
+    try{await V14.loadCardsRunV17}finally{V14.loadCardsRunV17=null}
+    if(show)toast('Fichário atualizado.');
+  }
+
+  async function loadCardsOnceV14(){
+    if(!currentUser)return;
     await loadBinders();
     const {data,error}=await db.from('pokemon_cards').select('*').eq('user_id',currentUser.id).order('binder_page').order('binder_slot');
     if(error){console.error(error);toast('Erro ao carregar cartas.');return}
@@ -1914,7 +1943,6 @@
     // terminal until the user explicitly requests a new refresh.
     const pending=V14.allCards.filter(c=>!!c.price_pending);
     if(pending.length)kickPriceWorkerNow();
-    if(show)toast('Fichário atualizado.');
   }
 
   async function updateSettingsV14(patch,silent=false){
@@ -1973,7 +2001,9 @@
       if(pageError)return toast('Não consegui ampliar a Lista de Desejos.');
       wishlist.pages=pos.page;
     }
-    const payload={...card};delete payload.id;delete payload.created_at;delete payload.updated_at;
+    const source=Array.isArray(card._group_cards)&&card._group_cards[0]?card._group_cards[0]:card;
+    const payload={...source};delete payload.id;delete payload.created_at;delete payload.updated_at;
+    for(const key of Object.keys(payload))if(key.startsWith('_'))delete payload[key];
     delete payload.price_batch_id;delete payload.price_batch_started_at;payload.myp_link_tried=[];
     payload.user_id=currentUser.id;payload.binder_id=wishlist.id;payload.binder_page=pos.page;payload.binder_slot=pos.slot;
     payload.collection_status='wanted';payload.quantity=0;payload.price_processing_at=null;
@@ -2920,7 +2950,7 @@
       manual.disabled=!visible;
     }
     if(watching)b.textContent=V14.singlePriceWatch.label||'Atualizando preço…';
-    else if(visible&&card.price_pending&&Number(card.price_priority||0)>=1000){
+    else if(visible&&byId('cardDialog')?.open&&card.price_pending&&Number(card.price_priority||0)>=1000){
       setTimeout(()=>resumeSinglePriceWatch(card),0);
     }
   }
@@ -2999,6 +3029,7 @@
           if(consecutiveErrors>=3)setSinglePriceWatchLabel('Reconectando ao preço…');
         }else if(!data){
           setSinglePriceWatchLabel('Carta não encontrada.');
+          applyLocalPricePatch(cardId,{price_pending:false});
           return{state:'missing'};
         }else{
           consecutiveErrors=0;
@@ -3113,7 +3144,7 @@
     const slot=Math.min(9,Math.max(1,+byId('cardSlot').value||1));
     const condition=byId('cardCondition').value;
     const finish=byId('cardFinish').value;
-    const quantity=selectedStatus==='owned'?1:0;
+    const quantity=selectedStatus==='owned'?Math.max(1,+existingEditing?.quantity||1):0;
 
     // The pocket is physical. Another row cannot be silently replaced.
     const occupant=V14.allCards.find(c=>c.binder_id===binderId&&+c.binder_page===page&&+c.binder_slot===slot&&c.id!==editingCardId);
@@ -3121,7 +3152,12 @@
 
     busy(button,true,'Salvando…');
     try{
-      if(page>currentBinderPages())await updateSettings({binder_pages:page},true);
+      const targetBinder=V14.binders.find(b=>b.id===binderId);
+      if(targetBinder&&page>(+targetBinder.pages||1)){
+        const {error:pagesError}=await db.from('pokemon_binders').update({pages:page,updated_at:new Date().toISOString()}).eq('id',binderId).eq('user_id',currentUser.id);
+        if(pagesError)throw pagesError;
+        targetBinder.pages=page;
+      }
       const payload=cardPayload(selectedCard,{
         page,slot,status:selectedStatus,quantity,condition,finish,
         notes:byId('cardNotes').value.trim()
@@ -3132,11 +3168,21 @@
       if(editingCardId){
         // Editing means this exact physical copy only.
         if(existingEditing?.card_key)payload.card_key=existingEditing.card_key;
+        // Prices belong to the worker / manual quote. The dialog's snapshot may
+        // be older than a quote saved while it was open.
+        for(const key of Object.keys(payload)){
+          if(/^(price_|myp_price_|liga_price_|market_)/.test(key)||key==='currency'||key==='finish_confirmed')delete payload[key];
+        }
         const {error}=await db.from('pokemon_cards')
           .update(payload)
           .eq('id',editingCardId)
           .eq('user_id',currentUser.id);
         if(error)throw error;
+        // A different finish/condition is a different quote.
+        if(existingEditing&&(String(existingEditing.finish||'')!==String(finish||'')||String(existingEditing.condition||'')!==String(condition||''))){
+          await markCardsForPrice([{...existingEditing,finish,condition}],1000).catch(()=>{});
+          kickPriceWorkerNow();
+        }
       }else{
         // New physical copy: always INSERT, even if the exact same card already exists.
         payload.user_id=currentUser.id;
@@ -3903,6 +3949,8 @@
     V14.scan.busy=true;
     try{
       const raw=await ocrCard(video,status);
+      // The scanner may have been closed while OCR was running.
+      if(!V14.scan.stream||!byId('scanDialog')?.open)return;
       const hint=mergeEvidence(raw);
       const num=evidenceBest(V14.scan.evidenceNumbers),name=evidenceBest(V14.scan.evidenceNames);
       const hasSetBank=!!activeBinder()?.set_id;
@@ -3931,7 +3979,10 @@
     if(!byId('scanDialog')?.open)byId('scanDialog').showModal();
     const status=byId('scanLiveStatus');if(status)status.textContent='Abrindo câmera traseira…';
     try{
-      V14.scan.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:2560},focusMode:{ideal:'continuous'}},audio:false});
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:2560},focusMode:{ideal:'continuous'}},audio:false});
+      // Closed during the permission prompt: release the camera immediately.
+      if(!byId('scanDialog')?.open){stream.getTracks().forEach(t=>t.stop());return}
+      V14.scan.stream=stream;
       const v=byId('scanVideo');v.srcObject=V14.scan.stream;await v.play();
       if(status)status.textContent=activeBinder()?.set_id?'Mantenha a carta inteira na moldura · comparação visual com a coleção':'Mantenha a carta inteira na moldura · o número reduz o banco, a imagem decide';
       V14.scan.timer=setTimeout(scanLiveTick,350);
