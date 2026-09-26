@@ -42,7 +42,6 @@ async function fetchSource(base:string, card:any, allowSavedLink=true, fast=fals
     const link=String(card.myp_price_link||card.price_br_link||card.price_link||"").trim();
     if(link&&/mypcards\.com/i.test(link)){
       q.set("link",link);
-      if(!fast)q.set("directBrowser","1");
     }
   }
   const controller=new AbortController();
@@ -356,11 +355,14 @@ async function fetchMarkets(card:any,onProgress:(pct:number,stage:string)=>Promi
   }
 
   // Compatibility path for a single-card refresh outside the fixed bulk batch.
-  // One-card queue must use the same complete MYP resolver used by a normal
-  // card lookup. The old fast/batch resolver was the reason valid cards were
-  // being finalized as "no_quote" before the richer identity lookup ran.
+  // One-card queue: if the exact MYP product URL is already known, use the
+  // fast direct reader. If identity is still unknown, use the full resolver.
+  // Never force Chromium just because a saved link exists.
+  const knownMypLink=[card.myp_price_link,card.price_br_link,card.price_link]
+    .map((v:any)=>String(v||"").trim())
+    .find((v:string)=>/mypcards\.com\/pokemon\/produto\/\d+\//i.test(v))||"";
   const [myp,liga]=await Promise.all([
-    fetchSource(MYP_API,card,true,false)
+    fetchSource(MYP_API,card,true,!!knownMypLink)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"one_shot_timeout":String(e?.message||"myp_one_shot_error")})),
     fetchSource(LIGA_API,card,false,true)
       .catch((e:any)=>({ok:false,error:e?.name==="AbortError"?"timeout":String(e?.message||"liga_error")}))
