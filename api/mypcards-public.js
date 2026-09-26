@@ -1668,32 +1668,28 @@ module.exports=async function handler(req,res){
     // o datacenter não conseguir atravessar a verificação da MYP.
     let actor=null;
     try{
-      actor=await queryMyp({...wanted,maxQueries:1,timeoutSeconds:11});
+      // Discovery only: do NOT ask the actor to pre-filter language/condition/
+      // finish, because that can hide the correct product before we get its URL.
+      // Identity is still validated by exact name + collector number.
+      actor=await queryMyp({
+        ...wanted,
+        lang:'',condition:'',finish:'Normal',
+        maxQueries:1,timeoutSeconds:11
+      });
     }catch(error){
       actor={error:String(error?.code||error?.message||'apify_error'),message:String(error?.message||error||'')};
-    }
-    if(hasAnyMarket(actor)){
-      return res.status(200).json({
-        ok:true,source:'MYP Cards',provider:'MYP exact proxy search',
-        mode:'exact-name-number-one-shot',
-        name,number,edition:set,finish,condition,
-        link:safeMypProductUrl(actor?.link)||'',
-        min:Number(actor?.min||0),avg:Number(actor?.avg||0),max:Number(actor?.max||0),
-        samples:actor?.samples??null,availableQuantity:actor?.availableQuantity??null,
-        exactVariant:actor?.exactVariant===true,variantFallback:actor?.variantFallback===true,
-        complete:!!(Number(actor?.min||0)||Number(actor?.avg||0)||Number(actor?.max||0)),
-        checkedAt:new Date().toISOString()
-      });
     }
 
     const actorLink=safeMypProductUrl(actor?.link);
     if(actorLink){
+      // Price is NEVER trusted from the discovery call. Open the exact MYP
+      // product and apply the real requested PT-BR / condition / finish filters.
       const result=await findAndScrapeMypBrowser(actorLink,wanted).catch(error=>({
         ok:false,error:'direct_product_error',message:String(error?.message||error),link:actorLink
       }));
       if(result?.ok){
         return res.status(200).json({
-          ...result,source:'MYP Cards',provider:'MYP exact proxy search',
+          ...result,source:'MYP Cards',provider:'MYP exact proxy discovery + direct read',
           mode:result?.mode||'exact-name-number-direct-read',link:result?.link||actorLink
         });
       }
