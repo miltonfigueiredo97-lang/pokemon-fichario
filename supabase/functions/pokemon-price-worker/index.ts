@@ -370,42 +370,28 @@ Deno.serve(async(req:Request)=>{
       // consistente, aprenda o padrão automaticamente e use-o como candidato.
       // A API ainda valida a página real antes de aceitar qualquer preço.
       let fetchCard=card;
-      const existingMyp=[
-        card.myp_price_link,card.price_br_link,card.price_link
-      ].map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v))||"";
-      let learnedLink="";
-      let siblingLink="";
-      const canonical151Link=await canonicalMew151Link(card).catch(()=> "");
-      const canonicalGenerations=await canonicalGenerationsLink(card).catch(()=> "");
-      const canonicalLink=canonical151Link||canonicalGenerations;
-      if(canonicalLink){
-        // Coleções com mapeamento MYP determinístico não precisam de busca
-        // por nome. Isso evita fila lenta e contaminação por outra impressão.
-        if(mypProductId(existingMyp)!==mypProductId(canonicalLink)){
-          await db.from("pokemon_cards")
-            .update({myp_price_link:canonicalLink})
-            .eq("id",card.id);
-        }
-        fetchCard={...card,myp_price_link:canonicalLink};
-      }else if(!existingMyp){
-        siblingLink=await siblingMypLink(db,card).catch(()=> "");
-        if(siblingLink){
-          // Mesmo produto / mesma coleção / mesmo número: preserve o link
-          // aprendido pela variante irmã, ainda que a leitura de preço falhe.
-          await db.from("pokemon_cards")
-            .update({myp_price_link:siblingLink})
-            .eq("id",card.id);
-          fetchCard={...card,myp_price_link:siblingLink};
-        }else{
-          // V16.10: never guess MYP product IDs from a numeric sequence.
-          // MYP product IDs are not reliably sequential inside a set
-          // (e.g. SSP/Fagulhas Impetuosas). With no validated sibling,
-          // the API must discover this exact printing by name + collector number.
-          learnedLink="";
+      if(!card?._batchMypMarket){
+        const existingMyp=[
+          card.myp_price_link,card.price_br_link,card.price_link
+        ].map((v:any)=>String(v||"").trim()).find((v:string)=>/mypcards\.com/i.test(v))||"";
+        const canonical151Link=await canonicalMew151Link(card).catch(()=> "");
+        const canonicalGenerations=await canonicalGenerationsLink(card).catch(()=> "");
+        const canonicalLink=canonical151Link||canonicalGenerations;
+        if(canonicalLink){
+          if(mypProductId(existingMyp)!==mypProductId(canonicalLink)){
+            await db.from("pokemon_cards").update({myp_price_link:canonicalLink}).eq("id",card.id);
+          }
+          fetchCard={...card,myp_price_link:canonicalLink};
+        }else if(!existingMyp){
+          const siblingLink=await siblingMypLink(db,card).catch(()=> "");
+          if(siblingLink){
+            await db.from("pokemon_cards").update({myp_price_link:siblingLink}).eq("id",card.id);
+            fetchCard={...card,myp_price_link:siblingLink};
+          }
         }
       }
 
-      await setProgress(db,card.id,40,[fetchCard.myp_price_link,fetchCard.price_br_link,fetchCard.price_link].some((v:any)=>/mypcards\.com/i.test(String(v||"")))?"link_ready":"identity_ready");
+      await setProgress(db,card.id,40,card?._batchMypMarket?"batch_market_ready":[fetchCard.myp_price_link,fetchCard.price_br_link,fetchCard.price_link].some((v:any)=>/mypcards\.com/i.test(String(v||"")))?"link_ready":"identity_ready");
       const markets=await fetchMarkets(fetchCard,(pct,stage)=>setProgress(db,card.id,pct,stage));
       await setProgress(db,card.id,86,"validating_quote");
       const myp=markets.myp,liga=markets.liga;
