@@ -1469,7 +1469,8 @@ module.exports=async function handler(req,res){
   const catalog=String(req.query.catalog||'')==='1';
   const batchResolve=String(req.query.batchResolve||'')==='1';
   const identityOnly=String(req.query.identityOnly||'')==='1';
-  if(fast||catalog||identityOnly)res.setHeader('Cache-Control','no-store, max-age=0');
+  const identityDebug=String(req.query.identityDebug||'')==='1';
+  if(fast||catalog||identityOnly||identityDebug)res.setHeader('Cache-Control','no-store, max-age=0');
 
   if(batchResolve){
     let items=[];
@@ -1555,6 +1556,22 @@ module.exports=async function handler(req,res){
       score:Number(official?.score||0),
       error:official?.link?'':'official_identity_not_found'
     });
+  }
+
+  if(identityDebug){
+    const started=Date.now();
+    const run=async(label,fn)=>{
+      const t=Date.now();
+      try{return{label,ms:Date.now()-t,links:await fn()}}
+      catch(error){return{label,ms:Date.now()-t,links:[],error:String(error?.message||error)}}
+    };
+    const [exact,collection,external,setpage]=await Promise.all([
+      run('exact-reader',()=>fastExactReaderCandidates({name,nameAliases:[name],number,set,setId})),
+      run('collection-reader',()=>fastCollectionReaderCandidates({name,nameAliases:[name],number,set,setId})),
+      run('external-search',()=>externalSearchCandidates({name,nameAliases:[name],number,set})),
+      run('set-page',()=>fastSetPageCandidates({apiId,setId,set,number,name,nameAliases:[name]}))
+    ]);
+    return res.status(200).json({ok:true,totalMs:Date.now()-started,exact,collection,external,setpage});
   }
 
   let directLink=safeMypProductUrl(link);
