@@ -173,20 +173,26 @@ async function searchMypCards(name,number,setHint,language){
     // with the original printed number on MYP (Classic Collection Lugia = 149/147).
     const queries=[String(name).trim()+(number?" ("+String(number).trim()+")":"")];
     if(number)queries.push(String(name).trim());
-    const answers=await Promise.all(queries.map(q=>fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null)));
+    const ask=q=>fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null);
+    let answers=await Promise.all(queries.map(ask));
+    // A cold server or a slow MYP page can fail once: retry before giving up.
+    if(!answers.some(a=>a?.ok)){await new Promise(r=>setTimeout(r,1500));answers=await Promise.all(queries.map(ask))}
     const byId=new Map();
     for(const a of answers)for(const c of (a?.ok?a.cards:[])||[])if(!byId.has(c.productId))byId.set(c.productId,c);
     const j={ok:answers.some(a=>a?.ok),cards:[...byId.values()]};
-    if(!j.ok)return{cards:[],needsToken:false,message:answers.some(a=>a?.blocked)?"MYP indisponível agora.":""};
+    if(!j.ok)return{cards:[],needsToken:false,message:"A MYP não respondeu agora; clique em Buscar de novo em instantes."};
     const chosen=language&&language!=="all"?language:"pt-br";
     return{cards:(j.cards||[]).map(c=>{
-      const lang=c.japanese?"ja":(chosen==="ja"?"pt-br":chosen);
+      // Japanese titles are known. Otherwise honour the chosen language; with
+      // "Todos", a card is Portuguese only when MYP has a Portuguese scan.
+      const lang=c.japanese?"ja":(language&&language!=="all"&&language!=="ja"?language:(c.imagePt?"pt-br":"en"));
+      const image=lang==="pt-br"&&c.imagePt?c.imagePt:(c.imageEn||c.image||"");
       return{
         source:"MYP Cards",apiId:"myp-"+c.productId,marketInternalCode:c.productId,
         name:c.name,namePt:c.name,nameEn:"",languageCode:lang,language:LANG[lang]||lang,
         setName:c.editionName||c.setCode,setId:c.setCode,setCode:c.setCode,
         number:c.number,internalNumber:c.numberToken,originalNumber:c.number,numberAliases:[c.number],
-        rarity:"",type:"",imageUrl:c.image||"",imagePt:c.image||"",
+        rarity:"",type:"",imageUrl:image,imagePt:c.imagePt||"",imageEn:c.imageEn||c.image||"",
         mypLink:c.link,
         market:c.lowestPrice?{source:"MYP Cards",min:c.lowestPrice,avg:0,max:0,link:c.link,availableQuantity:c.stock,internalCode:c.productId}:null,
         marketScore:c.stock?10:0
@@ -1120,7 +1126,7 @@ async function searchCards(options={}){
     ].filter(Boolean).join(" + ");
 
     $("searchStatus").textContent=
-      `${catalogResults.length} resultado(s) · ${br} em português${criteria?` · correspondendo a: ${criteria}`:""}.`;
+      `${catalogResults.length} resultado(s) · ${br} em português${criteria?` · correspondendo a: ${criteria}`:""}.`+(mypResult?.message?` ${mypResult.message}`:"");
   }catch(error){
     if(requestId!==catalogSearchSeq)return;
     console.error("[Catálogo V16]",error);

@@ -76,6 +76,17 @@ module.exports=async(req,res)=>{
 
   const result=await searchMypResults(q);
   const cards=(result.cards||[]).map(parseTile).filter(Boolean);
+  // MYP stores a Portuguese scan ("..._pt.jpg") for some printings only.
+  await Promise.all(cards.map(async card=>{
+    card.imageEn=card.image;
+    const pt=card.image.replace(/_en(\.\w+)$/,'_pt$1');
+    if(!card.image||pt===card.image)return;
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),3000);
+    try{
+      const r=await fetch(pt,{method:'HEAD',signal:controller.signal});
+      if(r.ok&&/^image\//.test(r.headers.get('content-type')||''))card.imagePt=pt;
+    }catch{}finally{clearTimeout(timer)}
+  }));
   const value={ok:!!result.ok&&!result.blocked,blocked:!!result.blocked,error:result.error||null,query:q,cards};
   if(value.ok)CACHE.set(key,{at:Date.now(),value});
   return res.status(200).json(value);
