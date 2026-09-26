@@ -1147,7 +1147,7 @@ function queueLiveCatalogSearch(delay=420){
   // new sets and promos appear without clicking "Buscar".
   clearTimeout(catalogAutoFullTimer);
   catalogAutoFullTimer=setTimeout(()=>{
-    if(norm($("searchName")?.value||"").replace(/s+/g,"").length>=3)searchCards({live:false});
+    if(norm($("searchName")?.value||"").replace(/\s+/g,"").length>=3)searchCards({live:false});
   },1500);
 }
 function isPromoCard(c){
