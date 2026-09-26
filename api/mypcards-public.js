@@ -1269,6 +1269,51 @@ async function resolveBatchMypHttp(items=[]){
   return{ok:true,items:results,elapsedMs:Date.now()-started};
 }
 
+async function resolveBatchMypActor(items=[]){
+  const rows=(Array.isArray(items)?items:[]).slice(0,10);
+  const started=Date.now();
+  if(!process.env.APIFY_API_TOKEN){
+    return{ok:false,error:'apify_not_configured',items:rows.map(item=>({
+      key:String(item?.key||item?.id||''),name:String(item?.name||''),number:String(item?.number||''),
+      ok:false,error:'apify_not_configured'
+    })),elapsedMs:Date.now()-started};
+  }
+
+  const results=await Promise.all(rows.map(async item=>{
+    const wanted={
+      name:String(item?.name||'').trim(),
+      nameAliases:Array.isArray(item?.nameAliases)?item.nameAliases:[],
+      number:String(item?.number||'').trim(),
+      set:String(item?.set||item?.setName||'').trim(),
+      setId:String(item?.setId||'').trim(),
+      lang:String(item?.lang||'').trim(),
+      finish:String(item?.finish||'Normal').trim(),
+      condition:String(item?.condition||'Nova').trim(),
+      maxQueries:1,
+      timeoutSeconds:8
+    };
+    const key=String(item?.key||item?.id||'');
+    try{
+      const found=await queryMyp(wanted);
+      return{
+        key,name:wanted.name,number:wanted.number,
+        ok:hasAnyMarket(found),
+        source:'MYP Cards',provider:'Apify batch10 one-shot',mode:'apify-batch10-one-shot',
+        link:safeMypProductUrl(found?.link||''),
+        min:Number(found?.min||0),avg:Number(found?.avg||0),max:Number(found?.max||0),
+        samples:found?.samples??null,availableQuantity:found?.availableQuantity??null,
+        exactVariant:found?.exactVariant===true,variantFallback:found?.variantFallback===true,
+        complete:!!(Number(found?.min)>0&&Number(found?.avg)>0&&Number(found?.max)>0),
+        error:hasAnyMarket(found)?'':String(found?.error||'batch_no_price'),
+        checkedAt:new Date().toISOString(),elapsedMs:Date.now()-started
+      };
+    }catch(error){
+      return{key,name:wanted.name,number:wanted.number,ok:false,error:String(error?.code||error?.message||'apify_batch_error'),elapsedMs:Date.now()-started};
+    }
+  }));
+  return{ok:true,items:results,elapsedMs:Date.now()-started};
+}
+
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');
   res.setHeader('Cache-Control','s-maxage=1200, stale-while-revalidate=14400');
@@ -1295,9 +1340,12 @@ module.exports=async function handler(req,res){
       const raw=String(req.query.items||'');
       items=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
     }catch{}
+    // V16.28: exactly one remote lookup cycle for the ten claimed cards.
+    // The actor uses Apify's proxy, so it is not trapped behind MYP's Cloudflare
+    // challenge like Vercel/Chromium/Jina. All ten calls run concurrently.
     const result=await Promise.race([
-      resolveBatchMypLinksBrowser(items),
-      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),11000))
+      resolveBatchMypActor(items),
+      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),10500))
     ]);
     return res.status(200).json(result);
   }
