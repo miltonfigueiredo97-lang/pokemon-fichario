@@ -1340,14 +1340,60 @@ module.exports=async function handler(req,res){
       const raw=String(req.query.items||'');
       items=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
     }catch{}
-    // V16.28: exactly one remote lookup cycle for the ten claimed cards.
-    // The actor uses Apify's proxy, so it is not trapped behind MYP's Cloudflare
-    // challenge like Vercel/Chromium/Jina. All ten calls run concurrently.
-    const result=await Promise.race([
-      resolveBatchMypActor(items),
-      new Promise(resolve=>setTimeout(()=>resolve({ok:false,error:'batch_price_timeout',items:[]}),10500))
+
+    // V16.29: one authoritative batch attempt, but with two independent
+    // discovery engines RUNNING IN PARALLEL inside the same 10.5s budget.
+    // The HTTP set-page resolver is always available; Apify is only an optional
+    // accelerator. We merge per-card results and never schedule a second attempt.
+    const run=async(fn)=>{try{return await fn()}catch(error){return{ok:false,error:String(error?.message||error||'batch_resolver_error'),items:[]}}};
+    const [httpResult,actorResult]=await Promise.race([
+      Promise.all([
+        run(()=>resolveBatchMypHttp(items)),
+        run(()=>resolveBatchMypActor(items))
+      ]),
+      new Promise(resolve=>setTimeout(()=>resolve([
+        {ok:false,error:'batch_http_timeout',items:[]},
+        {ok:false,error:'batch_actor_timeout',items:[]}
+      ]),10500))
     ]);
-    return res.status(200).json(result);
+
+    const byKey=new Map();
+    const ingest=(payload,priority)=>{
+      for(const item of Array.isArray(payload?.items)?payload.items:[]){
+        const key=String(item?.key||'');
+        if(!key)continue;
+        const current=byKey.get(key);
+        const hasPrice=hasAnyMarket(item);
+        const currentHasPrice=hasAnyMarket(current);
+        if(!current || (hasPrice&&!currentHasPrice) || (hasPrice===currentHasPrice&&priority>(current?._priority||0))){
+          byKey.set(key,{...item,_priority:priority});
+        }
+      }
+    };
+    ingest(httpResult,2);
+    ingest(actorResult,1);
+
+    const merged=(Array.isArray(items)?items:[]).slice(0,10).map(raw=>{
+      const key=String(raw?.key||raw?.id||'');
+      const hit=byKey.get(key);
+      if(hit){
+        const {_priority,...clean}=hit;
+        return clean;
+      }
+      return{
+        key,
+        name:String(raw?.name||''),
+        number:String(raw?.number||''),
+        ok:false,
+        error:String(httpResult?.error||actorResult?.error||'batch_no_result')
+      };
+    });
+
+    return res.status(200).json({
+      ok:true,
+      mode:'batch10-http-plus-optional-actor-one-shot',
+      items:merged
+    });
   }
 
   if(catalog){
