@@ -1597,7 +1597,19 @@ module.exports=async function handler(req,res){
   const queueSimple=String(req.query.queueSimple||'')==='1';
   const setReaderDebug=String(req.query.setReaderDebug||'')==='1';
   const sitemapDebug=String(req.query.sitemapDebug||'')==='1';
+  const webSearchDebug=String(req.query.webSearchDebug||'')==='1';
   if(fast||catalog||identityOnly||identityDebug||queueSimple)res.setHeader('Cache-Control','no-store, max-age=0');
+  if(webSearchDebug){
+    const wanted={
+      name:String(name||'Rotom'),nameAliases:[String(name||'Rotom')],
+      number:String(number||'061/191'),set:String(set||'Fagulhas Impetuosas'),
+      setId:String(setId||'sv08'),apiId,lang:String(lang||'pt-br'),
+      finish:String(finish||'Normal'),condition:String(condition||'Nova'),quick:true
+    };
+    const result=await searchWebExactMypBrowser(wanted,'');
+    return res.status(200).json({ok:!!result?.ok,result});
+  }
+
   if(sitemapDebug){
     const targetName=String(req.query.name||name||'Rotom').trim();
     try{
