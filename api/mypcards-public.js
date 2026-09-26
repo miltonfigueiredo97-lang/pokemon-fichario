@@ -834,19 +834,28 @@ async function simpleQueueMypLookup({name,number,set,setId,apiId,lang,finish,con
       };
     }
 
-    const candidates=productUrlsFromText(searchBody,[name]).slice(0,5);
+    let candidates=productUrlsFromText(searchBody,[name]).slice(0,5);
+
+    // O navegador humano abre essa busca normalmente, mas o datacenter da Vercel
+    // às vezes recebe somente a tela "Executando verificação de segurança".
+    // Quando isso acontecer, fazemos UMA única consulta indexada EXATA pela mesma
+    // identidade "Nome (numero/total)" e seguimos para o produto encontrado.
+    if(!candidates.length){
+      candidates=await exactMypGoogleReaderCandidates({name,number});
+    }
+
     if(!candidates.length){
       return{
         ok:false,error:'simple_product_not_found',source:'MYP Cards',
         provider:'MYP exact search',query,searchUrl,
-        message:'A busca exata da MYP não retornou um produto.',
+        message:'A busca exata não conseguiu obter o link do produto.',
         elapsedMs:Date.now()-started
       };
     }
 
     // Normalmente o primeiro resultado já é a carta correta. Validamos apenas
     // os primeiros resultados para evitar aceitar homônimos/edições erradas.
-    for(const candidate of candidates){
+    for(const candidate of candidates.slice(0,3)){
       try{
         const raw=await fetchText(candidate,9000);
         const identity=pageIdentity(raw);
