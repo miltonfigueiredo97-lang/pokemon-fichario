@@ -5,7 +5,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 //
 // Runs every 30 s (pg_cron job "pokemon-price-worker-v14") and whenever the
 // frontend kicks it. Each run claims up to CLAIM_SIZE pending cards (the RPC
-// keeps at most 8 in flight globally) and processes them in parallel.
+// keeps at most 5 in flight globally) and processes them in parallel.
 //
 // Per card:
 //   1. Resolve the MYP product link: saved link -> canonical (151 PT-BR,
