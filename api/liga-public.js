@@ -37,6 +37,8 @@ async function resolveFullNumber(number,apiId){
     if(!rr.ok)return raw;
     const d=await rr.json();
     const local=String(d?.localId||raw).trim();
+    // Promo sets print no total (TCGdex svp says 225): keep "207".
+    if(/^(basep|wp|np|dpp|hgssp|bwp|xyp|smp|swshp|svp|mep)$/i.test(String(d?.set?.id||'')))return raw;
     const total=Number(d?.set?.cardCount?.official||0);
     return /^\d+$/.test(local)&&total>0 ? String(Number(local))+'/'+String(total) : raw;
   }catch{return raw}

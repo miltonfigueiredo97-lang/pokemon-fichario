@@ -45,6 +45,8 @@
 
   async function resolveFullNumber(card){
     const raw=String(card?.number||'').trim();
+    // Promo cards print no set total (TCGdex svp says 225): "207", never "207/225".
+    if(isPromoCard(card))return raw.split('/')[0].trim();
     if(/\d+\s*\/\s*\d+/.test(raw))return raw.replace(/\s/g,'');
     if(!raw)return '';
     const apiId=String(card?.apiId||card?.api_id||'').trim();
@@ -69,7 +71,7 @@
 
   function ligaQuery(card,numberOverride=''){
     const name=String(card?.name||card?.namePt||card?.market_name_pt||'').trim();
-    const number=String(numberOverride||card?.number||'').trim();
+    const number=ligaCollectorNumber({...card,number:String(numberOverride||card?.number||'').trim()});
     return number?`${name} (${number})`:name;
   }
 

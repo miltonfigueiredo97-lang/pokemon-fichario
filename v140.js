@@ -1809,6 +1809,7 @@
     // RC1/83, RC29/83 etc. e a MYP nunca encontrava a impressão correta.
     if(setId==='g1'&&/^rc\d+$/i.test(n))return n.toUpperCase()+'/RC32';
     if(setId==='g1'&&/^rc\d+\/83$/i.test(n))return n.replace(/\/83$/i,'/RC32').toUpperCase();
+    if(isPromoCard(entry))return n.split('/')[0].trim();
     if(n.includes('/'))return n;
     return total?n+'/'+total:n;
   }

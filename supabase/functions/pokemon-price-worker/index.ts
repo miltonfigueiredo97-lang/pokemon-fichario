@@ -73,9 +73,53 @@ function collectorToken(v: unknown) {
 function isJapanese(card: any) {
   return String(card?.language_code || "").toLowerCase() === "ja";
 }
+// TCGdex promo sets print no set total; TCGdex's cardCount.official (225 for
+// svp) once turned "207" into "207/225", which neither MYP nor Liga match.
+const PROMO_SET_IDS = /^(basep|wp|np|dpp|hgssp|bwp|xyp|smp|swshp|svp|mep)$/i;
+function cardSetId(card: any) {
+  const id = String(card?.set_id || "").trim();
+  if (id) return id;
+  const api = String(card?.api_id || "");
+  return api.includes("-") ? api.slice(0, api.lastIndexOf("-")) : "";
+}
+function isPromoCard(card: any) {
+  return PROMO_SET_IDS.test(cardSetId(card));
+}
+// Lookups use the number as printed: "207/225" -> "207" for promo cards.
+function withPrintedNumber(card: any) {
+  const n = String(card?.number || "");
+  return isPromoCard(card) && n.includes("/") ? { ...card, number: n.split("/")[0].trim() } : card;
+}
+// Liga only opens a card for its number exactly as printed: "58/102" (old
+// sets), "086/089" (SWSH/SV/ME, zero padded), "207/∞" (numeric promos),
+// "SWSH142" (lettered promos).
+function ligaNumber(card: any) {
+  const setId = cardSetId(card);
+  const api = String(card?.api_id || "");
+  const number = String(card?.number || "").replace(/\s/g, "");
+  const [numPart = "", denPart = ""] = number.split("/");
+  const apiLocal = api.includes("-") ? api.slice(api.lastIndexOf("-") + 1) : "";
+  const same = /^\d+$/.test(apiLocal) && /^\d+$/.test(numPart)
+    ? Number(apiLocal) === Number(numPart)
+    : apiLocal.toLowerCase() === numPart.toLowerCase();
+  const local = apiLocal && same ? apiLocal : numPart;
+  if (!local) return "";
+  if (PROMO_SET_IDS.test(setId)) return /^\d+$/.test(local) ? local + "/∞" : local;
+  if (!denPart) return local;
+  if (!/^\d+$/.test(local) || !/^\d+$/.test(denPart)) return number;
+  const padded = /^0\d/.test(local) || /^(swsh|sv|me|pgo)|^cel25$/i.test(setId);
+  return padded ? local.padStart(3, "0") + "/" + denPart.padStart(3, "0") : String(Number(local)) + "/" + String(Number(denPart));
+}
 function ligaSearchLink(card: any) {
-  const q = `${String(card.name || "").trim()} (${String(card.number || "").trim()})`;
+  const n = ligaNumber(card);
+  const q = String(card.name || "").trim() + (n ? ` (${n})` : "");
   return "https://www.ligapokemon.com.br/?view=cards%2Fsearch&card=" + encodeURIComponent(q).replace(/%20/g, "+");
+}
+
+// A missing link, or an old search link built with the wrong number format.
+function needsLigaLink(card: any) {
+  const link = String(card.liga_price_link || "");
+  return !link || (/cards(%2F|\/)search/i.test(link) && link !== ligaSearchLink(card));
 }
 
 async function setProgress(db: any, id: string, progress: number, stage: string) {
@@ -650,7 +694,7 @@ async function saveQuote(db: any, card: any, market: any) {
     price_last_error: null, price_progress: 100, price_progress_stage: "complete", price_progress_updated_at: now,
     myp_link_tried: [],
   };
-  if (!card.liga_price_link) patch.liga_price_link = ligaSearchLink(card);
+  if (needsLigaLink(card)) patch.liga_price_link = ligaSearchLink(card);
   // Guard: a manual save by the user in the meantime wins.
   const { data } = await db.from("pokemon_cards").update(patch).eq("id", card.id).eq("price_pending", true).select("id").maybeSingle();
   return data ? "updated" : "superseded";
@@ -663,7 +707,7 @@ async function finishNoQuote(db: any, card: any, detail: string, extra: any = {}
     price_last_error: detail.slice(0, 480), price_progress: 100, price_progress_stage: "no_quote",
     price_progress_updated_at: now, price_checked_at: now, ...extra,
   };
-  if (!card.liga_price_link) patch.liga_price_link = ligaSearchLink(card);
+  if (needsLigaLink(card)) patch.liga_price_link = ligaSearchLink(card);
   await db.from("pokemon_cards").update(patch).eq("id", card.id).eq("price_pending", true);
   return "no_quote";
 }
@@ -823,7 +867,7 @@ Deno.serve(async (req: Request) => {
       const batch = Array.isArray(data) ? data : [];
       if (!batch.length) break;
       claimed += batch.length;
-      const results = await Promise.allSettled(batch.map((card: any) => processCard(db, card)));
+      const results = await Promise.allSettled(batch.map((card: any) => processCard(db, withPrintedNumber(card))));
       for (const r of results) {
         const key = r.status === "fulfilled" ? String(r.value) : "rejected";
         states[key] = (states[key] || 0) + 1;
@@ -832,5 +876,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "17.9", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "18.4", claimed, states, elapsedMs: Date.now() - started });
 });

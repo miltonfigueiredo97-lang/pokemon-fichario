@@ -405,7 +405,7 @@ module.exports=async function handler(req,res){
             specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
             specialMasterOriginalNumber(set.id||setId,card.localId||list[i]?.localId||'')
           ].filter(Boolean),
-          printedTotal:printedDenominator(
+          printedTotal:isPromoSet?'':printedDenominator(
             specialMasterNumber(set.id||setId,card.localId||list[i]?.localId||''),
             card?.set?.cardCount?.official||set?.cardCount?.official||''
           ),

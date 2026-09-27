@@ -128,7 +128,32 @@ function toast(msg){const e=$("toast");if(!e)return;e.textContent=msg;e.classLis
 function openDialog(id){const e=$(id);if(e&&!e.open)e.showModal()}
 function closeDialog(id){const e=$(id);if(e?.open)e.close()}
 function cardImage(c){const u=c?.imageUrl||c?.image_url||c?.market_image_pt||c?.market_image_en||"";return u&&u.includes("assets.tcgdex.net")&&!/\.(webp|png|jpe?g)$/i.test(u)?`${u}/high.webp`:u}
-function ligaUrl(c){return"https://www.ligapokemon.com.br/?view=cards/search&card="+encodeURIComponent([c.name,c.number,c.setName||c.set_name].filter(Boolean).join(" "))}
+// TCGdex promo sets (SVP, MEP, SWSH promos...). Their cards print no set total:
+// TCGdex's cardCount.official (225 for svp) must never become "207/225".
+const PROMO_SET_IDS=/^(basep|wp|np|dpp|hgssp|bwp|xyp|smp|swshp|svp|mep)$/i;
+function isPromoSetId(setId){return PROMO_SET_IDS.test(String(setId||"").trim())}
+// Set id of a saved or catalog card, falling back to the TCGdex api id ("svp-051").
+function cardSetIdOf(c){const id=String(c?.set_id||c?.setId||"").trim();if(id)return id;const api=String(c?.api_id||c?.apiId||"");return api.includes("-")?api.slice(0,api.lastIndexOf("-")):""}
+function isPromoCard(c){return isPromoSetId(cardSetIdOf(c))}
+// Liga Pokémon only opens a card for its number exactly as printed:
+// "58/102" (old sets), "086/089" (SWSH/SV/ME, zero padded), "207/∞" (numeric
+// promos), "SWSH142" (lettered promos).
+function ligaCollectorNumber(c){
+  const setId=cardSetIdOf(c);
+  const apiId=String(c?.api_id||c?.apiId||"");
+  const number=String(c?.number||"").replace(/\s/g,"");
+  const [numPart="",denPart=""]=number.split("/");
+  const apiLocal=apiId.includes("-")?apiId.slice(apiId.lastIndexOf("-")+1):"";
+  const same=/^\d+$/.test(apiLocal)&&/^\d+$/.test(numPart)?Number(apiLocal)===Number(numPart):apiLocal.toLowerCase()===numPart.toLowerCase();
+  const local=apiLocal&&same?apiLocal:numPart;
+  if(!local)return"";
+  if(isPromoSetId(setId))return /^\d+$/.test(local)?local+"/∞":local;
+  if(!denPart)return local;
+  if(!/^\d+$/.test(local)||!/^\d+$/.test(denPart))return number;
+  const padded=/^0\d/.test(local)||/^(swsh|sv|me|pgo)|^cel25$/i.test(setId);
+  return padded?local.padStart(3,"0")+"/"+denPart.padStart(3,"0"):String(Number(local))+"/"+String(Number(denPart));
+}
+function ligaUrl(c){const n=ligaCollectorNumber(c),name=String(c?.name||"").trim();return"https://www.ligapokemon.com.br/?view=cards/search&card="+encodeURIComponent(n?`${name} (${n})`:name)}
 function cardKey(c){const id=c.apiId||c.api_id||c.marketInternalCode||c.market_internal_code||"";const source=c.source||c.api_source||"catalog";const lang=c.languageCode||c.language_code||"";return id?`${source}|${id}|${lang}`:[c.name,c.setId||c.set_id,c.number,lang].map(norm).join("|")}
 function busy(btn,on,text="Aguarde..."){if(!btn)return;if(on){btn.dataset.old=btn.textContent;btn.textContent=text;btn.disabled=true}else{btn.textContent=btn.dataset.old||btn.textContent;btn.disabled=false}}
 let authMode="login";
@@ -606,7 +631,7 @@ async function fetchTCGdexSet(lang,setId){
 function mapTCGSetBrief(c,set,lang){
   const local=String(c?.localId||""),setId=set?.id||"",image=c?.image||"";
   const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);
-  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:marketNumber,internalNumber:local,originalNumber,numberAliases:[local,marketNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||String(set?.cardCount?.official||""),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
+  return{source:"TCGdex",apiId:c?.id||`${setId}-${local}`,name:c?.name||"",languageCode:lang,language:LANG[lang]||lang,setName:set?.name||setId,setId,number:marketNumber,internalNumber:local,originalNumber,numberAliases:[local,marketNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||(isPromoSetId(setId)?"":String(set?.cardCount?.official||"")),rarity:c?.rarity||"",type:c?.category||"",category:c?.category||"",hp:c?.hp??null,imageUrl:image,pricing:c?.pricing||null};
 }
 function quickCatalogScore(c,name,number){
   let s=0;
@@ -850,7 +875,7 @@ async function fetchTCGdexCard(lang,id,fallback=null){
     return await hydrateMissingCatalogImage(fb(),lang);
   }
 }
-function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=String(s.cardCount?.official||"");const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);const displayNumber=isAnniversaryClassicSet(setId)?marketNumber:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,originalNumber,numberAliases:[local,displayNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
+function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=isPromoSetId(s.id)?"":String(s.cardCount?.official||"");const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);const displayNumber=isAnniversaryClassicSet(setId)?marketNumber:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,originalNumber,numberAliases:[local,displayNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
   const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);
   return [...cards].sort((a,b)=>score(b)-score(a));

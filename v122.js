@@ -361,6 +361,8 @@
 
   async function resolveFullNumber(card){
     const raw=String(card?.number||'').trim().replace(/\s/g,'');
+    // Promo cards print no set total (TCGdex svp says 225): "207", never "207/225".
+    if(isPromoCard(card))return raw.split('/')[0];
     if(/[A-Za-z]{0,8}\d+[A-Za-z]*\/[A-Za-z]{0,8}\d+[A-Za-z]*/i.test(raw))return raw;
     if(!raw)return'';
     if(!/^\d+$/.test(raw))return raw;
@@ -378,7 +380,7 @@
     return raw;
   }
 
-  function ligaSearchUrl(card,fullNumber){const name=String(card?.name||'').trim();const number=fullNumber||String(card?.number||'').trim();return 'https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(number?`${name} (${number})`:name)}
+  function ligaSearchUrl(card,fullNumber){const name=String(card?.name||'').trim();const number=ligaCollectorNumber({...card,number:fullNumber||String(card?.number||'').trim()});return 'https://www.ligapokemon.com.br/?view=cards/search&card='+encodeURIComponent(number?`${name} (${number})`:name)}
   function isMypUrl(v){try{return /(^|\.)mypcards\.com$/i.test(new URL(String(v||'')).hostname)}catch{return false}}
 
   async function querySource(endpoint,source,card,finish,condition){
@@ -817,7 +819,7 @@
 
     const liga=$v('#ligaSearchLink');
     if(liga){
-      const verified=ligaLinkMatchesNumber(card.liga_price_link,full)?card.liga_price_link:'';
+      const verified=ligaLinkMatchesNumber(card.liga_price_link,ligaCollectorNumber({...card,number:full}))?card.liga_price_link:'';
       liga.href=verified||ligaSearchUrl(card,full);
       liga.classList.remove('hidden');
     }
