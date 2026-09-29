@@ -65,18 +65,23 @@ async function readMypPage(page,url,wanted){
   return data;
 }
 
-// The product page lists only the first 20 offers of each seller list; the
-// rest (often every Reverse/Poké Ball offer) sit on "?estoque-cert-page=N" and
-// "?estoque-outros-page=N". MYP challenges any second request of a datacenter
-// session, so the worker opens each of those pages as its own engine call
-// (offerQuery). Here we only report which pages exist.
+// The product page lists only the first 10 offers of each seller list; the
+// rest (often every Reverse/Poké Ball offer) sit on
+// "?estoque-cert-page=N&per-page=10" and "?estoque-outros-page=N&dp-1-per-page=10".
+// MYP challenges any second request of a datacenter session, so the worker
+// opens each of those pages as its own engine call (offerQuery). Here we only
+// report which pages exist.
+function isOfferPageQuery(q){
+  return /^(?:(?:estoque-(?:cert|outros)-page|(?:dp-\d+-)?per-page)=\d+)(?:&(?:estoque-(?:cert|outros)-page|(?:dp-\d+-)?per-page)=\d+)*$/.test(q)
+    &&/(?:^|&)estoque-(?:cert|outros)-page=(?!1(?:&|$))\d+/.test(q);
+}
 async function offerPageQueries(page){
   return page.evaluate(()=>{
     const base=location.pathname;
     return [...new Set([...document.querySelectorAll('a[href*="estoque-cert-page="],a[href*="estoque-outros-page="]')]
       .map(a=>{try{const u=new URL(a.getAttribute('href'),location.href);return u.pathname===base?u.search.replace(/^\?/,''):''}catch{return''}})
-      .filter(q=>/^estoque-(?:cert|outros)-page=\d+$/.test(q)&&!/=1$/.test(q)))].slice(0,10);
-  }).catch(()=>[]);
+      .filter(Boolean))].slice(0,20);
+  }).then(list=>list.filter(isOfferPageQuery).slice(0,10)).catch(()=>[]);
 }
 
 // No offer for the card's exact condition/language: use the closest available
@@ -250,7 +255,7 @@ function candidateUrls(q){
   const urls=[];
   const link=safeMypProductUrl(q.mypLink);
   const offerQuery=String(q.offerQuery||'');
-  if(link)urls.push(/^estoque-(?:cert|outros)-page=\d+$/.test(offerQuery)?link+'?'+offerQuery:link);
+  if(link)urls.push(isOfferPageQuery(offerQuery)?link+'?'+offerQuery:link);
   const slug=slugify(q.name)||'card';
   for(const raw of String(q.mypIds||'').split(',')){
     const id=Number(String(raw).trim());
