@@ -2538,7 +2538,11 @@
       price_progress:0,price_progress_stage:'queued',price_progress_updated_at:now,
       price_batch_id:batchId,price_batch_started_at:now,myp_link_tried:[]
     };
-    const enqueuedIds=new Set();
+    // The database stamps price_requested_at / price_next_retry_at with its own
+    // clock (trigger pokemon_price_request_server_time): a computer clock 73 s
+    // ahead kept every job unclaimable for 73 s and made the watcher reject the
+    // worker's (server-time) result forever. Keep the server's values.
+    const enqueued=new Map();
     for(let i=0;i<list.length;i+=150){
       const ids=list.slice(i,i+150).map(x=>x.id);
       const {data,error}=await db.from('pokemon_cards')
@@ -2546,14 +2550,16 @@
         .eq('user_id',currentUser.id)
         .in('id',ids)
         .or('price_processing_at.is.null,price_processing_at.lt.'+new Date(Date.now()-3*60*1000).toISOString())
-        .select('id');
+        .select('id,price_requested_at,price_next_retry_at');
       if(error)throw error;
-      for(const row of data||[])enqueuedIds.add(row.id);
+      for(const row of data||[])enqueued.set(row.id,row);
     }
     for(const card of list){
-      if(enqueuedIds.has(card.id)){
-        Object.assign(card,patch);
-        applyLocalPricePatch(card.id,patch);
+      const row=enqueued.get(card.id);
+      if(row){
+        const applied={...patch,price_requested_at:row.price_requested_at||patch.price_requested_at,price_next_retry_at:row.price_next_retry_at};
+        Object.assign(card,applied);
+        applyLocalPricePatch(card.id,applied);
       }
     }
     list.priceBatchId=batchId;
