@@ -406,10 +406,13 @@ async function searchLegacyCards(name,number,setHint,options={}){
 }
 async function searchJapaneseOfficial(name,number,setHint,options={}){
   const raw=String(name||"").trim();
-  if(!raw)return[];
+  // Without a name, only a full number ("132/190") can be looked up.
+  const byNumber=!raw&&/\d\s*\/\s*\d/.test(String(number||""));
+  if(!raw&&!byNumber)return[];
   const live=!!options.live;
-  if(live&&norm(raw).replace(/\s+/g,"").length<4)return[];
-  const p=new URLSearchParams({name:raw,limit:String(live?18:60)});
+  if(live&&!byNumber&&norm(raw).replace(/\s+/g,"").length<4)return[];
+  const p=new URLSearchParams({limit:String(live?18:60)});
+  if(raw)p.set("name",raw);
   if(number)p.set("number",number);
   if(setHint)p.set("set",setHint);
   const key="jp-official|"+p.toString();
@@ -574,6 +577,12 @@ function cardNumberMatches(wanted,card){
   if(!String(wanted||'').trim())return true;
   const values=[card?.number,card?.internalNumber,...(Array.isArray(card?.numberAliases)?card.numberAliases:[])].filter(Boolean);
   return values.some(v=>collectorNumberMatches(wanted,v));
+}
+function exactFullNumberMatches(wanted,card){
+  const w=numParts(wanted);
+  if(!w.n||!w.d)return false;
+  const values=[card?.number,card?.internalNumber,...(Array.isArray(card?.numberAliases)?card.numberAliases:[])].filter(Boolean);
+  return values.some(v=>{const f=numParts(v);return !!f.d&&collectorNumberMatches(wanted,v)});
 }
 function catalogNameMatches(name,card){
   const q=norm(name),cn=norm(card?.name);
@@ -1112,8 +1121,14 @@ async function searchCards(options={}){
       : Promise.resolve({cards:[],needsToken:false});
     const mypCodesPromise=setIds.length?mypCodesForSets(setIds):Promise.resolve(new Set());
 
-    const jpPromise=(name&&(language==="all"||language==="ja"))
-      ? searchJapaneseOfficial(name,number,hasSet?selectedSetLabel:"",{live})
+    // A full number ("132/190") is also looked up on its own: TCGdex misses
+    // Japanese cards and a translated name does not match the Japanese one.
+    const fullNumber=/\d\s*\/\s*\d/.test(number);
+    const jpPromise=(language==="all"||language==="ja")
+      ? Promise.all([
+          name?searchJapaneseOfficial(name,number,hasSet?selectedSetLabel:"",{live}):[],
+          fullNumber&&!hasSet?searchJapaneseOfficial("",number,"",{live}):[]
+        ]).then(groups=>groups.flat())
       : Promise.resolve([]);
 
     const [tcgGroups,jpCards,wantedMypCodes]=await Promise.all([tcgPromise,jpPromise,mypCodesPromise]);
@@ -1132,7 +1147,9 @@ async function searchCards(options={}){
     // One final deterministic intersection. Every supplied criterion is mandatory.
     pool=pool.filter(card=>{
       if(language!=="all"&&card.languageCode!==language)return false;
-      if(name&&!catalogNameMatches(name,card))return false;
+      // The complete printed number ("132/190") identifies the card even when
+      // the typed name is a translation the source does not know.
+      if(name&&!catalogNameMatches(name,card)&&!(fullNumber&&exactFullNumberMatches(number,card)))return false;
       if(number&&!cardNumberMatches(number,card))return false;
       if(setIds.length){
         const cid=String(card.setId||card.set_id||"");

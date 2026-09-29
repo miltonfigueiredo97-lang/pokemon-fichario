@@ -1,6 +1,6 @@
 'use strict';
 
-const {searchOfficialJapaneseCards}=require('../lib/jp-official');
+const {searchOfficialJapaneseCards,searchOfficialJapaneseByNumber}=require('../lib/jp-official');
 
 module.exports=async function handler(req,res){
   res.setHeader('Cache-Control','public, s-maxage=900, stale-while-revalidate=86400');
@@ -10,6 +10,17 @@ module.exports=async function handler(req,res){
   const hp=String(req.query?.hp||'').trim();
   const rarity=String(req.query?.rarity||'').trim();
   const limit=Math.max(1,Math.min(80,Number(req.query?.limit)||40));
+
+  // Number with its printed total ("132/190"): find it without a name.
+  if(!name&&/\d\s*\/\s*\d/.test(number)){
+    try{
+      const cards=await searchOfficialJapaneseByNumber(number);
+      return res.status(200).json({ok:true,source:'pokemon-card.com',cards});
+    }catch(error){
+      console.error('[jp-card-search number]',error);
+      return res.status(502).json({ok:false,error:'jp_search_failed',cards:[],message:error?.message||String(error)});
+    }
+  }
 
   if(!name){
     return res.status(200).json({
