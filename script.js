@@ -1116,9 +1116,13 @@ async function searchCards(options={}){
       ? searchJapaneseOfficial(name,number,hasSet?selectedSetLabel:"",{live})
       : Promise.resolve([]);
 
-    const [tcgGroups,mypResult,jpCards,wantedMypCodes]=await Promise.all([tcgPromise,mypPromise,jpPromise,mypCodesPromise]);
+    const [tcgGroups,jpCards,wantedMypCodes]=await Promise.all([tcgPromise,jpPromise,mypCodesPromise]);
     if(requestId!==catalogSearchSeq)return;
 
+    // TCGdex/JP answer in about a second; the MYP search opens a browser on the
+    // server and takes 10-40 s. Show the fast results first, then merge MYP.
+    const waitingMyp=!!(name&&!live);
+    const publish=async(mypResult,partial)=>{
     let pool=[
       ...tcgGroups.flat(),
       ...(mypResult?.cards||[]),
@@ -1145,6 +1149,7 @@ async function searchCards(options={}){
 
     const poolSets=[...new Set(pool.filter(c=>c.source!=="MYP Cards").map(c=>String(c.setId||"")).filter(Boolean))].slice(0,40);
     const codeBySet=new Map(await Promise.all(poolSets.map(async id=>[id,await mypCodeForSet(id)])));
+    if(requestId!==catalogSearchSeq)return;
     pool=mergeMypIntoCatalog(pool,card=>codeBySet.get(String(card.setId||""))||"");
     pool=cleanCatalogDedupe(pool);
 
@@ -1189,7 +1194,17 @@ async function searchCards(options={}){
     ].filter(Boolean).join(" + ");
 
     $("searchStatus").textContent=
-      `${catalogResults.length} resultado(s) · ${br} em português${criteria?` · correspondendo a: ${criteria}`:""}.`+(mypResult?.message?` ${mypResult.message}`:"");
+      `${catalogResults.length} resultado(s) · ${br} em português${criteria?` · correspondendo a: ${criteria}`:""}.`+(partial?" Procurando também na MYP…":(mypResult?.message?` ${mypResult.message}`:""));
+    };
+
+    await publish({cards:[]},waitingMyp);
+    if(!waitingMyp||requestId!==catalogSearchSeq)return;
+    // The results are on screen: typing again may start a new search now.
+    catalogExplicitSearch=false;
+    busy(button,false);
+    const mypResult=await mypPromise;
+    if(requestId!==catalogSearchSeq)return;
+    await publish(mypResult,false);
   }catch(error){
     if(requestId!==catalogSearchSeq)return;
     console.error("[Catálogo V16]",error);
