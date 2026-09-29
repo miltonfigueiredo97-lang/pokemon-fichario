@@ -641,16 +641,18 @@ async function readProduct(card: any, link: string, ctx: ReadCtx = { code: "", r
   }
 }
 
-// Page 1 of a product lists only 20 offers per seller list. When it had no
-// exact match (or only an approximate one), read the other offer pages, each
-// as its own engine call, and merge the exact matches.
+// Page 1 of a product lists only 10 offers per seller list. Read the other
+// offer pages too, each as its own engine call, and merge their exact matches
+// with page 1's: one exact offer on page 1 (Volcarona Foil SP R$ 2) used to
+// hide the three on page 2 (R$ 7,99, 15, 19,99), leaving min = avg, no max.
 const MAX_OFFER_PAGES = 4;
 async function readOtherOfferPages(card: any, link: string, ctx: ReadCtx, first: any, probes: any[]) {
   const matchedProbe = (probes || []).find((p: any) => p?.match);
   const queries: string[] = (matchedProbe?.offerPageQueries || []).slice(0, MAX_OFFER_PAGES);
   if (!queries.length) return first;
-  if (first?.ok && !first?.approx) return first;
   const pages = await Promise.all(queries.map((offerQuery) => readProduct(card, link, { ...ctx, offerQuery, exactOnly: true })));
+  // An approximate page-1 quote (other condition) never mixes with exact offers.
+  if (first?.ok && !first?.approx) pages.unshift({ market: first, probes: [] });
   const prices: number[] = [];
   let qty = 0;
   for (const p of pages) {
@@ -876,5 +878,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "18.4", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "18.9", claimed, states, elapsedMs: Date.now() - started });
 });
