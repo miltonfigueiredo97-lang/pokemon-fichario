@@ -189,7 +189,7 @@ function openAddForPosition(page=currentPage,slot=null){pendingPosition=slot?{pa
 // V17: MYP lists every printing it sells (new sets, promos, Japanese, reprint
 // collections) under its own search. /api/myp-search runs that search on the
 // server for signed-in users and returns one entry per product.
-async function searchMypCards(name,number,setHint,language){
+async function searchMypCards(name,number,setHint,language,fullNumbers=[]){
   if(!name)return{cards:[],needsToken:false};
   try{
     const {data:{session}}=await db.auth.getSession();
@@ -198,6 +198,8 @@ async function searchMypCards(name,number,setHint,language){
     // with the original printed number on MYP (Classic Collection Lugia = 149/147).
     const queries=[String(name).trim()+(number?" ("+String(number).trim()+")":"")];
     if(number)queries.push(String(name).trim());
+    // MYP ranks "Name (77)" poorly; "Name (077/132)" finds the exact printing.
+    for(const full of fullNumbers.slice(0,3))queries.push(String(name).trim()+" ("+full+")");
     const ask=q=>fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null);
     let answers=await Promise.all(queries.map(ask));
     // A cold server or a slow MYP page can fail once: retry before giving up.
@@ -929,6 +931,23 @@ function rank(cards,q){
   }
 }
 function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.apiId,c.languageCode,c.name,c.number,c.setId].join("|");if(seen.has(k))return false;seen.add(k);return true})}
+// "Bulbasaur" + "77" -> ["077/132"]: the complete printed numbers of that
+// card, from the English catalog (which has every set; Portuguese does not).
+async function mypFullNumbers(name,number){
+  const w=numParts(number);
+  if(!w.n||w.d)return[];
+  try{
+    const [items,counts]=await Promise.all([fetchTCGdexList("en",{name,localId:w.rawN||w.n}),tcgdexSetCounts("en")]);
+    const out=[];
+    for(const item of items){
+      const local=String(item.localId||"");
+      if(!/^\d+$/.test(local)||!collectorNumberMatches(number,local))continue;
+      const id=String(item.id||""),total=counts.get(id.slice(0,id.lastIndexOf("-")));
+      if(total)out.push(local.padStart(3,"0")+"/"+String(total).padStart(3,"0"));
+    }
+    return [...new Set(out)].slice(0,3);
+  }catch{return[]}
+}
 // Printed total (cardCount.official) of every set of a language, one request.
 const tcgdexSetCountCache=new Map();
 function tcgdexSetCounts(apiLang){
@@ -1047,7 +1066,8 @@ async function searchCards(options={}){
   if(!live){clearTimeout(catalogSearchTimer);clearTimeout(catalogAutoFullTimer);catalogExplicitSearch=true}
   const requestId=++catalogSearchSeq;
 
-  let name=$("searchName").value.trim();
+  // "Bulbasaur LV.14": no source keeps the level in the name ("LV.X" stays).
+  let name=$("searchName").value.trim().replace(/\b(?:lv|nv|n[ií]vel)\.?\s*\d+\b/gi," ").replace(/\s+/g," ").trim();
   let number=$("searchNumber").value.trim();
   const language=$("searchLanguage").value;
 
@@ -1117,7 +1137,7 @@ async function searchCards(options={}){
     // MYP (server-side search) only on explicit searches: button, Enter,
     // collection change. Live typing stays on TCGdex.
     const mypPromise=(name&&!live)
-      ? searchMypCards(name,number,hasSet?selectedSetLabel:"",language)
+      ? mypFullNumbers(name,number).then(full=>searchMypCards(name,number,hasSet?selectedSetLabel:"",language,full))
       : Promise.resolve({cards:[],needsToken:false});
     const mypCodesPromise=setIds.length?mypCodesForSets(setIds):Promise.resolve(new Set());
 
