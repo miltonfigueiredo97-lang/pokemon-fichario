@@ -473,7 +473,8 @@ async function fetchTCGdexList(apiLang,q){
   const p=new URLSearchParams();
   if(q.name)p.set("name",q.name);
   if(q.localId)p.set("localId",q.localId);
-  p.set("pagination:itemsPerPage","60");
+  p.set("pagination:itemsPerPage",String(q.perPage||60));
+  if(q.page>1)p.set("pagination:page",String(q.page));
   const key=apiLang+"|"+p.toString();
   const cached=catalogSearchCache.get(key);
   if(cached&&Date.now()-cached.at<5*60*1000)return cached.items;
@@ -919,6 +920,17 @@ function rank(cards,q){
   }
 }
 function dedupe(a){const seen=new Set;return a.filter(c=>{const k=[c.source,c.apiId,c.languageCode,c.name,c.number,c.setId].join("|");if(seen.has(k))return false;seen.add(k);return true})}
+// Printed total (cardCount.official) of every set of a language, one request.
+const tcgdexSetCountCache=new Map();
+function tcgdexSetCounts(apiLang){
+  if(!tcgdexSetCountCache.has(apiLang)){
+    tcgdexSetCountCache.set(apiLang,fetch(`${TCGDEX_BASE}/${apiLang}/sets`)
+      .then(r=>r.ok?r.json():[])
+      .then(a=>new Map((Array.isArray(a)?a:[]).filter(x=>Number(x?.cardCount?.official)>0).map(x=>[String(x.id),Number(x.cardCount.official)])))
+      .catch(()=>{tcgdexSetCountCache.delete(apiLang);return new Map()}));
+  }
+  return tcgdexSetCountCache.get(apiLang);
+}
 async function searchTCGdexClean(lang,name,number,{setIds=[],live=false}={}){
   const apiLang=tcgApiLang(lang);
   const rawName=String(name||"").trim();
@@ -962,10 +974,28 @@ async function searchTCGdexClean(lang,name,number,{setIds=[],live=false}={}){
     }
   }
 
-  // Number-only search remains supported.
-  if(!rawName&&localId)add(await fetchTCGdexList(apiLang,{localId}));
+  // Number-only search: a small number exists in hundreds of sets, so read
+  // every match (not just the first page) and keep the sets whose printed
+  // total is the one typed ("342/190" -> sets with 190 cards).
+  // TCGdex matches localId as a substring ("5" also returns 15, 150...).
+  if(!rawName&&localId){
+    for(let page=1;page<=4;page++){
+      const items=await fetchTCGdexList(apiLang,{localId,perPage:250,page});
+      add(items);
+      if(items.length<250)break;
+    }
+  }
 
   let list=[...seen.values()];
+  if(!rawName&&/^\d+$/.test(wanted.rawD||"")){
+    const counts=await tcgdexSetCounts(apiLang);
+    const den=Number(wanted.rawD);
+    list=list.filter(item=>{
+      const id=String(item.id||"");
+      // Sets without a printed total (promos) cannot match "342/190".
+      return !counts.size||counts.get(id.slice(0,id.lastIndexOf("-")))===den;
+    });
+  }
   if(rawName)list=list.filter(item=>catalogNameMatches(rawName,{name:item.name||""}));
   if(String(number||"").trim()){
     list=list.filter(item=>collectorNumberMatches(number,item.localId||item.id||""));
@@ -1026,6 +1056,14 @@ async function searchCards(options={}){
   if(inline&&!number){
     name=inline[1].trim();
     number=inline[2]+(inline[3]?"/"+inline[3]:"");
+  }
+  // Only a collector number typed in the name field ("342/190", "066/091"):
+  // search by number, which works in any language, even when the name is
+  // Japanese or translated differently.
+  const bareNumber=name.match(/^([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})\s*\/\s*([A-Za-z]{0,8}\d{1,4}[A-Za-z]{0,4})$/);
+  if(bareNumber&&!number){
+    name="";
+    number=bareNumber[1]+"/"+bareNumber[2];
   }
 
   if(!name&&!number&&!hasSet&&!hasGeneration){
