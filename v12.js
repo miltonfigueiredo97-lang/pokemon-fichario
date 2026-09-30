@@ -58,8 +58,10 @@
       if(r.ok){
         const data=await r.json();
         const total=Number(data?.set?.cardCount?.official||0);
-        if(total>0){
-          const full=`${Number(raw)}/${total}`;
+        // Gallery subsets print the prefix on both sides: GG24/GG70, TG05/TG30.
+        const prefixed=raw.match(/^([A-Za-z]+)(\d+)$/);
+        if(total>0&&(prefixed||/^\d+$/.test(raw))){
+          const full=prefixed?`${prefixed[1].toUpperCase()}${prefixed[2]}/${prefixed[1].toUpperCase()}${total}`:`${Number(raw)}/${total}`;
           fullNumberCache.set(key,full);
           return full;
         }

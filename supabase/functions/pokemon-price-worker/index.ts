@@ -528,10 +528,16 @@ async function searchLookup(db: any, card: any, code: string) {
     const t = parseTitle(c.text);
     const id = Number(c.productId) || productId(c.link);
     if (!t || !id || !slugOf(c.link)) continue;
-    const token = tileSetToken(c.text);
+    // The MYP code ("pokemon_crz_gg24/70") is authoritative: gallery subsets
+    // drop the prefix in the title ("Miltank (24/70)").
+    const pc = parseMypCode(c.code);
+    const token = (pc?.set || tileSetToken(c.text));
+    const tNum = pc?.num || t.num, tDen = pc?.den || t.den;
     rows.push({ product_id: id, slug: slugOf(c.link), title: String(c.text).split(" · ")[0].slice(0, 160), name_key: nameKey(t.name),
-      num: t.num, den: t.den, set_code: token || null, info: String(c.text).toLowerCase().slice(0, 300) });
-    if (tried.has(id) || t.num !== num || (den && t.den && t.den !== den)) continue;
+      num: tNum, den: tDen, set_code: token || null, info: String(c.text).toLowerCase().slice(0, 300) });
+    const numOk = tNum === num || t.num === num;
+    const denOk = !den || !tDen || tDen === den || t.den === den || tDen === den.replace(/^[a-z]+/, "");
+    if (tried.has(id) || !numOk || !denOk) continue;
     const key = nameKey(t.name);
     let score = 1;
     if (key === target || key.startsWith(target + " ") || target.startsWith(key)) score += 3;
@@ -878,5 +884,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "18.9", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.1", claimed, states, elapsedMs: Date.now() - started });
 });

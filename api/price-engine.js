@@ -25,7 +25,7 @@ const {searchMypResults,launch,readProduct,summarizeProduct,productIdentityOk,fi
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
 const MAX_CANDIDATES=1;
-const BUILD='18.5';
+const BUILD='18.6';
 const DEADLINE_MS=52000;
 
 function normalize(v){
@@ -148,7 +148,13 @@ async function lookupMyp(page,wanted,urls,deadline){
       const pageNumber=(String(data.title||'').match(/\(([^)]*\d[^)]*)\)/)||[])[1]||'';
       const relaxed=wanted.relax&&wanted.setCode&&pageCode===wanted.setCode.toLowerCase()
         &&pageName&&pageName===normalize(wanted.name)&&pageNumber;
-      if(!relaxed)continue;
+      // Subset galleries drop the prefix in the title: "Miltank (24/70)" is
+      // coded "pokemon_crz_gg24/70". The MYP code's number is authoritative.
+      const token=v=>{const m=String(v||'').replace(/[^A-Za-z0-9]/g,'').match(/^([A-Za-z]*)(\d+)([A-Za-z]*)$/);return m?(m[1]+Number(m[2])+m[3]).toLowerCase():''};
+      const codeNumber=(String(data.code||'').split('_').pop()||'').split('/')[0];
+      const byCode=!!codeNumber&&!!pageNumber&&token(codeNumber)===token(String(wanted.number).split('/')[0])
+        &&productIdentityOk(data,{...wanted,number:pageNumber});
+      if(!relaxed&&!byCode)continue;
       effective={...wanted,number:pageNumber};
       probe.relaxed=true;
     }
