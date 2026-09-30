@@ -25,7 +25,7 @@ const {searchMypResults,launch,readProduct,summarizeProduct,productIdentityOk,fi
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
 const MAX_CANDIDATES=1;
-const BUILD='18.6';
+const BUILD='18.7';
 const DEADLINE_MS=52000;
 
 function normalize(v){

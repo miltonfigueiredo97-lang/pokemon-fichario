@@ -26,7 +26,8 @@ const MAX_TRIED_IDS = 40;
 // Predicted ids that 404 teach nothing; after this many, walk real pages.
 const MAX_PREDICTED_TRIES = 6;
 // App-only set ids (not on TCGdex) -> MYP set code.
-const APP_SET_CODES: Record<string, string> = { cel25cc: "ccc" };
+// Sets whose MYP code differs from TCGdex's official abbreviation.
+const APP_SET_CODES: Record<string, string> = { cel25cc: "ccc", cel25: "clb" };
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
 // Shared secret for /api/price-engine, read once per run from the database
@@ -390,16 +391,23 @@ async function setCodeOf(db: any, card: any, anchorIds: number[]) {
   const setId = String(card?.set_id || "").trim();
   if (!setId) return "";
   if (APP_SET_CODES[setId.toLowerCase()]) return APP_SET_CODES[setId.toLowerCase()];
+  // The code MYP really uses for the linked cards of this set wins over
+  // TCGdex's abbreviation (they differ for some sets).
+  let learned = "";
+  if (anchorIds.length) {
+    const { data } = await db.from("myp_products").select("set_code").in("product_id", anchorIds.slice(0, 200)).not("set_code", "is", null);
+    const counts = new Map<string, number>();
+    for (const r of data || []) counts.set(r.set_code, (counts.get(r.set_code) || 0) + 1);
+    const top = [...counts].sort((a, b) => b[1] - a[1])[0];
+    if (top && top[1] >= 2) learned = top[0];
+  }
+  if (learned) return learned;
   if (!isJapanese(card)) {
     const set = await tcgdex("/en/sets/" + encodeURIComponent(setId));
     const official = String(set?.abbreviation?.official || "").toLowerCase();
     if (official) return official;
   }
-  if (!anchorIds.length) return "";
-  const { data } = await db.from("myp_products").select("set_code").in("product_id", anchorIds.slice(0, 200)).not("set_code", "is", null);
-  const counts = new Map<string, number>();
-  for (const r of data || []) counts.set(r.set_code, (counts.get(r.set_code) || 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+  return "";
 }
 
 // The card's own product, if any page already listed it.
@@ -420,6 +428,7 @@ async function catalogMatch(db: any, card: any, code: string, anchorIds: number[
     (code && !r.set_code && new RegExp("\\b" + code + "\\b").test(r.info) ? 6 : 0) +
     (anchorIds.length && r.product_id >= lo && r.product_id <= hi ? 4 : 0) +
     (nameOk(r) ? 2 : 0) +
+    (target && r.name_key === target ? 3 : 0) +
     (code && r.set_code && r.set_code !== code ? -20 : 0);
   const ranked = rows.map((r) => ({ r, s: score(r) })).filter((x) => x.s >= 4 || (x.s >= 2 && !code)).sort((a, b) => b.s - a.s);
   return ranked[0]?.r || null;
@@ -540,11 +549,15 @@ async function searchLookup(db: any, card: any, code: string) {
     if (tried.has(id) || !numOk || !denOk) continue;
     const key = nameKey(t.name);
     let score = 1;
-    if (key === target || key.startsWith(target + " ") || target.startsWith(key)) score += 3;
-    else if (key.includes(target) || target.includes(key)) score += 1;
+    // Exact name first: "Chien-Pao (Staff)" and "Kyogre - 2023 (Shao Tong
+    // Yen)" share name and number with the real card.
+    if (key === target) score += 4;
+    else if (key.startsWith(target + " ") || target.startsWith(key)) score += 1;
+    else if (key.includes(target) || target.includes(key)) score += 0;
     else score -= 3;
+    if (/p\d+$/.test(tNum) && !/p\d+$/.test(num)) score -= 6;
     if (token && (token === code || token === setToken)) score += 8;
-    else if (code && token && token !== code) score -= 2;
+    else if (code && token && token !== code) score -= 4;
     if (!best || score > best.score) best = { link: c.link, score };
   }
   if (rows.length) { try { await db.from("myp_products").upsert(rows, { onConflict: "product_id", ignoreDuplicates: true }); } catch { /* best effort */ } }
@@ -884,5 +897,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.1", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.3", claimed, states, elapsedMs: Date.now() - started });
 });
