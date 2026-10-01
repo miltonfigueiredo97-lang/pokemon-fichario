@@ -299,12 +299,23 @@ var require_myp_browser = __commonJS({
     async function launch2() {
       if (process.env.PF_BROWSER_PATH) {
         const puppeteer2 = require("puppeteer-core");
-        const browser2 = await puppeteer2.launch({
-          executablePath: process.env.PF_BROWSER_PATH,
-          headless: true,
-          args: ["--disable-blink-features=AutomationControlled", "--no-first-run", "--no-default-browser-check"],
-          defaultViewport: { width: 1365, height: 900 }
-        });
+        const paths = [process.env.PF_BROWSER_PATH, ...String(process.env.PF_BROWSER_FALLBACKS || "").split("|")].filter(Boolean);
+        let browser2, lastError;
+        for (let attempt = 0; attempt < 4 && !browser2; attempt++) {
+          const executablePath = paths[Math.min(attempt >> 1, paths.length - 1)];
+          try {
+            browser2 = await puppeteer2.launch({
+              executablePath,
+              headless: true,
+              args: ["--disable-blink-features=AutomationControlled", "--no-first-run", "--no-default-browser-check", "--disable-gpu"],
+              defaultViewport: { width: 1365, height: 900 }
+            });
+          } catch (e) {
+            lastError = e;
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
+        if (!browser2) throw lastError;
         const page2 = await configurePage(await browser2.newPage());
         return { browser: browser2, page: page2 };
       }

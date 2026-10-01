@@ -50,7 +50,7 @@ function findBrowser(){
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/usr/bin/microsoft-edge','/usr/bin/google-chrome','/usr/bin/chromium'
   ].filter(Boolean);
-  return candidates.find(p=>{try{return fs.statSync(p).isFile()}catch{return false}})||'';
+  return [...new Set(candidates.filter(p=>{try{return fs.statSync(p).isFile()}catch{return false}}))];
 }
 
 const stamp=()=>new Date().toLocaleTimeString('pt-BR');
@@ -132,9 +132,11 @@ async function main(){
   }
   const key=readerKey();
   if(!key){log('Chave do leitor não encontrada (reader-key.txt).');return setTimeout(()=>process.exit(1),15000)}
-  const browser=findBrowser();
+  const browsers=findBrowser();
+  const browser=browsers[0]||'';
   if(!browser){log('Nem o Edge nem o Chrome foram encontrados neste PC.');return setTimeout(()=>process.exit(1),15000)}
   process.env.PF_BROWSER_PATH=browser;
+  process.env.PF_BROWSER_FALLBACKS=browsers.slice(1).join('|');
   process.env.PF_LOCAL_READER='1';
   delete process.env.PRICE_ENGINE_SECRET;
   let handler=require('../api/price-engine.js');
