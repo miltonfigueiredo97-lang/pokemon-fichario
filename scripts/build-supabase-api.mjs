@@ -51,7 +51,7 @@ const deps = { '../lib/jp-official': '__dep_jp_official', '../data/jp-set-labels
 for (const name of [...JSON_HANDLERS, ...IMAGE_HANDLERS]) {
   let src = fs.readFileSync(path.join(root, 'api', name + '.js'), 'utf8');
   const used = Object.fromEntries(Object.entries(deps).filter(([k]) => src.includes(k)));
-  if (IMAGE_HANDLERS.includes(name)) src = 'const fetch = globalThis.__imageAwareFetch;\n' + src;
+  if (IMAGE_HANDLERS.includes(name)) src = 'const fetch = (...a) => globalThis.__imageAwareFetch(...a);\n' + src;
   fs.writeFileSync(path.join(out, 'handlers', name + '.js'), wrapCommonJs(src, used));
 }
 

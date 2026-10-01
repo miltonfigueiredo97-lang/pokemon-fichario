@@ -10,7 +10,7 @@ function require(name) {
   if (!(name in __requires)) throw new Error("require not bundled: " + name);
   return __requires[name];
 }
-const fetch = globalThis.__imageAwareFetch;
+const fetch = (...a) => globalThis.__imageAwareFetch(...a);
 'use strict';
 
 const {searchOfficialJapaneseCards}=require('../lib/jp-official');
