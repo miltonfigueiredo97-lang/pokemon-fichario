@@ -1,0 +1,19 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@supabase/functions-js@*": "2.117.2"
+  },
+  "jsr": {
+    "@supabase/functions-js@2.117.2": {
+      "integrity": "add71f09607b7f59af7de7a66a560ccac4fa70cbddb67d8919e536357aaa5dd2"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@sparticuz/chromium@latest",
+        "npm:puppeteer-core@latest"
+      ]
+    }
+  }
+}

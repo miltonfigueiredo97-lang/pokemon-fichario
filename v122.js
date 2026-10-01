@@ -434,7 +434,7 @@
     const set=String(card?.setId||card?.set_id||card?.setName||card?.set_name||card?.market_edition_pt||'').trim();
     if(set)p.set('set',set);
     try{
-      const r=await fetch('/api/mypcards?'+p.toString(),{cache:'no-store'});
+      const r=await fetch((window.PF_API_BASE||'/api/')+'mypcards?'+p.toString(),{cache:'no-store'});
       const j=await r.json();
       if(!j?.ok){
         const out={source:'MYP Cards',failed:true,error:j?.needsToken?'myp_token_required':(j?.error||'official_myp_failed'),message:j?.message||'',needsMypToken:!!j?.needsToken,provider:'MYP API oficial'};
@@ -463,9 +463,9 @@
 
   async function queryBothMarkets(card,finish='Normal',condition='Nova'){
     const [myp,liga]=await Promise.all([
-      querySource('/api/mypcards-public','myp',card,finish,condition)
+      querySource((window.PF_API_BASE||'/api/')+'mypcards-public','myp',card,finish,condition)
         .catch(error=>({source:'MYP Cards',failed:true,error:'exception',message:error?.message||''})),
-      querySource('/api/liga-public','liga',card,finish,condition)
+      querySource((window.PF_API_BASE||'/api/')+'liga-public','liga',card,finish,condition)
         .catch(error=>({source:'Liga Pokémon',failed:true,error:'exception',message:error?.message||''}))
     ]);
     const primary=primaryMarket(liga,myp);
@@ -875,7 +875,7 @@
         if(status)status.textContent=`${card.name} · buscando MYP…`;
 
         try{
-          const myp=await querySource('/api/mypcards-public','myp',card,finish,condition);
+          const myp=await querySource((window.PF_API_BASE||'/api/')+'mypcards-public','myp',card,finish,condition);
           if(hasPrice(myp)){
             const partial={
               source:'MYP Cards',

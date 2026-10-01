@@ -7,16 +7,37 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Pokémon Binder BR</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css?v=19.3">
-  <link rel="stylesheet" href="/v8.css?v=19.3">
-  <link rel="stylesheet" href="/v11fix.css?v=19.3">
-  <link rel="stylesheet" href="/v12.css?v=19.3">
-  <link rel="stylesheet" href="/v122.css?v=19.3">
-  <link rel="stylesheet" href="/v140.css?v=19.3">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=19.4">
+  <link rel="stylesheet" href="v8.css?v=19.4">
+  <link rel="stylesheet" href="v11fix.css?v=19.4">
+  <link rel="stylesheet" href="v12.css?v=19.4">
+  <link rel="stylesheet" href="v122.css?v=19.4">
+  <link rel="stylesheet" href="v140.css?v=19.4">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>window.POKEMON_BINDER_BUILD='V19.3';</script>
+  <script>window.POKEMON_BINDER_BUILD='V19.4';
+    // Static hosting (GitHub Pages): the light endpoints run on Supabase.
+    window.PF_API_BASE=/\.vercel\.app$/.test(location.hostname)?'/api/':'https://ryylegveltrypqclimqo.supabase.co/functions/v1/api/';
+    // Saved cards and server answers still carry "/api/..." image links: point
+    // them at PF_API_BASE (img src, setAttribute, fetch and inserted HTML).
+    (function(){
+      var B=window.PF_API_BASE;if(!B||B==='/api/')return;
+      var fix=function(u){return typeof u==='string'&&u.indexOf('/api/')===0?B+u.slice(5):u};
+      window.PF_FIX_API_URL=fix;
+      var d=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
+      Object.defineProperty(HTMLImageElement.prototype,'src',{configurable:true,enumerable:d.enumerable,get:d.get,set:function(v){d.set.call(this,fix(v))}});
+      var sa=Element.prototype.setAttribute;
+      Element.prototype.setAttribute=function(n,v){return sa.call(this,n,(n==='src'||n==='href')?fix(v):v)};
+      var f=window.fetch;window.fetch=function(i,o){return f.call(this,fix(i),o)};
+      new MutationObserver(function(list){
+        for(var i=0;i<list.length;i++)for(var j=0;j<list[i].addedNodes.length;j++){
+          var n=list[i].addedNodes[j];if(n.nodeType!==1)continue;
+          var imgs=n.tagName==='IMG'?[n]:n.querySelectorAll('img[src^="/api/"]');
+          for(var k=0;k<imgs.length;k++){var s=imgs[k].getAttribute('src');if(s&&s.indexOf('/api/')===0)imgs[k].setAttribute('src',s)}
+        }
+      }).observe(document.documentElement,{childList:true,subtree:true});
+    })();</script>
 </head>
 <body>
   <section id="authScreen" class="auth-screen hidden">
@@ -52,7 +73,7 @@
       </div>
       <div class="header-actions">
         <span id="userHandle" class="user-chip"></span>
-        <span id="appBuildVersion" class="app-build-version" title="Versão do app">v19.3</span>
+        <span id="appBuildVersion" class="app-build-version" title="Versão do app">v19.4</span>
         <button id="btnFriends" class="icon-text-btn" type="button">Amigos</button>
         <button id="btnOpenAdd" class="btn btn-primary desktop-only" type="button">＋ Adicionar</button>
         <button id="btnLogout" class="icon-text-btn" type="button">Sair</button>
@@ -299,11 +320,11 @@
 
   <div id="cardContextMenu" class="context-menu hidden"><button data-ctx="view">Detalhes da carta</button><button data-ctx="owned">Marcar Tenho</button><button data-ctx="wanted">Marcar Wishlist</button><button data-ctx="ordered">Marcar Pedido</button><button data-ctx="move">Mover para...</button><hr><button data-ctx="delete" class="danger-text">Remover carta</button></div>
   <div id="toast" class="toast"></div>
-  <script src="/script.js?v=19.3"></script>
-  <script src="/v8.js?v=19.3"></script>
-  <script src="/v11fix.js?v=19.3"></script>
-  <script src="/v12.js?v=19.3"></script>
-  <script src="/v122.js?v=19.3"></script>
-  <script src="/v140.js?v=19.3"></script>
+  <script src="script.js?v=19.4"></script>
+  <script src="v8.js?v=19.4"></script>
+  <script src="v11fix.js?v=19.4"></script>
+  <script src="v12.js?v=19.4"></script>
+  <script src="v122.js?v=19.4"></script>
+  <script src="v140.js?v=19.4"></script>
 </body>
 </html>

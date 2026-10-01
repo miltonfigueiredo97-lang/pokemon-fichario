@@ -143,7 +143,7 @@
     if(lang)p.set('lang',lang);
     const known=[card.price_br_link,card.myp_link,card.market?.link].find(isMypUrl);
     if(known)p.set('link',known);
-    const r=await fetch(`/api/mypcards-public?${p.toString()}`,{cache:'no-store'});
+    const r=await fetch(`${window.PF_API_BASE||'/api/'}mypcards-public?${p.toString()}`,{cache:'no-store'});
     const j=await r.json();
     if(!j?.ok)return null;
     return {

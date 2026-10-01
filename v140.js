@@ -1070,7 +1070,7 @@
     sets.disabled=true;
     sets.innerHTML='<option value="">Carregando coleções…</option>';
     try{
-      const r=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const r=await fetch((window.PF_API_BASE||'/api/')+'set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
       const j=await r.json();
       if(!j?.ok)throw new Error(j?.message||'Falha ao carregar coleções');
       const list=Array.isArray(j.sets)?j.sets:[];
@@ -1355,7 +1355,7 @@
     if(spec.all)p.set('all','1');
     if(spec.jumbo)p.set('jumbo','1');
     if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
-    const r=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
+    const r=await fetch((window.PF_API_BASE||'/api/')+'master-set?'+p.toString(),{cache:'no-store'});
     const data=await r.json();
     if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+(spec.label||spec.id)));
     let entries=Array.isArray(data.entries)?data.entries:[];
@@ -1440,7 +1440,7 @@
     sets.disabled=true;sets.innerHTML='<option value="">Carregando coleções…</option>';
     byId('v14SetStatus').textContent='Carregando coleções da geração…';
     try{
-      const r=await fetch('/api/set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const r=await fetch((window.PF_API_BASE||'/api/')+'set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
       const catalog=await r.json();
       if(epoch!==V14.masterEpoch)return;
       if(!catalog?.ok)throw new Error(catalog?.message||'Falha ao carregar as coleções');
@@ -1484,7 +1484,7 @@
           v:'30',strictLang:'1',all:'1',lang:String(lang||'pt'),
           set:String(spec.set),only:spec.only.join(',')
         });
-        const rr=await fetch('/api/master-set?'+p.toString(),{cache:'no-store'});
+        const rr=await fetch((window.PF_API_BASE||'/api/')+'master-set?'+p.toString(),{cache:'no-store'});
         const jj=await rr.json();
         if(!jj?.ok)return null;
         return{
@@ -1572,7 +1572,7 @@
           anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch('/api/master-set?v=30&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetch((window.PF_API_BASE||'/api/')+'master-set?v=30&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
@@ -1701,7 +1701,7 @@
     // asset URL happened to come in the set payload. The resolver already
     // handles localized scan -> EN same printing -> TCGplayer fallback.
     if(entry.source==='TCGdex'&&apiId){
-      return '/api/tcgdex-card-image?id='+encodeURIComponent(apiId)+'&lang='+encodeURIComponent(lang);
+      return (window.PF_API_BASE||'/api/')+'tcgdex-card-image?id='+encodeURIComponent(apiId)+'&lang='+encodeURIComponent(lang);
     }
     const u=entry.imageUrl||'';
     return u&&u.includes('assets.tcgdex.net')&&!/\.(webp|png|jpe?g)$/i.test(u)?u+'/high.webp':u;
@@ -1742,7 +1742,7 @@
         rarity:entry.rarity||'',
         hp:String(entry.hp||'')
       });
-      const r=await fetch('/api/card-image-fallback?'+p.toString(),{cache:'force-cache'});
+      const r=await fetch((window.PF_API_BASE||'/api/')+'card-image-fallback?'+p.toString(),{cache:'force-cache'});
       const j=await r.json();
       const url=j?.ok?j.url:'';
       V14.masterImageFallbackCache.set(key,url);
@@ -2880,7 +2880,7 @@
     });
 
     try{
-      let response=await fetch('/api/mypcards-public?'+params.toString(),{cache:'no-store'});
+      let response=await fetch((window.PF_API_BASE||'/api/')+'mypcards-public?'+params.toString(),{cache:'no-store'});
       let data=await response.json().catch(()=>({}));
       let hasPrice=Number(data?.min||0)>0||Number(data?.avg||0)>0||Number(data?.max||0)>0;
 
@@ -2889,7 +2889,7 @@
       // informado pelo usuário.
       if(!hasPrice&&String(card.finish||'Normal').toLowerCase()!=='normal'){
         params.set('finish','Normal');
-        response=await fetch('/api/mypcards-public?'+params.toString(),{cache:'no-store'});
+        response=await fetch((window.PF_API_BASE||'/api/')+'mypcards-public?'+params.toString(),{cache:'no-store'});
         data=await response.json().catch(()=>({}));
         hasPrice=Number(data?.min||0)>0||Number(data?.avg||0)>0||Number(data?.max||0)>0;
       }
@@ -3144,7 +3144,7 @@
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),11000);
     try{
-      const r=await fetch('/api/mypcards-public?'+p.toString(),{cache:'no-store',signal:controller.signal});
+      const r=await fetch((window.PF_API_BASE||'/api/')+'mypcards-public?'+p.toString(),{cache:'no-store',signal:controller.signal});
       const j=await r.json();
       if(!j?.ok)return{
         source:'Sem preço BR',min:0,avg:0,max:0,link:j?.link||'',
@@ -3263,7 +3263,7 @@
     const local=String(card.number||'').match(/\d+/)?.[0]||'';
     if(setId&&local){
       const p=new URLSearchParams({set:setId,localId:local,name:card.name||'',hp:String(card.hp||''),rarity:card.rarity||''});
-      const exact='/api/jp-card-image?'+p.toString();
+      const exact=(window.PF_API_BASE||'/api/')+'jp-card-image?'+p.toString();
       V14.jpImageCache.set(key,exact);
       return exact;
     }
@@ -3271,7 +3271,7 @@
     // Último fallback: só aceita imagem equivalente com score seguro.
     try{
       const p=new URLSearchParams({name:card.name||'',number:card.number||'',rarity:card.rarity||'',hp:card.hp||''});
-      const r=await fetch('/api/card-image-fallback?'+p.toString());
+      const r=await fetch((window.PF_API_BASE||'/api/')+'card-image-fallback?'+p.toString());
       const j=await r.json();
       const url=j?.ok?j.url:'';
       V14.jpImageCache.set(key,url);
@@ -3560,7 +3560,7 @@
     const job=(async()=>{
       try{
         if(/assets\.tcgdex\.net/i.test(url))url=url.replace(/\/high\.webp(?:\?.*)?$/i,'/low.webp');
-        const requestUrl=url.startsWith('/')?url:'/api/image-proxy?url='+encodeURIComponent(url);
+        const requestUrl=url.startsWith('/')?url:(window.PF_API_BASE||'/api/')+'image-proxy?url='+encodeURIComponent(url);
         const r=await fetch(requestUrl,{cache:'force-cache'});
         if(!r.ok)return null;
         const blob=await r.blob(),bitmap=await createImageBitmap(blob);
@@ -3625,7 +3625,7 @@
     V14.scan.visualIndexPromise=(async()=>{
       try{
         if(status)status.textContent='Carregando índice visual das cartas…';
-        const r=await fetch('/data/card-visual-index.json?v=1',{cache:'force-cache'});
+        const r=await fetch('data/card-visual-index.json?v=1',{cache:'force-cache'});
         if(!r.ok)return null;
         const data=await r.json();
         if(!Array.isArray(data?.cards)||!data.cards.length)return null;

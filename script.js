@@ -201,7 +201,7 @@ async function searchMypCards(name,number,setHint,language,fullNumbers=[]){
     const exact=fullNumbers[0]||number;
     const queries=[String(name).trim()+(exact?" ("+String(exact).trim()+")":"")];
     if(number)queries.push(String(name).trim());
-    const ask=q=>fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null);
+    const ask=q=>fetch((window.PF_API_BASE||"/api/")+"myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null);
     let answers=await Promise.all(queries.map(ask));
     if(answers.some(a=>a?.error==="budget_exhausted"))return{cards:[],needsToken:false,message:"Limite mensal gratuito da busca MYP atingido; os resultados do TCGdex continuam aparecendo."};
     // A cold server or a slow MYP page can fail once: retry the first query.
@@ -301,7 +301,7 @@ async function searchMypCatalogPublic(name,number,setHint,language,options={}){
     });
     if(number)p.set("number",number);
     if(setHint)p.set("set",setHint);
-    const rr=await fetch("/api/myp-catalog-public?"+p.toString(),{cache:"no-store"});
+    const rr=await fetch((window.PF_API_BASE||"/api/")+"myp-catalog-public?"+p.toString(),{cache:"no-store"});
     if(!rr.ok)return[];
     const j=await rr.json();
     return j?.ok&&Array.isArray(j.cards)?j.cards:[];
@@ -322,7 +322,7 @@ async function searchMypRelatedCatalog(name,language,seeds,options={}){
       lang:language==="all"?"pt-br":language,
       seeds:urls.join("|")
     });
-    const rr=await fetch("/api/myp-related-catalog?"+p.toString(),{cache:"no-store"});
+    const rr=await fetch((window.PF_API_BASE||"/api/")+"myp-related-catalog?"+p.toString(),{cache:"no-store"});
     if(!rr.ok)return[];
     const j=await rr.json();
     return j?.ok&&Array.isArray(j.cards)?j.cards:[];
@@ -377,7 +377,7 @@ async function searchLimitlessVariants(name,number,cards,language){
       lang:language==="pt-br"?"pt":"en",
       sets:JSON.stringify(sets)
     });
-    const r=await fetch("/api/limitless-variants?"+p.toString(),{cache:"no-store"});
+    const r=await fetch((window.PF_API_BASE||"/api/")+"limitless-variants?"+p.toString(),{cache:"no-store"});
     if(!r.ok)return[];
     const j=await r.json();
     return j?.ok&&Array.isArray(j.cards)?j.cards:[];
@@ -397,7 +397,7 @@ async function searchLegacyCards(name,number,setHint,options={}){
   const key="legacy|"+p.toString(),cached=catalogSearchCache.get(key);
   if(cached&&Date.now()-cached.at<10*60*1000)return cached.items;
   try{
-    const r=await fetch("/api/legacy-card-search?"+p.toString(),{cache:"no-store"});
+    const r=await fetch((window.PF_API_BASE||"/api/")+"legacy-card-search?"+p.toString(),{cache:"no-store"});
     if(!r.ok)return[];
     const j=await r.json();
     const items=j?.ok&&Array.isArray(j.cards)?j.cards:[];
@@ -423,7 +423,7 @@ async function searchJapaneseOfficial(name,number,setHint,options={}){
   const cached=catalogSearchCache.get(key);
   if(cached&&Date.now()-cached.at<(live?2:10)*60*1000)return cached.items;
   try{
-    const r=await fetch("/api/jp-card-search?"+p.toString(),{cache:"no-store"});
+    const r=await fetch((window.PF_API_BASE||"/api/")+"jp-card-search?"+p.toString(),{cache:"no-store"});
     if(!r.ok)return[];
     const j=await r.json();
     const items=j?.ok&&Array.isArray(j.cards)?j.cards:[];
@@ -781,7 +781,7 @@ function tcgplayerImageFromTCGdex(card){
   const chosen=ids.find(x=>x.size==="standard")||ids[0];
   if(!chosen?.id)return"";
   const direct="https://tcgplayer-cdn.tcgplayer.com/product/"+encodeURIComponent(String(chosen.id))+"_in_1000x1000.jpg";
-  return "/api/image-proxy?url="+encodeURIComponent(direct);
+  return (window.PF_API_BASE||"/api/")+"image-proxy?url="+encodeURIComponent(direct);
 }
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
@@ -792,7 +792,7 @@ async function hydrateMissingCatalogImage(card,lang){
   if(card.apiId){
     try{
       const p=new URLSearchParams({id:card.apiId,lang:lang||card.languageCode||"en"});
-      const url="/api/tcgdex-card-image?"+p.toString();
+      const url=(window.PF_API_BASE||"/api/")+"tcgdex-card-image?"+p.toString();
       const probe=await fetch(url,{cache:"force-cache"});
       if(probe.ok){
         card.imageUrl=url;
@@ -810,7 +810,7 @@ async function hydrateMissingCatalogImage(card,lang){
       number:card.number||"",
       lang:lang||card.languageCode||"en"
     });
-    const url="/api/limitless-image?"+p.toString();
+    const url=(window.PF_API_BASE||"/api/")+"limitless-image?"+p.toString();
     const probe=await fetch(url,{cache:"force-cache"});
     if(probe.ok){
       card.imageUrl=url;
@@ -868,7 +868,7 @@ async function hydrateMissingCatalogImage(card,lang){
       rarity:card.rarity||"",
       set:card.setId||card.setName||""
     });
-    const r=await fetch("/api/card-image-fallback?"+p.toString(),{cache:"force-cache"});
+    const r=await fetch((window.PF_API_BASE||"/api/")+"card-image-fallback?"+p.toString(),{cache:"force-cache"});
     if(r.ok){
       const j=await r.json();
       if(j?.ok&&j.url){
@@ -889,7 +889,7 @@ async function fetchTCGdexCard(lang,id,fallback=null){
     return await hydrateMissingCatalogImage(fb(),lang);
   }
 }
-function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=isPromoSetId(s.id)?"":String(s.cardCount?.official||"");const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);const displayNumber=isAnniversaryClassicSet(setId)?marketNumber:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image="/api/jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,originalNumber,numberAliases:[local,displayNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
+function mapTCG(c,lang){const s=c.set||{},local=String(c.localId||""),setId=s.id||"",total=isPromoSetId(s.id)?"":String(s.cardCount?.official||"");const marketNumber=specialPrintedNumber(setId,local),originalNumber=specialOriginalNumber(setId,local),parts=numParts(marketNumber);const displayNumber=isAnniversaryClassicSet(setId)?marketNumber:(/^\d+$/.test(local)&&/^\d+$/.test(total)?String(Number(local))+"/"+String(Number(total)):local);let image=c.image||"";if(!image&&lang==="ja"){const p=new URLSearchParams({set:setId,localId:local,name:c.name||"",hp:String(c.hp||""),rarity:c.rarity||""});image=(window.PF_API_BASE||"/api/")+"jp-card-image?"+p.toString()}return{source:"TCGdex",apiId:c.id||"",name:c.name||"",languageCode:lang,language:LANG[lang]||lang,setName:s.name||s.id||"",setId,number:displayNumber,internalNumber:local,originalNumber,numberAliases:[local,displayNumber,originalNumber].filter(Boolean),printedTotal:parts.rawD||total,rarity:c.rarity||"",type:Array.isArray(c.types)?c.types.join(", "):(c.category||""),category:c.category||"",hp:c.hp??null,imageUrl:image,imageFallbackJa:!c.image&&lang==="ja",pricing:c.pricing||null}}
 function rank(cards,q){
   const qn=norm(q.name),num=numParts(q.number),set=norm(q.setHint);
   return [...cards].sort((a,b)=>score(b)-score(a));
@@ -1537,7 +1537,7 @@ async function registerPWA(){
         location.replace(u.href);
       });
     });
-    const reg=await navigator.serviceWorker.register("/sw.js?v="+encodeURIComponent(build),{updateViaCache:"none"});
+    const reg=await navigator.serviceWorker.register("sw.js?v="+encodeURIComponent(build),{updateViaCache:"none"});
     await reg.update();
     if(reg.waiting)reg.waiting.postMessage({type:"SKIP_WAITING"});
     reg.addEventListener("updatefound",()=>{
@@ -1555,7 +1555,7 @@ async function registerPWA(){
 async function reconcileLiveBuild(){
   try{
     const current=String(window.POKEMON_BINDER_BUILD||'').replace(/^V/i,'');
-    const rr=await fetch('/index.html?buildcheck='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+    const rr=await fetch('index.html?buildcheck='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
     if(!rr.ok)return;
     const html=await rr.text();
     const match=html.match(/POKEMON_BINDER_BUILD=['"]V?([^'"]+)['"]/i);
