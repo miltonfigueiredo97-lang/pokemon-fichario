@@ -1,0 +1,48 @@
+// Packages the PC price reader as a single Windows executable (Node SEA).
+//
+//   PF_READER_KEY=<engine secret> node reader/build.mjs <node_modules dir>
+//
+// The node_modules dir must contain puppeteer-core, esbuild and postject.
+// Output: dist/pokemon-reader.exe. The key is baked into the executable and
+// never written to the repository (reader/key.generated.js is git-ignored).
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const dist = path.join(root, 'dist');
+const work = path.join(dist, 'build');
+const modules = path.resolve(process.argv[2] || path.join(root, 'node_modules'));
+const requireFrom = createRequire(path.join(modules, 'noop.js'));
+const esbuild = requireFrom('esbuild');
+const { inject } = requireFrom('postject');
+const key = String(process.env.PF_READER_KEY || '').trim();
+if (!key) throw new Error('PF_READER_KEY is required');
+fs.mkdirSync(work, { recursive: true });
+
+const keyFile = path.join(root, 'reader', 'key.generated.js');
+fs.writeFileSync(keyFile, 'module.exports=' + JSON.stringify(key) + ';\n');
+try {
+  const bundle = path.join(work, 'reader.cjs');
+  await esbuild.build({
+    entryPoints: [path.join(root, 'reader', 'pokemon-reader.js')],
+    bundle: true, platform: 'node', target: 'node22', format: 'cjs', outfile: bundle,
+    nodePaths: [modules],
+    external: ['@sparticuz/chromium', 'bufferutil', 'utf-8-validate'],
+    logLevel: 'warning',
+  });
+
+  const seaConfig = path.join(work, 'sea-config.json');
+  const blob = path.join(work, 'sea-prep.blob');
+  fs.writeFileSync(seaConfig, JSON.stringify({ main: bundle, output: blob, disableExperimentalSEAWarning: true, useCodeCache: false }));
+  execFileSync(process.execPath, ['--experimental-sea-config', seaConfig], { stdio: 'inherit' });
+
+  const exe = path.join(dist, 'pokemon-reader.exe');
+  fs.copyFileSync(process.execPath, exe);
+  await inject(exe, 'NODE_SEA_BLOB', fs.readFileSync(blob), { sentinelFuse: 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2' });
+  console.log('built', path.relative(root, exe), (fs.statSync(exe).size / 1048576).toFixed(1) + ' MB');
+} finally {
+  fs.rmSync(keyFile, { force: true });
+}

@@ -18,7 +18,10 @@ const SUPABASE_URL='https://ryylegveltrypqclimqo.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_Ved1tXBXQN1zofbJj3uPzQ_MqHxIEGw';
 const VERSION='1.0.0';
 const CONCURRENCY=3;
-const IDLE_POLL_MS=2000;
+// Idle polling is light on Supabase egress: 4 s, then 10 s after 5 idle minutes
+// (the worker treats a reader as online for 45 s after its last poll).
+const IDLE_POLL_MS=4000;
+const SLOW_POLL_MS=10000;
 const LOCK_PORT=47321;
 
 function readerKey(){
@@ -85,8 +88,39 @@ function singleInstance(){
   });
 }
 
+// Windows .exe opened from anywhere (Drive, Downloads): copy it to
+// %LOCALAPPDATA%\PokemonFichario, start it with Windows (minimized shortcut in
+// the user's Startup folder) and run that copy. Delete the shortcut to stop.
+function installOnWindows(){
+  if(process.platform!=='win32'||!process.env.LOCALAPPDATA||process.env.PF_NO_INSTALL)return false;
+  if(!/pokemon-reader\.exe$/i.test(process.execPath))return false;
+  const dir=path.join(process.env.LOCALAPPDATA,'PokemonFichario');
+  const target=path.join(dir,'pokemon-reader.exe');
+  const startup=path.join(process.env.APPDATA||'','Microsoft\\Windows\\Start Menu\\Programs\\Startup','Pokemon Fichario - leitor de precos.lnk');
+  const here=path.resolve(process.execPath).toLowerCase();
+  try{
+    if(here!==target.toLowerCase()){
+      fs.mkdirSync(dir,{recursive:true});
+      try{fs.copyFileSync(process.execPath,target)}catch(e){if(!fs.existsSync(target))throw e}
+    }
+    if(!fs.existsSync(startup)){
+      const ps=`$s=(New-Object -ComObject WScript.Shell).CreateShortcut('${startup.replace(/'/g,"''")}');$s.TargetPath='${target.replace(/'/g,"''")}';$s.WorkingDirectory='${dir.replace(/'/g,"''")}';$s.WindowStyle=7;$s.Description='Pokémon Fichário - leitor de preços';$s.Save()`;
+      require('child_process').execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',ps],{stdio:'ignore'});
+      console.log('Instalado: vai abrir sozinho (minimizado) quando o Windows ligar.');
+    }
+    if(here!==target.toLowerCase()){
+      require('child_process').spawn(target,[],{detached:true,stdio:'ignore',cwd:dir}).unref();
+      console.log('Leitor instalado em '+dir+'. Esta janela pode ser fechada.');
+      setTimeout(()=>process.exit(0),6000);
+      return true;
+    }
+  }catch(e){console.log('Não foi possível instalar ('+String(e?.message||e).slice(0,120)+'); rodando daqui mesmo.')}
+  return false;
+}
+
 async function main(){
   console.log(`Pokémon Fichário - leitor de preços v${VERSION}`);
+  if(installOnWindows())return;
   if(!await singleInstance()){
     log('Já existe um leitor aberto neste PC. Pode fechar esta janela.');
     return setTimeout(()=>process.exit(0),8000);
@@ -103,7 +137,7 @@ async function main(){
   log(`Navegador: ${browser}`);
   log(`Leitor "${readerId}" ligado. Deixe esta janela aberta (pode minimizar).`);
 
-  let inflight=0,done=0,failures=0;
+  let inflight=0,done=0,failures=0,lastWork=Date.now();
   const info={version:VERSION,platform:process.platform};
   const handle=async job=>{
     inflight++;
@@ -132,7 +166,9 @@ async function main(){
       if(failures===1||failures%30===0)log(`Sem conexão com o banco (${String(e?.message||e).slice(0,100)}). Tentando de novo...`);
     }
     for(const job of jobs||[])handle(job);
-    await new Promise(r=>setTimeout(r,(jobs&&jobs.length)?300:IDLE_POLL_MS));
+    if((jobs&&jobs.length)||inflight)lastWork=Date.now();
+    const wait=(jobs&&jobs.length)?300:Date.now()-lastWork>5*60000?SLOW_POLL_MS:IDLE_POLL_MS;
+    await new Promise(r=>setTimeout(r,wait));
   }
 }
 

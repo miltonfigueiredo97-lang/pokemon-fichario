@@ -4457,7 +4457,7 @@
     const rawError=String(card?.price_last_error||'').trim();
     const stage=String(card?.price_progress_stage||'').toLowerCase();
     const labels={
-      queued:'Aguardando worker',
+      queued:'Na fila: o preço é lido quando o leitor de preços estiver aberto em algum PC',
       retry_wait:'MYP não respondeu; nova tentativa automática em instantes',
       budget_wait:'Limite mensal gratuito do leitor atingido; a carta será cotada no próximo mês (ou cole o valor manual)',
       resolving_link:'Localizando a página da carta na MYP',

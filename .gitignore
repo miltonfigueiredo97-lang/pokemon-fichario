@@ -1,1 +1,3 @@
 deno.lock
+dist/
+reader/key.generated.js
