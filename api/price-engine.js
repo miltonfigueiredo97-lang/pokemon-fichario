@@ -155,8 +155,18 @@ async function lookupMyp(page,wanted,urls,deadline){
       const codeNumber=(String(data.code||'').split('_').pop()||'').split('/')[0];
       const byCode=!!codeNumber&&!!pageNumber&&token(codeNumber)===token(String(wanted.number).split('/')[0])
         &&productIdentityOk(data,{...wanted,number:pageNumber});
+      // Same set code and the same collector number in the MYP code identify the
+      // printing even when MYP titles it in English ("Lance's Charizard V
+      // (SWSH133)", code pokemon_swshp_swsh133, for "Charizard V do Lance").
+      const sets=[wanted.setCode,wanted.setId].map(v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'')).filter(Boolean);
+      const stamped=/p\d+$/i.test(codeNumber)||/\b(staff|pre ?release|prerelease|jumbo|world championships?|20\d\d)\b/.test(normalize(String(data.title||'').split('\n')[0]));
+      const exactCode=!!pageCode&&sets.includes(pageCode)&&!!codeNumber&&!stamped
+        &&token(codeNumber)===token(String(wanted.number).split('/')[0]);
+      if(exactCode&&!relaxed&&!byCode){probe.byCode=true;effective=wanted;}
+      else{
       if(!relaxed&&!byCode)continue;
       effective={...wanted,number:pageNumber};
+      }
       probe.relaxed=true;
     }
 

@@ -23,6 +23,11 @@ const CONCURRENCY=3;
 const IDLE_POLL_MS=4000;
 const SLOW_POLL_MS=10000;
 const LOCK_PORT=47321;
+// The engine (api/price-engine.js + lib) is also published as one file in the
+// repository; the reader picks up new versions by itself every 20 minutes, so
+// engine fixes reach every PC without reinstalling the exe.
+const ENGINE_URL='https://raw.githubusercontent.com/miltonfigueiredo97-lang/pokemon-fichario/main/reader/engine.bundle.cjs';
+const ENGINE_REFRESH_MS=20*60000;
 
 function readerKey(){
   if(process.env.PF_READER_KEY)return process.env.PF_READER_KEY.trim();
@@ -132,13 +137,45 @@ async function main(){
   process.env.PF_BROWSER_PATH=browser;
   process.env.PF_LOCAL_READER='1';
   delete process.env.PRICE_ENGINE_SECRET;
-  const handler=require('../api/price-engine.js');
+  let handler=require('../api/price-engine.js');
+  let engineHash='bundled';
+  const cacheDir=path.join(process.env.LOCALAPPDATA||os.tmpdir(),'PokemonFichario');
+  const cacheFile=path.join(cacheDir,'engine.bundle.cjs');
+  const compile=code=>{
+    const puppeteer=require('puppeteer-core');
+    const shim=name=>name==='puppeteer-core'?puppeteer:require(name);
+    const mod={exports:{}};
+    new Function('require','module','exports','__filename','__dirname',code)(shim,mod,mod.exports,cacheFile,cacheDir);
+    if(typeof mod.exports!=='function')throw new Error('engine bundle without handler');
+    return mod.exports;
+  };
+  const hashOf=code=>require('crypto').createHash('sha256').update(code).digest('hex').slice(0,12);
+  const useEngine=(code,from)=>{
+    const h=hashOf(code);
+    if(h===engineHash)return;
+    handler=compile(code);engineHash=h;
+    log(`Motor de leitura atualizado (${from}, ${h}).`);
+  };
+  try{useEngine(fs.readFileSync(cacheFile,'utf8'),'cópia local')}catch{}
+  const refreshEngine=async()=>{
+    try{
+      const r=await fetch(ENGINE_URL+'?t='+Date.now(),{cache:'no-store'});
+      if(!r.ok)return;
+      const code=await r.text();
+      if(!/module.exports/.test(code))return;
+      useEngine(code,'GitHub');
+      try{fs.mkdirSync(cacheDir,{recursive:true});fs.writeFileSync(cacheFile,code)}catch{}
+    }catch(e){log('Motor novo não carregado: '+String(e?.message||e).slice(0,100))}
+  };
+  await refreshEngine();
+  setInterval(refreshEngine,ENGINE_REFRESH_MS);
   const readerId=(os.hostname()||'pc').slice(0,60);
   log(`Navegador: ${browser}`);
   log(`Leitor "${readerId}" ligado. Deixe esta janela aberta (pode minimizar).`);
 
   let inflight=0,done=0,failures=0,lastWork=Date.now();
   const info={version:VERSION,platform:process.platform};
+  Object.defineProperty(info,'engine',{enumerable:true,get:()=>engineHash});
   const handle=async job=>{
     inflight++;
     const started=Date.now();
