@@ -2676,6 +2676,33 @@
     v1514StatusPollTimer=setTimeout(tick,400);
   }
 
+  // Prices are read by the PC reader in the background; every few seconds the
+  // cards still waiting are re-read from the database so the pocket shows the
+  // value (and drops ATUALIZANDO/NA FILA) as soon as it is saved, from any device.
+  const PRICE_ROW_COLUMNS='id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,price_checked_at,'+
+    'myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_link,'+
+    'price_pending,price_processing_at,price_progress,price_progress_stage,price_last_error';
+  async function refreshWaitingPricesV195(){
+    if(document.hidden||!Array.isArray(V14.allCards))return;
+    const waiting=V14.allCards.filter(c=>c?.id&&(c.price_pending||c.price_processing_at)).map(c=>c.id).slice(0,150);
+    if(!waiting.length)return;
+    const {data,error}=await db.from('pokemon_cards').select(PRICE_ROW_COLUMNS).in('id',waiting);
+    if(error||!Array.isArray(data))return;
+    let changed=false;
+    for(const row of data){
+      const local=V14.allCards.find(x=>x.id===row.id);
+      if(!local)continue;
+      if(local.price_pending!==row.price_pending||local.price_processing_at!==row.price_processing_at||
+        Number(local.price_avg||0)!==Number(row.price_avg||0)||local.price_progress_stage!==row.price_progress_stage){
+        applyLocalPricePatch(row.id,row);
+        if(editingCardId===row.id&&!row.price_pending&&Number(row.price_avg||row.price_min||0)>0)renderFreshSinglePrice(row.id,row);
+        changed=true;
+      }
+    }
+    if(changed){try{renderBinder();renderSummary()}catch{}}
+  }
+  if(!V14.waitingPriceTimerV195)V14.waitingPriceTimerV195=setInterval(()=>refreshWaitingPricesV195().catch(()=>{}),6000);
+
   function resumeVisiblePriceWatch(){
     if(V14.bulkPriceWatch)return;
     const pending=visiblePriceTargetCards().filter(c=>!!c.price_pending);
