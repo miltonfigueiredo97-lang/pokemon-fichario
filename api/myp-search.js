@@ -7,6 +7,7 @@
 // each search launches a browser. Results are cached for 10 minutes.
 
 const {searchMypResults}=require('../lib/myp-browser');
+const budget=require('../lib/usage-budget');
 
 const SUPABASE_URL='https://ryylegveltrypqclimqo.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_Ved1tXBXQN1zofbJj3uPzQ_MqHxIEGw';
@@ -74,7 +75,11 @@ module.exports=async(req,res)=>{
   const hit=CACHE.get(key);
   if(hit&&Date.now()-hit.at<CACHE_MS)return res.status(200).json({...hit.value,cached:true});
 
-  const result=await searchMypResults(q);
+  // Free-plan guard: no browser once the month's budget is used.
+  const allowance=await budget.check();
+  if(!allowance.allowed)return res.status(200).json({ok:false,blocked:true,error:'budget_exhausted',query:q,cards:[]});
+  const usage=budget.start();
+  const result=await searchMypResults(q).finally(()=>budget.record(usage).catch(()=>{}));
   const cards=(result.cards||[]).map(parseTile).filter(Boolean);
   // MYP stores a Portuguese scan ("..._pt.jpg") for some printings only.
   await Promise.all(cards.map(async card=>{

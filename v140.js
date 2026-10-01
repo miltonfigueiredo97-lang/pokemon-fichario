@@ -4459,6 +4459,7 @@
     const labels={
       queued:'Aguardando worker',
       retry_wait:'MYP não respondeu; nova tentativa automática em instantes',
+      budget_wait:'Limite mensal gratuito do leitor atingido; a carta será cotada no próximo mês (ou cole o valor manual)',
       resolving_link:'Localizando a página da carta na MYP',
       checking_candidate:'Conferindo o produto candidato na MYP',
       next_candidate:'Candidato não era esta carta; testando o próximo',

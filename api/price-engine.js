@@ -21,11 +21,12 @@
 // page, so the queue does not spend time on it.
 
 const {searchMypResults,launch,readProduct,summarizeProduct,productIdentityOk,finishKind,numberParts}=require('../lib/myp-browser');
+const budget=require('../lib/usage-budget');
 
 const MYP_ROOT='https://mypcards.com';
 const LIGA_ROOT='https://www.ligapokemon.com.br';
 const MAX_CANDIDATES=1;
-const BUILD='18.7';
+const BUILD='18.8';
 const DEADLINE_MS=52000;
 
 function normalize(v){
@@ -305,22 +306,27 @@ module.exports=async(req,res)=>{
   const started=Date.now();
   const deadline=started+DEADLINE_MS;
 
+  // Free-plan guard: no browser once the month's budget is used.
+  const allowance=await budget.check();
+  if(!allowance.allowed)return res.status(200).json({ok:false,build:BUILD,error:'budget_exhausted',blocked:true,budget:allowance.state,elapsedMs:Date.now()-started});
+  const usage=budget.start();
+
   let browser;
   try{
-    const launched=await launch();
-    browser=launched.browser;
-    const page=launched.page;
-    page.setDefaultNavigationTimeout(15000);
-
     // MYP's own search results page ("Name (number)"), opened directly as the
     // session's first page. Returns the product tiles (link + title + set).
+    // It launches its own browser, so none is opened here.
     const searchQuery=String(q.searchQuery||'').trim();
     if(searchQuery){
-      await browser.close().catch(()=>{});browser=null;
       const found=await searchMypResults(searchQuery);
       const cards=(found.cards||[]).map(t=>({productId:productIdOf(t.href),link:safeMypProductUrl(t.href),text:t.text,image:t.image,code:t.code,edition:t.edition,editionName:t.editionName})).filter(c=>c.link);
       return res.status(200).json({ok:!!cards.length,build:BUILD,mode:'search',status:found.status||0,blocked:!!found.blocked,error:found.error||null,cards,elapsedMs:Date.now()-started});
     }
+
+    const launched=await launch();
+    browser=launched.browser;
+    const page=launched.page;
+    page.setDefaultNavigationTimeout(15000);
 
     // Catalog lookup by name through MYP's public card API, opened as the
     // session's first (and only) page. Returns every printing with its link.
@@ -366,6 +372,7 @@ module.exports=async(req,res)=>{
     return res.status(200).json({ok:false,error:'engine_error',message:String(error?.message||error).slice(0,200),elapsedMs:Date.now()-started});
   }finally{
     if(browser)await browser.close().catch(()=>{});
+    await budget.record(usage).catch(()=>{});
   }
 };
 

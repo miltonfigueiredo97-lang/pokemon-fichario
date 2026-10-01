@@ -36,4 +36,6 @@ module.exports=async function handler(req,res){
     return res.status(200).json({ok:true,cards:[],error:'myp_catalog_failed'});
   }
 };
+// Free-plan guard: no browser once the month's budget is used (lib/usage-budget).
+module.exports=require('../lib/usage-budget').withBudget(module.exports);
 module.exports.config={maxDuration:30};

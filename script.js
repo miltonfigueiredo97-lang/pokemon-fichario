@@ -196,14 +196,16 @@ async function searchMypCards(name,number,setHint,language,fullNumbers=[]){
     if(!session?.access_token)return{cards:[],needsToken:false};
     // With a number, also search by name alone: reprint collections are titled
     // with the original printed number on MYP (Classic Collection Lugia = 149/147).
-    const queries=[String(name).trim()+(number?" ("+String(number).trim()+")":"")];
-    if(number)queries.push(String(name).trim());
+    // Each query opens a browser on the server (free-plan budget): at most two.
     // MYP ranks "Name (77)" poorly; "Name (077/132)" finds the exact printing.
-    for(const full of fullNumbers.slice(0,3))queries.push(String(name).trim()+" ("+full+")");
+    const exact=fullNumbers[0]||number;
+    const queries=[String(name).trim()+(exact?" ("+String(exact).trim()+")":"")];
+    if(number)queries.push(String(name).trim());
     const ask=q=>fetch("/api/myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null);
     let answers=await Promise.all(queries.map(ask));
-    // A cold server or a slow MYP page can fail once: retry before giving up.
-    if(!answers.some(a=>a?.ok)){await new Promise(r=>setTimeout(r,1500));answers=await Promise.all(queries.map(ask))}
+    if(answers.some(a=>a?.error==="budget_exhausted"))return{cards:[],needsToken:false,message:"Limite mensal gratuito da busca MYP atingido; os resultados do TCGdex continuam aparecendo."};
+    // A cold server or a slow MYP page can fail once: retry the first query.
+    if(!answers.some(a=>a?.ok)){await new Promise(r=>setTimeout(r,1500));answers=[await ask(queries[0])]}
     const byId=new Map();
     for(const a of answers)for(const c of (a?.ok?a.cards:[])||[])if(!byId.has(c.productId))byId.set(c.productId,c);
     const j={ok:answers.some(a=>a?.ok),cards:[...byId.values()]};
@@ -1254,7 +1256,7 @@ async function searchCards(options={}){
   }
 }
 
-let catalogAutoFullTimer=null;
+let catalogAutoFullTimer=null,lastAutoFullKey="";
 function queueLiveCatalogSearch(delay=420){
   clearTimeout(catalogSearchTimer);
   catalogSearchTimer=setTimeout(()=>searchCards({live:true}),delay);
@@ -1262,7 +1264,9 @@ function queueLiveCatalogSearch(delay=420){
   // new sets and promos appear without clicking "Buscar".
   clearTimeout(catalogAutoFullTimer);
   catalogAutoFullTimer=setTimeout(()=>{
-    if(norm($("searchName")?.value||"").replace(/\s+/g,"").length>=3)searchCards({live:false});
+    // Once per distinct query: each full search costs server time (MYP).
+    const key=[$("searchName")?.value,$("searchNumber")?.value,$("searchSet")?.value].map(v=>norm(v||"")).join("|");
+    if(norm($("searchName")?.value||"").replace(/\s+/g,"").length>=3&&key!==lastAutoFullKey){lastAutoFullKey=key;searchCards({live:false})}
   },1500);
 }
 function isPromoCard(c){

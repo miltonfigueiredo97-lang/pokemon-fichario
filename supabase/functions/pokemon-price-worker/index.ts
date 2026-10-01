@@ -652,6 +652,7 @@ async function readProduct(card: any, link: string, ctx: ReadCtx = { code: "", r
     const data = await r.json().catch(() => null);
     if (!r.ok || !data) return { market: { ok: false, error: "engine_http_" + r.status }, probes: [] };
     if (data.error === "engine_error") return { market: { ok: false, error: "engine_error", message: data.message }, probes: [] };
+    if (data.error === "budget_exhausted") return { market: { ok: false, error: "budget_exhausted" }, probes: [] };
     return { market: data.myp || { ok: false, error: "engine_no_result" }, probes: data.probes || [] };
   } catch (e: any) {
     return { market: { ok: false, error: e?.name === "AbortError" ? "engine_timeout" : "engine_fetch_error", message: String(e?.message || e) }, probes: [] };
@@ -852,6 +853,11 @@ async function processCard(db: any, card: any) {
       });
     }
 
+    // Free-plan budget of the month used up: wait (no attempt counted).
+    if (error === "budget_exhausted") {
+      return await requeue(db, card, 6 * 3600, "budget_wait", "budget:limite mensal gratuito atingido");
+    }
+
     // Blocked, timeout or engine failure: transient.
     if (attempts >= MAX_ATTEMPTS) {
       return await finishNoQuote(db, card, "myp:indisponivel:" + error + (message ? ":" + message : ""));
@@ -878,6 +884,10 @@ Deno.serve(async (req: Request) => {
     ENGINE_KEY = String(key || "");
   }
 
+  // Free-plan guard: with the month's Vercel budget used, do not call the engine.
+  const { data: allowance } = await db.rpc("engine_budget", { p_key: ENGINE_KEY });
+  if (!allowance?.allowed) return json({ ok: true, build: "19.4", skipped: "budget_exhausted", budget: allowance });
+
   const started = Date.now();
   const states: Record<string, number> = {};
   let claimed = 0;
@@ -897,5 +907,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.3", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.4", claimed, states, elapsedMs: Date.now() - started });
 });

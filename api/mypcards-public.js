@@ -2512,4 +2512,6 @@ module.exports=async function handler(req,res){
     return res.status(200).json({ok:false,error:code,connector:'Apify',apifyConfigured,apifyError,needsApifyToken:!apifyConfigured,message:code==='cloudflare_blocked'?'MYP bloqueou a leitura automática direta via Cloudflare.':'Não foi possível consultar a página pública da MYP agora.'});
   }
 }
+// Free-plan guard: no browser once the month's budget is used (lib/usage-budget).
+module.exports=require('../lib/usage-budget').withBudget(module.exports);
 module.exports.config={maxDuration:60};
