@@ -792,6 +792,13 @@ async function processCard(db: any, card: any) {
       if (sibling) link = idUrl(sibling.id);
     }
     if (!link) {
+      // MYP's own search and card catalog both answered without this printing:
+      // a few neighbour pages more, then manual quote (walking 40 pages took
+      // ~10 minutes for cards MYP simply does not list).
+      const triedNow = (card.myp_link_tried || []).map(Number);
+      if (triedNow.includes(SEARCH_MARK) && triedNow.includes(API_MARK) && triedNow.filter((n: number) => n > 0).length >= MAX_PREDICTED_TRIES) {
+        return await finishNoQuote(db, card, "myp:link_not_found:A busca e o catálogo da MYP não têm esta carta (e " + MAX_PREDICTED_TRIES + " páginas vizinhas conferidas). Cole o link do produto MYP ou edite a cotação manualmente.");
+      }
       if ((card.myp_link_tried || []).length >= MAX_TRIED_IDS) {
         return await finishNoQuote(db, card, "myp:link_not_found:" + MAX_TRIED_IDS + " páginas da MYP conferidas sem achar esta carta. Cole o link do produto MYP na carta.");
       }
@@ -919,7 +926,7 @@ Deno.serve(async (req: Request) => {
   // Reads happen on the user's PCs: with none online, cards wait in the queue.
   DB = db;
   try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
-  if (!(await readerOnline())) return json({ ok: true, build: "19.6", skipped: "no_reader_online" });
+  if (!(await readerOnline())) return json({ ok: true, build: "19.7", skipped: "no_reader_online" });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -940,5 +947,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.6", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.7", claimed, states, elapsedMs: Date.now() - started });
 });
