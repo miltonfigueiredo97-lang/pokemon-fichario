@@ -670,6 +670,8 @@ async function readProduct(card: any, link: string, ctx: ReadCtx = { code: "", r
     relax: ctx.relax ? "1" : "0",
     offerQuery: ctx.offerQuery || "",
     exactOnly: ctx.exactOnly ? "1" : "0",
+    // English name (TCGdex): MYP titles many promos in English only.
+    aliases: String(card._aliases || ""),
   });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_MS);
@@ -841,6 +843,10 @@ async function processCard(db: any, card: any) {
     }
 
     await setProgress(db, card.id, 50, seeding ? "resolving_link" : discovered ? "checking_candidate" : "reading_myp");
+    if (card.api_id && !isJapanese(card)) {
+      const en = await tcgdex("/en/cards/" + encodeURIComponent(String(card.api_id)));
+      if (en?.name && nameKey(en.name) !== nameKey(card.name)) card._aliases = String(en.name);
+    }
     const idCode = await setCodeOf(db, card, (anchors || []).map((a) => a.id));
     const ctx: ReadCtx = { code: idCode, relax: !!idCode && (await nameUniqueInSet(card)) };
     const read = await readProduct(card, link, ctx);
@@ -913,7 +919,7 @@ Deno.serve(async (req: Request) => {
   // Reads happen on the user's PCs: with none online, cards wait in the queue.
   DB = db;
   try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
-  if (!(await readerOnline())) return json({ ok: true, build: "19.5", skipped: "no_reader_online" });
+  if (!(await readerOnline())) return json({ ok: true, build: "19.6", skipped: "no_reader_online" });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -934,5 +940,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.5", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.6", claimed, states, elapsedMs: Date.now() - started });
 });

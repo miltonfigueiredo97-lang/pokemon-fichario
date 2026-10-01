@@ -162,7 +162,12 @@ async function lookupMyp(page,wanted,urls,deadline){
       const stamped=/p\d+$/i.test(codeNumber)||/\b(staff|pre ?release|prerelease|jumbo|world championships?|20\d\d)\b/.test(normalize(String(data.title||'').split('\n')[0]));
       const exactCode=!!pageCode&&sets.includes(pageCode)&&!!codeNumber&&!stamped
         &&token(codeNumber)===token(String(wanted.number).split('/')[0]);
-      if(exactCode&&!relaxed&&!byCode){probe.byCode=true;effective=wanted;}
+      if(exactCode&&!relaxed&&!byCode){
+        // The offer reader checks the name again: give it the page's own name.
+        const titleName=String(data.title||'').split('\n')[0].replace(/\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
+        probe.byCode=true;
+        effective={...wanted,nameAliases:[...(wanted.nameAliases||[]),titleName].filter(Boolean)};
+      }
       else{
       if(!relaxed&&!byCode)continue;
       effective={...wanted,number:pageNumber};
