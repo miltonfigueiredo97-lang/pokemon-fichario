@@ -5,5 +5,6 @@
       "main": true,
       "*": false
     }
-  }
+  },
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)supabase' ':(exclude)scripts' ':(exclude).github' ':(exclude)*.md' ':(exclude)tests'"
 }
