@@ -10,6 +10,7 @@ import h_tcgdex_card_image from "./tcgdex-card-image.js";
 import h_jp_card_image from "./jp-card-image.js";
 import h_limitless_image from "./limitless-image.js";
 import h_poketrack_image from "./poketrack-image.js";
+import h_myp_search from "./myp-search.js";
 export const HANDLERS = {
   "set-catalog": h_set_catalog,
   "master-set": h_master_set,
@@ -22,6 +23,7 @@ export const HANDLERS = {
   "jp-card-image": h_jp_card_image,
   "limitless-image": h_limitless_image,
   "poketrack-image": h_poketrack_image,
+  "myp-search": h_myp_search,
 };
 export const IMAGE_HANDLERS = new Set(["image-proxy","tcgdex-card-image","jp-card-image","limitless-image","poketrack-image"]);
-export const BROWSER_HANDLERS = new Set(["myp-search","myp-catalog-public","myp-related-catalog","mypcards-public","mypcards","liga-public","price-engine"]);
+export const BROWSER_HANDLERS = new Set(["myp-catalog-public","myp-related-catalog","mypcards-public","mypcards","liga-public","price-engine"]);

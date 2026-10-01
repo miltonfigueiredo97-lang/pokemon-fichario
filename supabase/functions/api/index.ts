@@ -1,21 +1,22 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { Buffer } from "node:buffer";
-
 // The site's light endpoints (/api/<name>) on Supabase Edge Functions, for the
 // static site on GitHub Pages. The handlers are the Vercel ones from api/,
 // wrapped by scripts/build-supabase-api.mjs (run it after changing them).
 //
+// Deployed through a one-line entry that imports this file from the repository
+// at a pinned commit (raw.githubusercontent.com/.../<sha>/supabase/functions/api/index.ts).
+import { HANDLERS, BROWSER_HANDLERS } from "./handlers/index.js";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
 // Image endpoints check the upstream image as before but answer with a 302 to
 // the image's own URL: image bytes never leave Supabase (free-plan egress).
-// Endpoints that open Chromium answer "local_reader" (they run on the user's PC).
-
 const imageUrls = new WeakMap<ArrayBuffer, string>();
 (globalThis as any).__imageAwareFetch = async (input: any, init: any = {}) => {
   const res = await fetch(input, init);
-  const accept = String(init?.headers?.accept || init?.headers?.Accept || "");
   const type = String(res.headers.get("content-type") || "");
-  if (!res.ok || !(/^image\//i.test(type) || /^image\//i.test(accept))) return res;
-  if (!/^image\//i.test(type)) return res;
+  if (!res.ok || !/^image\//i.test(type)) return res;
   try { await res.body?.cancel(); } catch { /* ignore */ }
   const marker = new ArrayBuffer(1);
   imageUrls.set(marker, res.url || String(input));
@@ -27,7 +28,39 @@ const imageUrls = new WeakMap<ArrayBuffer, string>();
   };
 };
 
-const { HANDLERS, IMAGE_HANDLERS, BROWSER_HANDLERS } = await import("./handlers/index.js");
+// MYP search through the PC reader queue (engine_requests, see
+// reader/pokemon-reader.js), in the shape lib/myp-browser's searchMypResults
+// returns.
+async function rest(path: string, init: RequestInit = {}) {
+  const r = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
+    ...init,
+    headers: { apikey: SERVICE_KEY, Authorization: "Bearer " + SERVICE_KEY, "Content-Type": "application/json", Prefer: "return=representation", ...(init.headers || {}) },
+  });
+  return r.ok ? await r.json().catch(() => null) : null;
+}
+(globalThis as any).__readerSearch = async (query: string) => {
+  const since = new Date(Date.now() - 45000).toISOString();
+  const online = await rest("engine_readers?select=reader_id&last_seen=gt." + encodeURIComponent(since) + "&limit=1");
+  if (!Array.isArray(online) || !online.length) return { ok: false, blocked: true, error: "no_reader_online", cards: [] };
+  const created = await rest("engine_requests", { method: "POST", body: JSON.stringify({ params: { name: query, number: "0", searchQuery: query, myp: "0" } }) });
+  const id = Array.isArray(created) ? created[0]?.id : null;
+  if (!id) return { ok: false, blocked: true, error: "queue_failed", cards: [] };
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 600));
+    const rows = await rest("engine_requests?select=done_at,response&id=eq." + id);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row?.done_at) {
+      const a = row.response || {};
+      const cards = (Array.isArray(a.cards) ? a.cards : []).map((c: any) => ({
+        href: c.link, text: c.text, image: c.image, code: c.code, edition: c.edition, editionName: c.editionName,
+      }));
+      return { ok: !!a.ok, blocked: !!a.blocked, error: a.error || null, cards };
+    }
+  }
+  await rest("engine_requests?id=eq." + id, { method: "DELETE" });
+  return { ok: false, blocked: true, error: "reader_timeout", cards: [] };
+};
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -97,7 +130,5 @@ Deno.serve(async (req: Request) => {
     if (!a.finished()) a.res.status(500).json({ ok: false, error: "handler_failed", message: String(e?.message || e).slice(0, 200) });
   }
   if (!a.finished()) a.res.status(204).end();
-  const response = await a.done;
-  void IMAGE_HANDLERS;
-  return response;
+  return await a.done;
 });

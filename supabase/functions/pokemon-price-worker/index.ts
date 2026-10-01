@@ -17,7 +17,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 //      to the next candidate; a blocked/timeout read is retried with backoff.
 //      Only definitive answers become "no_quote".
 
-const ENGINE = "https://pokemon-fichario.vercel.app/api/price-engine";
 const TCGDEX = "https://api.tcgdex.net/v2";
 const CLAIM_SIZE = 5;
 const RUN_BUDGET_MS = 85 * 1000;
@@ -129,6 +128,33 @@ async function setProgress(db: any, id: string, progress: number, stage: string)
     price_progress_stage: stage,
     price_progress_updated_at: new Date().toISOString(),
   }).eq("id", id);
+}
+
+// ---------------------------------------------------------------- PC reader
+//
+// The MYP pages are read by pokemon-reader.exe on the user's PCs (free; the
+// Vercel engine is gone). A read becomes a row in engine_requests; a PC claims
+// it and writes the engine's JSON answer back. Same answers as the old
+// /api/price-engine, so the rest of the worker is unchanged.
+let DB: any = null;
+async function engineFetch(q: URLSearchParams, signal: AbortSignal) {
+  const params = Object.fromEntries(q.entries());
+  const { data, error } = await DB.from("engine_requests").insert({ params }).select("id").single();
+  if (error || !data) return { ok: false, status: 500, json: async () => null };
+  const id = data.id;
+  while (!signal.aborted) {
+    await new Promise((r) => setTimeout(r, 700));
+    const { data: row } = await DB.from("engine_requests").select("done_at,response").eq("id", id).maybeSingle();
+    if (row?.done_at) return { ok: true, status: 200, json: async () => row.response };
+  }
+  await DB.from("engine_requests").delete().eq("id", id);
+  const e = new Error("engine_timeout");
+  e.name = "AbortError";
+  throw e;
+}
+async function readerOnline() {
+  const { data } = await DB.from("engine_readers").select("reader_id").gt("last_seen", new Date(Date.now() - 45000).toISOString()).limit(1);
+  return Array.isArray(data) && data.length > 0;
 }
 
 // ---------------------------------------------------------------- TCGdex
@@ -509,7 +535,7 @@ async function engineSearch(query: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
   try {
-    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
+    const r = await engineFetch(q, controller.signal);
     const data = await r.json().catch(() => null);
     return { cards: Array.isArray(data?.cards) ? data.cards : [], blocked: !!data?.blocked || !data };
   } catch {
@@ -586,7 +612,7 @@ async function engineApi(name: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 40000);
   try {
-    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
+    const r = await engineFetch(q, controller.signal);
     const data = await r.json().catch(() => null);
     return Array.isArray(data?.cards) ? data.cards : [];
   } catch {
@@ -648,7 +674,7 @@ async function readProduct(card: any, link: string, ctx: ReadCtx = { code: "", r
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_MS);
   try {
-    const r = await fetch(ENGINE + "?" + q.toString(), { headers: { Accept: "application/json", "x-engine-key": ENGINE_KEY }, signal: controller.signal });
+    const r = await engineFetch(q, controller.signal);
     const data = await r.json().catch(() => null);
     if (!r.ok || !data) return { market: { ok: false, error: "engine_http_" + r.status }, probes: [] };
     if (data.error === "engine_error") return { market: { ok: false, error: "engine_error", message: data.message }, probes: [] };
@@ -884,9 +910,10 @@ Deno.serve(async (req: Request) => {
     ENGINE_KEY = String(key || "");
   }
 
-  // Free-plan guard: with the month's Vercel budget used, do not call the engine.
-  const { data: allowance } = await db.rpc("engine_budget", { p_key: ENGINE_KEY });
-  if (!allowance?.allowed) return json({ ok: true, build: "19.4", skipped: "budget_exhausted", budget: allowance });
+  // Reads happen on the user's PCs: with none online, cards wait in the queue.
+  DB = db;
+  try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
+  if (!(await readerOnline())) return json({ ok: true, build: "19.5", skipped: "no_reader_online" });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -907,5 +934,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.4", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.5", claimed, states, elapsedMs: Date.now() - started });
 });

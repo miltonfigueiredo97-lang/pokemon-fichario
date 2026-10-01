@@ -204,6 +204,7 @@ async function searchMypCards(name,number,setHint,language,fullNumbers=[]){
     const ask=q=>fetch((window.PF_API_BASE||"/api/")+"myp-search?q="+encodeURIComponent(q),{cache:"no-store",headers:{Authorization:"Bearer "+session.access_token}}).then(r=>r.json()).catch(()=>null);
     let answers=await Promise.all(queries.map(ask));
     if(answers.some(a=>a?.error==="budget_exhausted"))return{cards:[],needsToken:false,message:"Limite mensal gratuito da busca MYP atingido; os resultados do TCGdex continuam aparecendo."};
+    if(answers.some(a=>a?.error==="no_reader_online"||a?.error==="local_reader"))return{cards:[],needsToken:false,message:"Resultados da MYP aparecem quando o leitor de preços estiver aberto em algum PC; os do TCGdex continuam aparecendo."};
     // A cold server or a slow MYP page can fail once: retry the first query.
     if(!answers.some(a=>a?.ok)){await new Promise(r=>setTimeout(r,1500));answers=[await ask(queries[0])]}
     const byId=new Map();
