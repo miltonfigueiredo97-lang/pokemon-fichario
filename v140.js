@@ -4954,11 +4954,19 @@
       return;
     }
 
-    const popup=window.open('','_blank');
-    if(!popup){
-      toast('O navegador bloqueou a janela do PDF. Libere pop-ups e tente novamente.');
-      return;
-    }
+    // The PDF page opens in a full-screen frame inside the app, not in a
+    // pop-up: an about:blank pop-up left the cards' images broken (and can be
+    // blocked), while a same-origin frame loads them like the binder does.
+    byId('v1500PdfOverlay')?.remove();
+    const overlay=document.createElement('div');
+    overlay.id='v1500PdfOverlay';
+    overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#fff;display:flex';
+    const frame=document.createElement('iframe');
+    frame.title='PDF do fichário';
+    frame.style.cssText='flex:1;width:100%;height:100%;border:0;background:#fff';
+    overlay.appendChild(frame);
+    document.body.appendChild(overlay);
+    const popup=frame.contentWindow;
 
     const cards=V14.allCards
       .filter(card=>card.binder_id===binder.id)
@@ -5016,7 +5024,7 @@
       '.meta{width:100%;display:grid;gap:.35mm;margin-top:.8mm;text-align:center;line-height:1.08}.meta strong{font-size:7.2pt}.meta span{font-size:6.1pt;color:#555}.meta small{font-size:5.8pt;color:#777}'+
       '#pdfBar{position:sticky;top:0;z-index:5;display:flex;gap:4mm;align-items:center;justify-content:center;padding:3mm;background:#111;color:#fff;font-size:10pt}#pdfBar button{font:inherit;font-weight:700;padding:1.5mm 4mm;border:0;border-radius:1.5mm;cursor:pointer}'+
       '@media print{#pdfBar{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{break-after:page}.sheet:last-child{break-after:auto}}'+
-      '</style></head><body><div id="pdfBar"><span id="pdfStatus">Carregando imagens…</span><button id="pdfPrint" type="button">Imprimir / Salvar PDF</button></div>'+pages.join('')+
+      '</style></head><body><div id="pdfBar"><span id="pdfStatus">Carregando imagens…</span><button id="pdfPrint" type="button">Imprimir / Salvar PDF</button><button id="pdfClose" type="button">Fechar</button></div>'+pages.join('')+
       // Print only after every image has loaded (or definitively failed): the
       // print preview is a snapshot, and a fixed 3.5 s timer printed big
       // binders before their images arrived. A failed external image is tried
@@ -5024,7 +5032,7 @@
       '<script>(function(){var origin='+JSON.stringify(location.origin)+';var imgs=[].slice.call(document.images);var done=0,printed=false;var status=document.getElementById("pdfStatus");'+
       'function show(){status.textContent=done<imgs.length?"Carregando imagens "+done+" de "+imgs.length+"…":"Imagens carregadas ("+imgs.length+")."}'+
       'function go(){if(printed)return;printed=true;show();setTimeout(function(){window.print()},300)}'+
-      'document.getElementById("pdfPrint").onclick=function(){window.print()};'+
+      'document.getElementById("pdfPrint").onclick=function(){window.print()};document.getElementById("pdfClose").onclick=function(){var o=window.frameElement&&window.frameElement.parentElement;if(o)o.remove();else window.close()};'+
       'function settle(i){return new Promise(function(r){function fin(){done++;show();(i.decode?i.decode().catch(function(){}):Promise.resolve()).then(r)}'+
       'function fail(){var s=i.getAttribute("src")||"";if(!i.dataset.retried&&/^https?:/i.test(s)&&s.indexOf(origin)!==0){i.dataset.retried="1";i.onload=fin;i.onerror=fin;i.src=origin+"/api/image-proxy?url="+encodeURIComponent(s);return}fin()}'+
       'if(i.complete&&i.naturalWidth)return fin();if(i.complete)return fail();i.onload=fin;i.onerror=fail})}'+
