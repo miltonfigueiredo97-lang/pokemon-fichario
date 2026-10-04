@@ -625,14 +625,20 @@ async function fetchTCGdexSet(lang,setId){
     const r=await fetch(`${TCGDEX_BASE}/${apiLang}/sets/${encodeURIComponent(setId)}`);
     if(!r.ok)return null;
     let item=await r.json();
-    // Algumas coleções especiais existem em PT apenas como cabeçalho (cards: []).
-    // Nestes casos usamos a lista canônica EN, preservando o nome traduzido da coleção.
-    if(apiLang!=="en"&&Array.isArray(item?.cards)&&item.cards.length===0){
+    // Algumas coleções especiais existem em PT só como cabeçalho (cards: []) ou
+    // incompletas (Celebração de 30 Anos: 2 cartas em PT, 158 em EN). As cartas
+    // que faltam em PT vêm da lista canônica EN, com o nome traduzido da coleção.
+    if(apiLang!=="en"&&Array.isArray(item?.cards)){
       try{
         const er=await fetch(`${TCGDEX_BASE}/en/sets/${encodeURIComponent(setId)}`);
         if(er.ok){
           const en=await er.json();
-          if(Array.isArray(en?.cards)&&en.cards.length)item={...en,name:item.name||en.name,serie:item.serie||en.serie,localizedFallback:true};
+          const enCards=Array.isArray(en?.cards)?en.cards:[];
+          if(enCards.length>item.cards.length){
+            const have=new Set(item.cards.map(c=>String(c.localId)));
+            item={...en,name:item.name||en.name,serie:item.serie||en.serie,localizedFallback:true,
+              cards:[...item.cards,...enCards.filter(c=>!have.has(String(c.localId)))]};
+          }
         }
       }catch{}
     }
@@ -663,7 +669,8 @@ function quickCatalogScore(c,name,number){
 async function searchAnniversaryClassicCollections(langs,name,number,options={}){
   const qn=norm(name),wanted=String(number||'').trim(),live=!!options.live;
   if(!qn||qn.length<2)return[];
-  const ids=['cel25cc','30th-c'],out=[];
+  // Coleções comemorativas que o TCGdex em PT não tem (ou tem incompletas).
+  const ids=['30th','30th-c','cel25cc','mep'],out=[];
   for(const lang of (langs||[]).filter(l=>l!=='ja')){
     for(const id of ids){
       const set=await fetchTCGdexSet(lang,id);
@@ -1131,9 +1138,14 @@ async function searchCards(options={}){
         .filter(Boolean))];
     }
 
-    const tcgPromise=Promise.all(
-      langs.map(lang=>searchTCGdexClean(lang,name,number,{setIds,live}))
-    );
+    const tcgPromise=Promise.all([
+      ...langs.map(lang=>searchTCGdexClean(lang,name,number,{setIds,live})),
+      // A busca por nome do TCGdex em PT não acha as cartas que só existem na
+      // lista EN dessas coleções: procura nelas direto (pelo nome e número).
+      (name&&!setIds.length&&langs.some(l=>l!=="ja"))
+        ?searchAnniversaryClassicCollections(langs,name,number,{live}).catch(()=>[])
+        :Promise.resolve([])
+    ]);
 
     // MYP is a secondary PT-BR source. It may add old/special printings that
     // TCGdex lacks, but it never bypasses the same final filters.
