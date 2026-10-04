@@ -1824,7 +1824,7 @@ async function lookupMyp(page, wanted, urls, deadline) {
     let effective = wanted;
     if (!productIdentityOk(data, wanted)) {
       const pageCode = ((String(data.code || "").match(/^pokemon_([a-z0-9]+)_/i) || [])[1] || "").toLowerCase();
-      const pageName = normalize(String(data.title || "").replace(/\([^)]*\)/g, ""));
+      const pageName = normalize(String(data.title || "").split("\n")[0].replace(/\([^)]*\)/g, ""));
       const pageNumber = (String(data.title || "").match(/\(([^)]*\d[^)]*)\)/) || [])[1] || "";
       const relaxed = wanted.relax && wanted.setCode && pageCode === wanted.setCode.toLowerCase() && pageName && pageName === normalize(wanted.name) && pageNumber;
       const token = (v) => {

@@ -145,7 +145,9 @@ async function lookupMyp(page,wanted,urls,deadline){
       // only sets relax=1 when the name is unique in that collection; then an
       // exact name + the page's own set code identify the product.
       const pageCode=((String(data.code||'').match(/^pokemon_([a-z0-9]+)_/i)||[])[1]||'').toLowerCase();
-      const pageName=normalize(String(data.title||'').replace(/\([^)]*\)/g,''));
+      // First line only: MYP appends the English name on the next line
+      // ("Celebi Luminescente (106/105)\n Shining Celebi").
+      const pageName=normalize(String(data.title||'').split('\n')[0].replace(/\([^)]*\)/g,''));
       const pageNumber=(String(data.title||'').match(/\(([^)]*\d[^)]*)\)/)||[])[1]||'';
       const relaxed=wanted.relax&&wanted.setCode&&pageCode===wanted.setCode.toLowerCase()
         &&pageName&&pageName===normalize(wanted.name)&&pageNumber;
