@@ -4978,7 +4978,9 @@
           slots.push('<div class="slot empty"></div>');
           continue;
         }
-        const src=cardImage(card)||card.image_url||'';
+        // Absolute URL: the popup must not depend on inheriting the app's base.
+        let src=cardImage(card)||card.image_url||'';
+        try{if(src)src=new URL(src,location.href).href}catch{}
         const price=priceModeValue(card,mode);
         const status=String(card.collection_status||'owned');
         const statusLabel=({owned:'Tenho',wanted:'Quero',missing:'Não tenho',ordered:'Pedido'})[status]||status;
@@ -5012,9 +5014,21 @@
       '.slot.empty{background:transparent;border:0}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm;filter:none!important}'+
       '.price{position:absolute;left:2mm;right:2mm;bottom:2mm;background:rgba(0,0,0,.88);color:#fff;border-radius:1.5mm;padding:1.3mm;text-align:center;font-size:8.5pt;font-weight:800}.noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border:1px dashed #bbb;color:#777;font-size:9pt;text-align:center;padding:4mm}'+
       '.meta{width:100%;display:grid;gap:.35mm;margin-top:.8mm;text-align:center;line-height:1.08}.meta strong{font-size:7.2pt}.meta span{font-size:6.1pt;color:#555}.meta small{font-size:5.8pt;color:#777}'+
-      '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{break-after:page}.sheet:last-child{break-after:auto}}'+
-      '</style></head><body>'+pages.join('')+
-      '<script>window.addEventListener("load",function(){var imgs=[].slice.call(document.images);Promise.all(imgs.map(function(i){return i.complete?Promise.resolve():new Promise(function(r){i.onload=i.onerror=r})})).then(function(){setTimeout(function(){window.print()},250)});setTimeout(function(){window.print()},3500)});<\/script>'+
+      '#pdfBar{position:sticky;top:0;z-index:5;display:flex;gap:4mm;align-items:center;justify-content:center;padding:3mm;background:#111;color:#fff;font-size:10pt}#pdfBar button{font:inherit;font-weight:700;padding:1.5mm 4mm;border:0;border-radius:1.5mm;cursor:pointer}'+
+      '@media print{#pdfBar{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{break-after:page}.sheet:last-child{break-after:auto}}'+
+      '</style></head><body><div id="pdfBar"><span id="pdfStatus">Carregando imagens…</span><button id="pdfPrint" type="button">Imprimir / Salvar PDF</button></div>'+pages.join('')+
+      // Print only after every image has loaded (or definitively failed): the
+      // print preview is a snapshot, and a fixed 3.5 s timer printed big
+      // binders before their images arrived. A failed external image is tried
+      // once more through the app's image proxy.
+      '<script>(function(){var origin='+JSON.stringify(location.origin)+';var imgs=[].slice.call(document.images);var done=0,printed=false;var status=document.getElementById("pdfStatus");'+
+      'function show(){status.textContent=done<imgs.length?"Carregando imagens "+done+" de "+imgs.length+"…":"Imagens carregadas ("+imgs.length+")."}'+
+      'function go(){if(printed)return;printed=true;show();setTimeout(function(){window.print()},300)}'+
+      'document.getElementById("pdfPrint").onclick=function(){window.print()};'+
+      'function settle(i){return new Promise(function(r){function fin(){done++;show();(i.decode?i.decode().catch(function(){}):Promise.resolve()).then(r)}'+
+      'function fail(){var s=i.getAttribute("src")||"";if(!i.dataset.retried&&/^https?:/i.test(s)&&s.indexOf(origin)!==0){i.dataset.retried="1";i.onload=fin;i.onerror=fin;i.src=origin+"/api/image-proxy?url="+encodeURIComponent(s);return}fin()}'+
+      'if(i.complete&&i.naturalWidth)return fin();if(i.complete)return fail();i.onload=fin;i.onerror=fail})}'+
+      'show();Promise.all(imgs.map(settle)).then(go);setTimeout(function(){if(!printed){status.textContent="Algumas imagens ainda não carregaram ("+done+" de "+imgs.length+"). Use o botão quando quiser imprimir."}},90000)})();<\/script>'+
       '</body></html>');
     popup.document.close();
   }

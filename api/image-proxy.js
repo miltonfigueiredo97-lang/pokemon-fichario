@@ -6,7 +6,8 @@ const ALLOWED_HOSTS=[
   'www.pokemon-card.com',
   'pokemon-card.com',
   'images.pokemontcg.io',
-  'tcgplayer-cdn.tcgplayer.com'
+  'tcgplayer-cdn.tcgplayer.com',
+  'img.mypcards.com'
 ];
 
 function hostAllowed(hostname){
