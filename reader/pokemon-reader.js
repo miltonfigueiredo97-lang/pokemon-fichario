@@ -16,7 +16,7 @@ const net=require('net');
 
 const SUPABASE_URL='https://ryylegveltrypqclimqo.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_Ved1tXBXQN1zofbJj3uPzQ_MqHxIEGw';
-const VERSION='1.0.0';
+const VERSION='1.1.0';
 const CONCURRENCY=3;
 // Idle polling is light on Supabase egress: 4 s, then 10 s after 5 idle minutes
 // (the worker treats a reader as online for 45 s after its last poll).
@@ -53,8 +53,24 @@ function findBrowser(){
   return [...new Set(candidates.filter(p=>{try{return fs.statSync(p).isFile()}catch{return false}}))];
 }
 
-const stamp=()=>new Date().toLocaleTimeString('pt-BR');
-const log=(...a)=>console.log(`[${stamp()}]`,...a);
+const stamp=()=>new Date().toLocaleString('pt-BR');
+// Console + LOCALAPPDATA/PokemonFichario/reader.log (last ~1 MB), so a
+// reader that stopped can be diagnosed later.
+const LOG_FILE=path.join(process.env.LOCALAPPDATA||os.tmpdir(),'PokemonFichario','reader.log');
+function log(...a){
+  const line=`[${stamp()}] `+a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');
+  console.log(line);
+  try{
+    fs.mkdirSync(path.dirname(LOG_FILE),{recursive:true});
+    if(fs.existsSync(LOG_FILE)&&fs.statSync(LOG_FILE).size>1048576)fs.renameSync(LOG_FILE,LOG_FILE+'.old');
+    fs.appendFileSync(LOG_FILE,line+'\n');
+  }catch{}
+}
+// One bad page (or a browser that refuses to start) must never stop the reader.
+process.on('uncaughtException',e=>log('erro inesperado (seguindo):',String(e?.stack||e).slice(0,300)));
+process.on('unhandledRejection',e=>log('erro inesperado (seguindo):',String(e?.stack||e).slice(0,300)));
+process.on('exit',code=>log('leitor encerrado, código',code));
+for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])process.on(sig,()=>{log('leitor fechado ('+sig+')');process.exit(0)});
 
 async function rpc(name,args){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
@@ -94,31 +110,39 @@ function singleInstance(){
 }
 
 // Windows .exe opened from anywhere (Drive, Downloads): copy it to
-// %LOCALAPPDATA%\PokemonFichario, start it with Windows (minimized shortcut in
-// the user's Startup folder) and run that copy. Delete the shortcut to stop.
+// LOCALAPPDATA/PokemonFichario, start it with Windows hidden (a .vbs launcher
+// in the user's Startup folder, no window that could be closed by accident)
+// and run that copy in the background. Opening the exe again installs the
+// newer version over the running one.
 function installOnWindows(){
   if(process.platform!=='win32'||!process.env.LOCALAPPDATA||process.env.PF_NO_INSTALL)return false;
   if(!/pokemon-reader\.exe$/i.test(process.execPath))return false;
+  const cp=require('child_process');
   const dir=path.join(process.env.LOCALAPPDATA,'PokemonFichario');
   const target=path.join(dir,'pokemon-reader.exe');
-  const startup=path.join(process.env.APPDATA||'','Microsoft\\Windows\\Start Menu\\Programs\\Startup','Pokemon Fichario - leitor de precos.lnk');
+  const startupDir=path.join(process.env.APPDATA||'','Microsoft','Windows','Start Menu','Programs','Startup');
+  const launcher=path.join(startupDir,'Pokemon Fichario - leitor de precos.vbs');
+  const oldShortcut=path.join(startupDir,'Pokemon Fichario - leitor de precos.lnk');
   const here=path.resolve(process.execPath).toLowerCase();
+  if(here===target.toLowerCase())return false;
   try{
-    if(here!==target.toLowerCase()){
-      fs.mkdirSync(dir,{recursive:true});
-      try{fs.copyFileSync(process.execPath,target)}catch(e){if(!fs.existsSync(target))throw e}
+    fs.mkdirSync(dir,{recursive:true});
+    try{fs.copyFileSync(process.execPath,target)}
+    catch(e){
+      // The installed copy is running: stop it and copy the new version.
+      try{cp.execFileSync('taskkill.exe',['/F','/IM','pokemon-reader.exe','/FI','PID ne '+process.pid],{stdio:'ignore'})}catch{}
+      let copied=false;
+      for(let i=0;i<10&&!copied;i++){try{fs.copyFileSync(process.execPath,target);copied=true}catch{cp.execFileSync('cmd.exe',['/c','timeout /t 1 >nul'],{stdio:'ignore'})}}
+      if(!copied&&!fs.existsSync(target))throw e;
     }
-    if(!fs.existsSync(startup)){
-      const ps=`$s=(New-Object -ComObject WScript.Shell).CreateShortcut('${startup.replace(/'/g,"''")}');$s.TargetPath='${target.replace(/'/g,"''")}';$s.WorkingDirectory='${dir.replace(/'/g,"''")}';$s.WindowStyle=7;$s.Description='Pokémon Fichário - leitor de preços';$s.Save()`;
-      require('child_process').execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',ps],{stdio:'ignore'});
-      console.log('Instalado: vai abrir sozinho (minimizado) quando o Windows ligar.');
-    }
-    if(here!==target.toLowerCase()){
-      require('child_process').spawn(target,[],{detached:true,stdio:'ignore',cwd:dir}).unref();
-      console.log('Leitor instalado em '+dir+'. Esta janela pode ser fechada.');
-      setTimeout(()=>process.exit(0),6000);
-      return true;
-    }
+    fs.mkdirSync(startupDir,{recursive:true});
+    fs.writeFileSync(launcher,'CreateObject("WScript.Shell").Run """'+target+'""", 0, False\r\n','latin1');
+    try{fs.unlinkSync(oldShortcut)}catch{}
+    cp.spawn(target,[],{detached:true,stdio:'ignore',cwd:dir,windowsHide:true}).unref();
+    console.log('Leitor de preços instalado e rodando em segundo plano.');
+    console.log('Ele liga sozinho sempre que você entrar no Windows. Pode fechar esta janela.');
+    setTimeout(()=>process.exit(0),8000);
+    return true;
   }catch(e){console.log('Não foi possível instalar ('+String(e?.message||e).slice(0,120)+'); rodando daqui mesmo.')}
   return false;
 }

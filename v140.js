@@ -2682,10 +2682,32 @@
   const PRICE_ROW_COLUMNS='id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,price_checked_at,'+
     'myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_link,'+
     'price_pending,price_processing_at,price_progress,price_progress_stage,price_last_error';
+  // With cards waiting and no PC reader online, say so instead of leaving the
+  // cards on NA FILA with no explanation.
+  function showReaderNoticeV198(count,online){
+    let el=byId('v198ReaderNotice');
+    if(online||!count){if(el)el.remove();return}
+    if(!el){
+      el=document.createElement('div');
+      el.id='v198ReaderNotice';
+      el.setAttribute('role','status');
+      el.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:min(560px,calc(100vw - 32px));'+
+        'background:#2a1214;color:#ffd7d2;border:1px solid #ff6b5a;border-radius:12px;padding:10px 14px;font:600 13px/1.35 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.45)';
+      document.body.appendChild(el);
+    }
+    el.textContent=`Leitor de preços desligado: ${count} carta${count>1?'s':''} na fila. Abra o pokemon-reader.exe em algum PC para cotar.`;
+  }
+  let readerStatusAtV198=0,readerOnlineV198=true;
   async function refreshWaitingPricesV195(){
     if(document.hidden||!Array.isArray(V14.allCards))return;
     const waiting=V14.allCards.filter(c=>c?.id&&(c.price_pending||c.price_processing_at)).map(c=>c.id).slice(0,150);
-    if(!waiting.length)return;
+    if(!waiting.length){showReaderNoticeV198(0,true);return}
+    if(Date.now()-readerStatusAtV198>30000){
+      readerStatusAtV198=Date.now();
+      const {data:status}=await db.rpc('engine_reader_status').catch(()=>({data:null}));
+      if(status)readerOnlineV198=!!status.online;
+    }
+    showReaderNoticeV198(waiting.length,readerOnlineV198);
     const {data,error}=await db.from('pokemon_cards').select(PRICE_ROW_COLUMNS).in('id',waiting);
     if(error||!Array.isArray(data))return;
     let changed=false;

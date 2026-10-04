@@ -1173,7 +1173,11 @@ async function searchCards(options={}){
       // The complete printed number ("132/190") identifies the card even when
       // the typed name is a translation the source does not know.
       if(name&&!catalogNameMatches(name,card)&&!(fullNumber&&exactFullNumberMatches(number,card)))return false;
-      if(number&&!cardNumberMatches(number,card))return false;
+      // Classic reprint collections keep each card's ORIGINAL number on MYP:
+      // the 30th Classic Charizard is printed 004/30 but listed "004/102" (30CC).
+      const classicReprint=card.source==="MYP Cards"&&/^(30CC|CCC)$/i.test(String(card.setCode||""))
+        &&numParts(number).n&&numParts(number).n===numParts(card.number).n;
+      if(number&&!cardNumberMatches(number,card)&&!classicReprint)return false;
       if(setIds.length){
         const cid=String(card.setId||card.set_id||"");
         if(cid&&setIds.includes(cid))return true;

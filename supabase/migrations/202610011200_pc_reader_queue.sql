@@ -77,3 +77,18 @@ revoke all on function public.engine_requests_cleanup() from public;
 grant execute on function public.engine_claim(text, text, integer, jsonb) to anon, authenticated, service_role;
 grant execute on function public.engine_respond(text, bigint, jsonb) to anon, authenticated, service_role;
 grant execute on function public.engine_requests_cleanup() to service_role;
+
+-- Public status for the site's "price reader is off" notice (no secret).
+create or replace function public.engine_reader_status()
+returns jsonb
+language sql
+security definer
+set search_path to 'public'
+as $$
+  select jsonb_build_object(
+    'online', coalesce(max(last_seen) > now() - interval '45 seconds', false),
+    'last_seen', max(last_seen),
+    'readers', count(*) filter (where last_seen > now() - interval '45 seconds'))
+  from public.engine_readers;
+$$;
+grant execute on function public.engine_reader_status() to anon, authenticated, service_role;
