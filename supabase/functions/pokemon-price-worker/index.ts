@@ -26,7 +26,11 @@ const MAX_TRIED_IDS = 40;
 const MAX_PREDICTED_TRIES = 6;
 // App-only set ids (not on TCGdex) -> MYP set code.
 // Sets whose MYP code differs from TCGdex's official abbreviation.
-const APP_SET_CODES: Record<string, string> = { cel25cc: "ccc", cel25: "clb" };
+const APP_SET_CODES: Record<string, string> = { cel25cc: "ccc", cel25: "clb", "30th": "30c", "30th-c": "30cc" };
+// Classic reprint collections: MYP lists each card with its ORIGINAL number
+// ("Celebi Luminescente (106/105) 30CC" for the 30th Classic 24/30), so set
+// code + exact name identify the card there, not the number.
+const CLASSIC_CODES = new Set(["30cc", "ccc"]);
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
 // Shared secret for /api/price-engine, read once per run from the database
@@ -572,8 +576,9 @@ async function searchLookup(db: any, card: any, code: string) {
       num: tNum, den: tDen, set_code: token || null, info: String(c.text).toLowerCase().slice(0, 300) });
     const numOk = tNum === num || t.num === num;
     const denOk = !den || !tDen || tDen === den || t.den === den || tDen === den.replace(/^[a-z]+/, "");
-    if (tried.has(id) || !numOk || !denOk) continue;
     const key = nameKey(t.name);
+    const classic = CLASSIC_CODES.has(code) && token === code && key === target;
+    if (tried.has(id) || ((!numOk || !denOk) && !classic)) continue;
     let score = 1;
     // Exact name first: "Chien-Pao (Staff)" and "Kyogre - 2023 (Shao Tong
     // Yen)" share name and number with the real card.
@@ -640,7 +645,8 @@ async function apiLookup(db: any, card: any, code: string) {
       if (!pc || !id || !slugOf(c.link)) continue;
       rows.push({ product_id: id, slug: slugOf(c.link), title: c.name + " (" + (pc.den ? pc.num + "/" + pc.den : pc.num) + ")", name_key: nameKey(c.name),
         num: pc.num, den: pc.den, set_code: pc.set, info: [c.edition, c.editionCode, c.code].join(" ").toLowerCase().slice(0, 300) });
-      if (tried.has(id) || pc.num !== num || (den && pc.den && pc.den !== den)) continue;
+      const classic = CLASSIC_CODES.has(code) && pc.set === code && (nameKey(c.name) === target || nameKey(c.nameEn) === nameKey(names[1] || ""));
+      if (tried.has(id) || ((pc.num !== num || (den && pc.den && pc.den !== den)) && !classic)) continue;
       let score = 1;
       if (code && pc.set === code) score += 8;
       if (!pc.reprint) score += 2;
@@ -926,7 +932,7 @@ Deno.serve(async (req: Request) => {
   // Reads happen on the user's PCs: with none online, cards wait in the queue.
   DB = db;
   try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
-  if (!(await readerOnline())) return json({ ok: true, build: "19.7", skipped: "no_reader_online" });
+  if (!(await readerOnline())) return json({ ok: true, build: "19.8", skipped: "no_reader_online" });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -947,5 +953,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.7", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.8", claimed, states, elapsedMs: Date.now() - started });
 });
