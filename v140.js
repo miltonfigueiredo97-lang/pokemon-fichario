@@ -2329,9 +2329,66 @@
     }
   }
   async function contextActionV14(action){
-    if(action==='move'&&!canMove()){hideContext();return toast('Para mover cartas, selecione Ordem do fichário.')}
+    if(action==='move'){hideContext();return openMoveToBinderV200(contextCard)}
     return V14.original.contextAction(action);
   }
+
+  // Right click → "Mover para...": pick any binder; the card goes to the first
+  // free pocket there (pages are added when the binder is full), keeping its
+  // status, quantity and price. Physical binders never merge entries. Moving
+  // inside the same binder keeps the old page/pocket choice.
+  function ensureMoveToBinderUIV200(){
+    if(byId('v200MoveDialog'))return byId('v200MoveDialog');
+    const d=document.createElement('dialog');d.id='v200MoveDialog';d.className='sheet-dialog v1494-wishlist-move-dialog';
+    d.innerHTML='<div class="dialog-shell narrow v1494-wishlist-move-shell">'+
+      '<div class="dialog-head"><div><p class="kicker">MOVER CARTA</p><h2 id="v200MoveTitle">Mover para outro fichário</h2><p class="muted compact-copy">A carta vai para o primeiro bolso livre do fichário escolhido.</p></div><button id="v200MoveClose" class="icon-only" type="button">×</button></div>'+
+      '<label class="v1494-target-label">Fichário de destino<select id="v200MoveTarget"></select></label>'+
+      '<div class="v1494-wishlist-choice"><button id="v200MoveGo" type="button"><strong>↗ Mover para este fichário</strong><span>Sai do fichário atual e entra no escolhido, com o mesmo status, quantidade e preço.</span></button>'+
+      '<button id="v200MovePosition" type="button"><strong>⇄ Mudar a posição neste fichário</strong><span>Escolher página e bolso dentro do fichário atual.</span></button></div></div>';
+    document.body.appendChild(d);
+    byId('v200MoveClose').onclick=()=>d.close();
+    d.addEventListener('click',e=>{if(e.target===d)d.close()});
+    byId('v200MoveGo').onclick=()=>applyMoveToBinderV200();
+    byId('v200MovePosition').onclick=()=>{
+      const card=V14.allCards.find(x=>x.id===d.dataset.cardId);d.close();
+      if(!card)return;
+      if(!canMove())return toast('Para mudar a posição, abra o fichário da carta em Ordem do fichário.');
+      contextCard=card;return V14.original.contextAction('move');
+    };
+    return d;
+  }
+  function openMoveToBinderV200(card){
+    if(!card)return;
+    const d=ensureMoveToBinderUIV200(),select=byId('v200MoveTarget');
+    const targets=V14.binders.filter(b=>b.id!==card.binder_id);
+    if(!targets.length)return toast('Crie outro fichário para poder mover esta carta.');
+    select.innerHTML=targets.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+(b.binder_kind==='set'?' · Master Set':b.binder_kind==='wishlist'?' · Lista de Desejos':'')+'</option>').join('');
+    byId('v200MoveTitle').textContent='Mover '+(card.name||'carta')+(card.number?' #'+card.number:'');
+    byId('v200MovePosition').classList.toggle('hidden',!canMove()||card.binder_id!==V14.activeBinderId);
+    d.dataset.cardId=card.id;d.showModal();
+  }
+  async function applyMoveToBinderV200(){
+    const d=byId('v200MoveDialog'),card=V14.allCards.find(x=>x.id===d?.dataset?.cardId);
+    const target=V14.binders.find(b=>b.id===byId('v200MoveTarget')?.value);
+    if(!card||!target)return;
+    const btn=byId('v200MoveGo'),label=btn.querySelector('strong'),old=label.textContent;
+    btn.disabled=true;label.textContent='Movendo…';
+    try{
+      const now=new Date().toISOString();
+      const pos=nextPositionForBinderV1494(target);
+      if(pos.page>(+target.pages||1)){
+        const {error:pageError}=await db.from('pokemon_binders').update({pages:pos.page,updated_at:now}).eq('id',target.id).eq('user_id',currentUser.id);
+        if(pageError)throw pageError;target.pages=pos.page;
+      }
+      const {error}=await db.from('pokemon_cards').update({binder_id:target.id,binder_page:pos.page,binder_slot:pos.slot,updated_at:now}).eq('id',card.id).eq('user_id',currentUser.id);
+      if(error)throw error;
+      d.close();
+      await loadCardsV14(false);
+      toast(`Carta movida para "${target.name}" (página ${pos.page}, bolso ${pos.slot}).`);
+    }catch(error){console.error('[Mover para fichário]',error);toast('Não consegui mover a carta: '+(error?.message||'erro no banco'))}
+    finally{btn.disabled=false;label.textContent=old}
+  }
+
   function openAddV14(page=currentPage,slot=null){
     if(isGeneral())return toast('Escolha um fichário antes de adicionar cartas.');
     return V14.original.openAddForPosition(page,slot);
