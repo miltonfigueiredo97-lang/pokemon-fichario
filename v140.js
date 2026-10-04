@@ -3303,6 +3303,9 @@
     const slot=Math.min(9,Math.max(1,+byId('cardSlot').value||1));
     const condition=byId('cardCondition').value;
     const finish=byId('cardFinish').value;
+    // Idioma: a mesma carta em outro idioma (mesma coleção e número) é outra
+    // cotação; a MYP vende os idiomas no mesmo produto, filtrados pela oferta.
+    const languageCode=byId('cardLanguage')?.value||selectedCard.languageCode||selectedCard.language_code||'pt-br';
     const quantity=selectedStatus==='owned'?Math.max(1,+existingEditing?.quantity||1):0;
 
     // The pocket is physical. Another row cannot be silently replaced.
@@ -3317,7 +3320,7 @@
         if(pagesError)throw pagesError;
         targetBinder.pages=page;
       }
-      const payload=cardPayload(selectedCard,{
+      const payload=cardPayload({...selectedCard,languageCode,language:LANG[languageCode]||languageCode},{
         page,slot,status:selectedStatus,quantity,condition,finish,
         notes:byId('cardNotes').value.trim()
       },selectedMarket||{});
@@ -3338,8 +3341,15 @@
           .eq('user_id',currentUser.id);
         if(error)throw error;
         // A different finish/condition is a different quote.
-        if(existingEditing&&(String(existingEditing.finish||'')!==String(finish||'')||String(existingEditing.condition||'')!==String(condition||''))){
-          await markCardsForPrice([{...existingEditing,finish,condition}],1000).catch(()=>{});
+        payload.language_code=languageCode;
+        // A different finish/condition/language is a different quote.
+        const languageChanged=existingEditing&&String(existingEditing.language_code||'')!==languageCode;
+        if(languageChanged){
+          const {error:langError}=await db.from('pokemon_cards').update({language_code:languageCode,language:LANG[languageCode]||languageCode}).eq('id',editingCardId).eq('user_id',currentUser.id);
+          if(langError)throw langError;
+        }
+        if(existingEditing&&(languageChanged||String(existingEditing.finish||'')!==String(finish||'')||String(existingEditing.condition||'')!==String(condition||''))){
+          await markCardsForPrice([{...existingEditing,finish,condition,language_code:languageCode}],1000).catch(()=>{});
           kickPriceWorkerNow();
         }
       }else{
