@@ -2704,8 +2704,10 @@
     if(!waiting.length){showReaderNoticeV198(0,true);return}
     if(Date.now()-readerStatusAtV198>30000){
       readerStatusAtV198=Date.now();
-      const {data:status}=await db.rpc('engine_reader_status').catch(()=>({data:null}));
-      if(status)readerOnlineV198=!!status.online;
+      try{
+        const {data:status}=await db.rpc('engine_reader_status');
+        if(status)readerOnlineV198=!!status.online;
+      }catch{}
     }
     showReaderNoticeV198(waiting.length,readerOnlineV198);
     const {data,error}=await db.from('pokemon_cards').select(PRICE_ROW_COLUMNS).in('id',waiting);
