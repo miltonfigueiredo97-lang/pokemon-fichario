@@ -2783,8 +2783,52 @@
     requestAnimationFrame(positionUnifiedTopbar);
   }
 
+  // Reorder pages: each thumbnail gets ◀ ▶ (works on phones) and can be
+  // dragged onto another one (desktop). The page keeps its cards and art.
+  async function moveBinderPageV22(from,to){
+    const binder=activeBinder(),pages=currentBinderPages();
+    if(!binder)return;
+    to=Math.max(1,Math.min(pages,to));
+    if(from===to)return;
+    const {error}=await db.rpc('pokemon_move_binder_page',{p_binder:binder.id,p_from:from,p_to:to});
+    if(error){console.error('[Mover página]',error);return toast('Não consegui mover a página: '+(error.message||'erro no banco'))}
+    await loadCardsV14(false);
+    currentPage=binderSessionAnchorV14(to,pages);
+    renderAll();
+    renderPagesGrid();
+    toast('Página '+from+' movida para a posição '+to+'.');
+  }
+  function decoratePageThumbsV22(){
+    const g=byId('pagesGrid');if(!g)return;
+    const pages=currentBinderPages();
+    [...g.querySelectorAll(':scope > .page-thumb')].forEach((thumb,i)=>{
+      const p=i+1;
+      const item=document.createElement('div');
+      item.className='v22-page-item';
+      thumb.replaceWith(item);item.appendChild(thumb);
+      thumb.draggable=true;thumb.dataset.page=String(p);
+      thumb.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/x-binder-page',String(p));e.dataTransfer.effectAllowed='move';item.classList.add('dragging')});
+      thumb.addEventListener('dragend',()=>item.classList.remove('dragging'));
+      item.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('text/x-binder-page')){e.preventDefault();item.classList.add('drop')}});
+      item.addEventListener('dragleave',()=>item.classList.remove('drop'));
+      item.addEventListener('drop',e=>{
+        e.preventDefault();item.classList.remove('drop');
+        const from=+e.dataTransfer.getData('text/x-binder-page');
+        if(from&&from!==p)moveBinderPageV22(from,p);
+      });
+      const bar=document.createElement('div');
+      bar.className='v22-page-move';
+      bar.innerHTML='<button type="button" data-dir="-1" title="Mover para antes"'+(p<=1?' disabled':'')+'>◀</button><span>mover</span><button type="button" data-dir="1" title="Mover para depois"'+(p>=pages?' disabled':'')+'>▶</button>';
+      bar.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();moveBinderPageV22(p,p+(+b.dataset.dir))});
+      item.appendChild(bar);
+    });
+  }
   function renderPagesGridV14(){
-    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly)return V14.original.renderPagesGrid();
+    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
+      V14.original.renderPagesGrid();
+      decoratePageThumbsV22();
+      return;
+    }
     const g=byId('pagesGrid');if(!g)return;
     const cards=orderedViewCards(),pages=customViewPages();g.innerHTML='';
     for(let p=1;p<=pages;p++){
