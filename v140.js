@@ -2238,25 +2238,60 @@
   V14.artPieceAt=artPieceAt;
   V14.artImageUrl=artImageUrlV21;
   V14.artPieceEl=(piece,sheet)=>artPieceEl(piece,sheet);
-  // Crop of piece (col,row) of an art: the image fills the whole cols x rows
-  // rectangle (object-fit cover) scaled by "zoom" and placed by pos_x/pos_y
-  // (0..1, 0.5 = centre). gap = px between two pockets' inner boxes.
+  // Crop of piece (col,row) of an art. The image keeps its own proportions:
+  // at zoom 1 it COVERS the whole cols x rows rectangle (no empty space), zoom
+  // scales it from there and pos_x/pos_y (0..1, 0.5 = centre) say which part
+  // of the overflow is shown, so every part of the image can be framed.
+  // gap = px between two pockets' inner boxes. The image proportion comes from
+  // the loaded image (artAspectV21); until it is known the old fill is used.
+  const artAspectCacheV21=new Map();
+  function artAspectV21(a){
+    const r=+a?.aspect||artAspectCacheV21.get(a?.image_path||a?.id)||0;
+    return r>0?r:0;
+  }
   function artCropV21(a,col,row,gap){
     const z=Math.max(0.3,Math.min(4,+a.zoom||1));
     const px=Math.max(0,Math.min(1,a.pos_x==null?0.5:+a.pos_x)),py=Math.max(0,Math.min(1,a.pos_y==null?0.5:+a.pos_y));
     const n=v=>(+v).toFixed(4);
     const W='('+a.cols+' * 100% + '+((a.cols-1)*gap)+'px)',H='('+a.rows+' * 100% + '+((a.rows-1)*gap)+'px)';
+    const r=artAspectV21(a);
+    if(!r){
+      return{
+        width:'calc('+W+' * '+n(z)+')',
+        height:'calc('+H+' * '+n(z)+')',
+        left:'calc('+(-col)+' * (100% + '+gap+'px) - '+W+' * '+n((z-1)*px)+')',
+        top:'calc('+(-row)+' * (100% + '+gap+'px) - '+H+' * '+n((z-1)*py)+')',
+        objectPosition:n(px*100)+'% '+n(py*100)+'%',objectFit:'cover'
+      };
+    }
+    // Units of the pocket itself (it is a size container, see v140.css):
+    // 100cqw = pocket width, 100cqh = pocket height.
+    const Wc='('+a.cols+' * 100cqw + '+((a.cols-1)*gap)+'px)',Hc='('+a.rows+' * 100cqh + '+((a.rows-1)*gap)+'px)';
+    const w='max('+Wc+', '+Hc+' * '+n(r)+') * '+n(z);
+    const h='max('+Wc+' / '+n(r)+', '+Hc+') * '+n(z);
     return{
-      width:'calc('+W+' * '+n(z)+')',
-      height:'calc('+H+' * '+n(z)+')',
-      left:'calc('+(-col)+' * (100% + '+gap+'px) - '+W+' * '+n((z-1)*px)+')',
-      top:'calc('+(-row)+' * (100% + '+gap+'px) - '+H+' * '+n((z-1)*py)+')',
-      objectPosition:n(px*100)+'% '+n(py*100)+'%'
+      width:'calc('+w+')',
+      height:'calc('+h+')',
+      left:'calc('+(-col)+' * (100cqw + '+gap+'px) + ('+Wc+' - '+w+') * '+n(px)+')',
+      top:'calc('+(-row)+' * (100cqh + '+gap+'px) + ('+Hc+' - '+h+') * '+n(py)+')',
+      objectPosition:'50% 50%',objectFit:'fill'
     };
   }
   function applyArtCropV21(img,a,col,row,gap){
-    const s=artCropV21(a,col,row,gap);
-    img.style.width=s.width;img.style.height=s.height;img.style.left=s.left;img.style.top=s.top;img.style.objectPosition=s.objectPosition;
+    const set=()=>{
+      const s=artCropV21(a,col,row,gap);
+      img.style.width=s.width;img.style.height=s.height;img.style.left=s.left;img.style.top=s.top;
+      img.style.objectPosition=s.objectPosition;img.style.objectFit=s.objectFit;
+    };
+    set();
+    if(!artAspectV21(a)){
+      const learn=()=>{
+        if(!img.naturalWidth||!img.naturalHeight)return;
+        artAspectCacheV21.set(a.image_path||a.id,img.naturalWidth/img.naturalHeight);
+        set();
+      };
+      if(img.complete)learn();else img.addEventListener('load',learn,{once:true});
+    }
   }
   V14.artCrop=artCropV21;
   function artPieceEl(piece,sheet){
@@ -2371,13 +2406,16 @@
       e.preventDefault();
       const f=artDialogFramingV21();
       const W=cell.offsetWidth*f.cols+6*(f.cols-1),H=cell.offsetHeight*f.rows+6*(f.rows-1);
+      const pic=cell.querySelector('img');
+      // Overflow of the image beyond the art rectangle (negative when larger).
+      const overX=W-(pic?.offsetWidth||W),overY=H-(pic?.offsetHeight||H);
       const start={x:e.clientX,y:e.clientY,px:f.pos_x,py:f.pos_y};
       box.setPointerCapture?.(e.pointerId);
       box.classList.add('dragging');
       const move=ev=>{
-        // Dragging right/down shows more of the left/top of the image.
-        d.dataset.px=String(Math.max(0,Math.min(1,start.px-(ev.clientX-start.x)/Math.max(1,W))));
-        d.dataset.py=String(Math.max(0,Math.min(1,start.py-(ev.clientY-start.y)/Math.max(1,H))));
+        // The image follows the pointer: left = overflow * pos.
+        if(Math.abs(overX)>1)d.dataset.px=String(Math.max(0,Math.min(1,start.px+(ev.clientX-start.x)/overX)));
+        if(Math.abs(overY)>1)d.dataset.py=String(Math.max(0,Math.min(1,start.py+(ev.clientY-start.y)/overY)));
         renderArtPreviewV21();
       };
       const up=()=>{box.removeEventListener('pointermove',move);box.removeEventListener('pointerup',up);box.removeEventListener('pointercancel',up);box.classList.remove('dragging')};
@@ -2388,6 +2426,7 @@
   function artDialogFramingV21(){
     const d=byId('v21ArtDialog');
     return{
+      image_path:d.dataset.previewUrl||'',
       cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,
       zoom:+d.dataset.zoom||1,
       pos_x:d.dataset.px===undefined||d.dataset.px===''?0.5:+d.dataset.px,
@@ -5436,7 +5475,7 @@
         const left=mx+c*(M.w+M.gap),top=my+r*(M.h+M.gap);
         const crop=artCropV21(it.a,it.p.col,it.p.row,0);
         const url=artImageUrlV21(it.a);
-        const style='width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition;
+        const style='width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+';object-fit:'+(crop.objectFit||'cover');
         const caption=(it.a.title||'Arte')+' · pedaço '+it.n+'/'+it.total+' · pág. '+it.p.page+', bolso '+it.p.slot;
         return '<div class="piece" style="left:'+mm(left)+';top:'+mm(top)+'"><img src="'+pdfEscapeV1500(url)+'" alt="" style="'+style+'"></div>'+
           '<div class="cap" style="left:'+mm(left)+';top:'+mm(top+M.h+0.6)+'">'+pdfEscapeV1500(caption)+'</div>';
@@ -5459,7 +5498,7 @@
       '@page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#e9e9e9;font-family:Arial,sans-serif}'+
       '.sheet{position:relative;width:210mm;height:297mm;margin:0 auto 6mm;background:#fff;overflow:hidden;page-break-after:always;break-after:page}'+
       '.sheet:last-child{page-break-after:auto;break-after:auto}'+
-      '.piece{position:absolute;width:63mm;height:88mm;overflow:hidden;background:#fff}'+
+      '.piece{position:absolute;width:63mm;height:88mm;overflow:hidden;background:#fff;container-type:size}'+
       '.piece img{position:absolute;max-width:none;object-fit:cover}'+
       '.cap{position:absolute;width:63mm;font-size:5.5pt;line-height:1.15;color:#666;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
       '.mk{position:absolute;background:#000}.mk.v{width:0.2mm;height:5mm;margin-left:-0.1mm}.mk.h{height:0.2mm;width:4.5mm;margin-top:-0.1mm}'+
@@ -5520,7 +5559,7 @@
           const a=piece.art,url=V14.artImageUrl(a);
           const artSrc=url?'https://wsrv.nl/?url='+encodeURIComponent(url)+'&w='+Math.min(2400,Math.round(380*a.cols*Math.max(1,+a.zoom||1)))+'&output=jpg&q=88':'';
           const crop=V14.artCrop(a,piece.col,piece.row,0);
-          const style='position:absolute;max-width:none;object-fit:cover;width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition;
+          const style='position:absolute;max-width:none;object-fit:'+(crop.objectFit||'cover')+';width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition;
           slots.push(
             '<div class="slot">'+
               '<div class="card art">'+(artSrc?'<img src="'+pdfEscapeV1500(artSrc)+'" data-orig="'+pdfEscapeV1500(url)+'" alt="'+pdfEscapeV1500(a.title||'Arte')+'" style="'+style+'">':'')+'</div>'+
@@ -5574,7 +5613,7 @@
       'h1{font-size:15pt;margin:0 0 1mm}header p,.price-mode{margin:0;font-size:8pt;color:#555}.price-mode{font-weight:700;padding-top:1mm}'+
       '.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:1.4mm;flex:1;align-items:start}'+
       '.slot{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:.7mm;overflow:hidden;background:transparent;border:0;border-radius:0}'+
-      '.slot.empty{background:transparent;border:0}.card.art{overflow:hidden;border-radius:1.4mm}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm;filter:none!important}'+
+      '.slot.empty{background:transparent;border:0}.card.art{overflow:hidden;border-radius:1.4mm;container-type:size}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm;filter:none!important}'+
       '.price{position:absolute;left:2mm;right:2mm;bottom:2mm;background:rgba(0,0,0,.88);color:#fff;border-radius:1.5mm;padding:1.3mm;text-align:center;font-size:8.5pt;font-weight:800}.noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border:1px dashed #bbb;color:#777;font-size:9pt;text-align:center;padding:4mm}'+
       '.meta{width:100%;display:grid;gap:.35mm;margin-top:.8mm;text-align:center;line-height:1.08}.meta strong{font-size:7.2pt}.meta span{font-size:6.1pt;color:#555}.meta small{font-size:5.8pt;color:#777}'+
       '#pdfBar{position:sticky;top:0;z-index:5;display:flex;gap:4mm;align-items:center;justify-content:center;padding:3mm;background:#111;color:#fff;font-size:10pt}#pdfBar button{font:inherit;font-weight:700;padding:1.5mm 4mm;border:0;border-radius:1.5mm;cursor:pointer}'+
