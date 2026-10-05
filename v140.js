@@ -4986,8 +4986,11 @@
           slots.push('<div class="slot empty"></div>');
           continue;
         }
-        // Absolute URL: the popup must not depend on inheriting the app's base.
+        // On GitHub Pages "/api/..." does not exist (404): the app's page
+        // rewrites it to Supabase (PF_FIX_API_URL), the PDF document does not,
+        // so map it here, then make it absolute.
         let src=cardImage(card)||card.image_url||'';
+        if(src&&typeof window.PF_FIX_API_URL==='function')src=window.PF_FIX_API_URL(src);
         try{if(src)src=new URL(src,location.href).href}catch{}
         const price=priceModeValue(card,mode);
         const status=String(card.collection_status||'owned');
@@ -5029,12 +5032,12 @@
       // print preview is a snapshot, and a fixed 3.5 s timer printed big
       // binders before their images arrived. A failed external image is tried
       // once more through the app's image proxy.
-      '<script>(function(){var origin='+JSON.stringify(location.origin)+';var imgs=[].slice.call(document.images);var done=0,printed=false;var status=document.getElementById("pdfStatus");'+
+      '<script>(function(){var origin='+JSON.stringify(location.origin)+';var apiBase='+JSON.stringify(new URL(window.PF_API_BASE||'/api/',location.href).href)+';var imgs=[].slice.call(document.images);var done=0,printed=false;var status=document.getElementById("pdfStatus");'+
       'function show(){status.textContent=done<imgs.length?"Carregando imagens "+done+" de "+imgs.length+"…":"Imagens carregadas ("+imgs.length+")."}'+
       'function go(){if(printed)return;printed=true;show();setTimeout(function(){window.print()},300)}'+
       'document.getElementById("pdfPrint").onclick=function(){window.print()};document.getElementById("pdfClose").onclick=function(){var o=window.frameElement&&window.frameElement.parentElement;if(o)o.remove();else window.close()};'+
       'function settle(i){return new Promise(function(r){function fin(){done++;show();(i.decode?i.decode().catch(function(){}):Promise.resolve()).then(r)}'+
-      'function fail(){var s=i.getAttribute("src")||"";if(!i.dataset.retried&&/^https?:/i.test(s)&&s.indexOf(origin)!==0){i.dataset.retried="1";i.onload=fin;i.onerror=fin;i.src=origin+"/api/image-proxy?url="+encodeURIComponent(s);return}fin()}'+
+      'function fail(){var s=i.getAttribute("src")||"";if(!i.dataset.retried&&/^https?:/i.test(s)&&s.indexOf(origin)!==0&&s.indexOf(apiBase)!==0){i.dataset.retried="1";i.onload=fin;i.onerror=fin;i.src=apiBase+"image-proxy?url="+encodeURIComponent(s);return}fin()}'+
       'if(i.complete&&i.naturalWidth)return fin();if(i.complete)return fail();i.onload=fin;i.onerror=fail})}'+
       'show();Promise.all(imgs.map(settle)).then(go);setTimeout(function(){if(!printed){status.textContent="Algumas imagens ainda não carregaram ("+done+" de "+imgs.length+"). Use o botão quando quiser imprimir."}},90000)})();<\/script>'+
       '</body></html>');
