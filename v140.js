@@ -574,9 +574,14 @@
   function physicalManualViewV14(){
     return !V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size);
   }
+  // Desktop shows two pages side by side (2-3, 4-5…), so navigation moves by
+  // spreads. Phones (≤820px, see prepareSpreadV1433) show ONE page: every page
+  // is its own stop, otherwise the right-hand pages (3, 5, 7…) were skipped.
+  function binderSpreadLayoutV14(){return !!window.matchMedia?.('(min-width:821px)').matches}
   function binderSessionAnchorV14(page,pages=currentBinderPages()){
     pages=Math.max(1,+pages||1);
     page=Math.min(pages,Math.max(1,+page||1));
+    if(!binderSpreadLayoutV14())return page;
     if(page<=1)return 1;
     return page%2===0?page:page-1;
   }
@@ -586,6 +591,7 @@
   function binderSessionTargetV14(page,dir,pages=currentBinderPages()){
     const anchor=binderSessionAnchorV14(page,pages);
     const last=binderLastSessionAnchorV14(pages);
+    if(!binderSpreadLayoutV14())return Math.min(last,Math.max(1,anchor+(dir>0?1:-1)));
     if(dir>0){
       if(anchor<=1)return Math.min(last,2);
       return Math.min(last,anchor+2);
