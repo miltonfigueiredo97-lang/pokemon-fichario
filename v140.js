@@ -2505,7 +2505,10 @@
       }
       if(f.seamless&&src)box.appendChild(seamlessArtOverlayV21(f,0,0,src));
       byId('v21ArtSave').disabled=!src;
-      byId('v21ArtHint').textContent='Ajuste o enquadramento; os '+cols*rows+' pedaço(s) continuam onde estão no fichário.';
+      const editing=(V14.binderArt||[]).find(x=>x.id===d.dataset.editId);
+      byId('v21ArtHint').textContent=editing&&(cols!==+editing.cols||rows!==+editing.rows)
+        ?'Novo tamanho '+cols+'×'+rows+': a arte cresce ou diminui a partir do bolso do pedaço do canto de cima à esquerda; bolsos novos precisam estar vazios.'
+        :'Edite tamanho, imagem, título, zoom e posição; os '+cols*rows+' pedaço(s) continuam onde estão no fichário.';
       return;
     }
     box.style.gridTemplateColumns='';
@@ -2569,17 +2572,22 @@
     d.dataset.previewUrl=artImageUrlV21(a);
     d.dataset.zoom=String(+a.zoom||1);
     d.dataset.px=String(a.pos_x==null?0.5:+a.pos_x);d.dataset.py=String(a.pos_y==null?0.5:+a.pos_y);
-    const opts=n=>'<option value="'+n+'">'+n+'</option>';
-    byId('v21ArtCols').innerHTML=opts(a.cols);byId('v21ArtRows').innerHTML=opts(a.rows);
+    // Size can change too: it grows/shrinks from the top-left piece's pocket.
+    const anchor=(V14.artPieces||[]).find(p=>p.art_id===a.id&&+p.col===0&&+p.row===0);
+    const ac=anchor?(+anchor.slot-1)%3:0,ar=anchor?Math.floor((+anchor.slot-1)/3):0;
+    const opts=(n,cur)=>Array.from({length:n},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'</option>').join('');
+    byId('v21ArtCols').innerHTML=anchor?opts(3-ac):'<option value="'+a.cols+'">'+a.cols+'</option>';
+    byId('v21ArtRows').innerHTML=anchor?opts(3-ar):'<option value="'+a.rows+'">'+a.rows+'</option>';
+    byId('v21ArtCols').value=String(a.cols);byId('v21ArtRows').value=String(a.rows);
     // The image can be replaced (e.g. by the full-resolution original); the
     // pieces stay where they are.
-    byId('v21ArtFileField').hidden=false;byId('v21ArtSizeField').hidden=true;
+    byId('v21ArtFileField').hidden=false;byId('v21ArtSizeField').hidden=false;
     byId('v21ArtFileField').querySelector('span').textContent='Trocar imagem (opcional)';
     byId('v21ArtFile').value='';
     byId('v21ArtTitle').value=a.title||'';
     byId('v21ArtSeamless').checked=!!a.seamless;
-    byId('v21ArtHeading').textContent='Ajustar arte';
-    byId('v21ArtSave').textContent='Salvar enquadramento';
+    byId('v21ArtHeading').textContent='Editar arte';
+    byId('v21ArtSave').textContent='Salvar alterações';
     byId('v21ArtWhere').textContent='Arte '+a.cols+'×'+a.rows+(a.title?' · '+a.title:'')+'.';
     renderArtPreviewV21();
     if(!d.open)d.showModal();
@@ -2595,6 +2603,15 @@
       let newPath='';
       try{
         const patch={...framing,title:byId('v21ArtTitle').value.trim(),seamless:!!byId('v21ArtSeamless').checked};
+        const cols=+byId('v21ArtCols').value||old?.cols||1,rows=+byId('v21ArtRows').value||old?.rows||1;
+        if(old&&(cols!==+old.cols||rows!==+old.rows)){
+          const {error:sizeError}=await db.rpc('pokemon_resize_art',{p_art:old.id,p_cols:cols,p_rows:rows});
+          if(sizeError){
+            const m=String(sizeError.message||'');
+            const taken=(m.match(/pocket_taken:(d+)/)||[])[1];
+            throw new Error(taken?'O bolso '+taken+' está ocupado: esvazie-o para a arte crescer.':m.includes('no_room')?'Não cabe: a arte passaria da borda da página.':m.includes('anchor_missing')?'O primeiro pedaço da arte não foi encontrado.':m);
+          }
+        }
         if(file){
           const prepared=await prepareArtFileV21(file);
           const id=globalThis.crypto?.randomUUID?.()||(Date.now()+'-'+Math.random().toString(36).slice(2));
@@ -2607,11 +2624,13 @@
         if(error)throw error;
         if(newPath&&old?.image_path)db.storage.from(ART_BUCKET_V21).remove([old.image_path]).catch(()=>{});
         V14.binderArt=(V14.binderArt||[]).map(x=>x.id===data.id?data:x);
-        d.close();renderAll();toast(newPath?'Imagem trocada e enquadramento salvo.':'Enquadramento da arte salvo.');
+        const resized=old&&(cols!==+old.cols||rows!==+old.rows);
+        if(resized)await loadCardsV14(false);
+        d.close();renderAll();toast(resized?'Arte atualizada: agora '+cols+'×'+rows+'.':newPath?'Imagem trocada e arte salva.':'Arte salva.');
       }catch(e){
         console.error('[Ajustar arte]',e);
         if(newPath)db.storage.from(ART_BUCKET_V21).remove([newPath]).catch(()=>{});
-        toast('Não consegui salvar a arte.');
+        toast('Não consegui salvar a arte: '+(e?.message||'tente de novo'));
       }
       finally{busy(button,false)}
       return;
@@ -2660,7 +2679,7 @@
       '<div class="dialog-shell v21-art-shell">'+
         '<div class="dialog-head"><div><p class="kicker">Arte do fichário</p><h2 id="v21ArtMenuTitle">Arte</h2><p class="muted compact-copy" id="v21ArtMenuWhere"></p></div><button class="icon-only" type="button" data-v21-close>×</button></div>'+
         '<img id="v21ArtMenuImg" class="v21-art-menu-img" alt="">'+
-        '<div class="v21-art-actions"><button type="button" class="btn btn-secondary" data-v21-close>Fechar</button><button type="button" class="btn btn-secondary" id="v21ArtFrame">Ajustar enquadramento</button><button type="button" class="btn btn-secondary" id="v21ArtPrint">Imprimir para recortar</button><button type="button" class="btn btn-danger" id="v21ArtRemove">Remover arte</button></div>'+
+        '<div class="v21-art-actions"><button type="button" class="btn btn-secondary" data-v21-close>Fechar</button><button type="button" class="btn btn-primary" id="v21ArtFrame">✎ Editar arte</button><button type="button" class="btn btn-secondary" id="v21ArtPrint">Imprimir para recortar</button><button type="button" class="btn btn-danger" id="v21ArtRemove">Remover arte</button></div>'+
       '</div>';
     document.body.appendChild(d);
     d.querySelectorAll('[data-v21-close]').forEach(b=>b.onclick=()=>d.close());
