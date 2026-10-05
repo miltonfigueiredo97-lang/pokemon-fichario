@@ -342,7 +342,7 @@
     if(state.pieceId){
       ghost.classList.add('v21-art-ghost');
       const gi=ghost.querySelector('img'),si=state.card.querySelector('img');
-      if(gi&&si)for(const k of ['width','height','left','top'])gi.style.setProperty(k,si.style[k],'important');
+      if(gi&&si)for(const k of ['width','height','left','top','object-position'])gi.style.setProperty(k,si.style.getPropertyValue(k),'important');
     }
     ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';
     ghost.style.left=(state.x-state.offsetX)+'px';ghost.style.top=(state.y-state.offsetY)+'px';

@@ -2117,3 +2117,11 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v11-drag-ghost.v21-art-ghost{overflow:hidden!important;background:#0b0f12!important}
 .v11-drag-ghost.v21-art-ghost img{position:absolute!important;max-width:none!important;object-fit:cover!important}
 .binder-pocket.v11-drop-target .v21-art-piece{outline:2px solid rgba(120,190,255,.95);outline-offset:-2px}
+/* V21.3 · art framing controls */
+.v21-art-zoom{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center}
+.v21-art-zoom .btn{padding:6px 10px;min-width:0}
+.v21-art-zoom input[type=range]{width:100%}
+.v21-art-preview{touch-action:none;user-select:none}
+.v21-art-preview .v21-art-cell.new{cursor:grab}
+.v21-art-preview.dragging .v21-art-cell.new{cursor:grabbing}
+.v21-art-preview .v21-art-cell img{pointer-events:none}
