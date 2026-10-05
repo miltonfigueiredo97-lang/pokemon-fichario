@@ -2200,8 +2200,12 @@
         add.onclick=()=>openAddForPosition(page,slot);
         pocket.appendChild(add);
       }
+      // Explicit cell: a "whole" art overlay below spans cells, and grid
+      // auto-placement would otherwise push pockets around it.
+      pocket.style.gridColumn=String((slot-1)%3+1);pocket.style.gridRow=String(Math.floor((slot-1)/3)+1);
       sheet.appendChild(pocket);
     }
+    appendSeamlessArtV21(sheet,activeBinder()?.id,page);
   }
 
   // ---------------------------------------------------------------- binder art
@@ -2294,6 +2298,36 @@
     }
   }
   V14.artCrop=artCropV21;
+  // "Arte inteira": one picture over the art's pockets, covering the gaps
+  // between them, while its pieces are all in their original rectangle on
+  // this page (pieces moved elsewhere show as separate pieces again).
+  function seamlessArtOverlayV21(a,c0,r0,src){
+    const el=document.createElement('div');
+    el.className='v21-art-whole';
+    el.style.gridColumn=(c0+1)+' / span '+a.cols;el.style.gridRow=(r0+1)+' / span '+a.rows;
+    const img=document.createElement('img');img.alt='';img.draggable=false;img.src=src;
+    applyArtCropV21(img,{...a,cols:1,rows:1},0,0,0);
+    el.appendChild(img);
+    return el;
+  }
+  function appendSeamlessArtV21(sheet,binderId,page){
+    if(!sheet||!binderId)return;
+    for(const a of (V14.binderArt||[]).filter(x=>x.binder_id===binderId&&x.seamless)){
+      const pieces=(V14.artPieces||[]).filter(p=>p.art_id===a.id);
+      if(pieces.length!==a.cols*a.rows||!pieces.every(p=>+p.page===+page))continue;
+      const first=pieces.find(p=>+p.col===0&&+p.row===0);if(!first)continue;
+      const c0=(+first.slot-1)%3,r0=Math.floor((+first.slot-1)/3);
+      if(c0+a.cols>3||r0+a.rows>3)continue;
+      if(!pieces.every(p=>+p.slot===+first.slot+(+p.row)*3+(+p.col)))continue;
+      const el=seamlessArtOverlayV21(a,c0,r0,artImageUrlV21(a));
+      if(a.title){const tag=document.createElement('span');tag.className='v21-art-tag';tag.textContent='ARTE · '+a.title;el.appendChild(tag)}
+      sheet.appendChild(el);
+      sheet.querySelectorAll('.binder-pocket').forEach(p=>{
+        const sl=+p.dataset.slot,c=(sl-1)%3,r=Math.floor((sl-1)/3);
+        if(c>=c0&&c<c0+a.cols&&r>=r0&&r<r0+a.rows)p.querySelector('.v21-art-tag')?.remove();
+      });
+    }
+  }
   function artPieceEl(piece,sheet){
     const a=piece.art;
     // Distance between two pockets' inner boxes: grid gap + both 1 px borders.
@@ -2369,6 +2403,8 @@
             '<label class="v21-art-field" id="v21ArtFileField"><span>Imagem</span><input id="v21ArtFile" type="file" accept="image/*"></label>'+
             '<label class="v21-art-field"><span>Título (opcional)</span><input id="v21ArtTitle" type="text" maxlength="60" placeholder="Ex.: Latias & Latios no pôr do sol"></label>'+
             '<div class="v21-art-size" id="v21ArtSizeField"><label class="v21-art-field"><span>Largura (bolsos)</span><select id="v21ArtCols"></select></label><label class="v21-art-field"><span>Altura (bolsos)</span><select id="v21ArtRows"></select></label></div>'+
+            '<label class="v21-art-check"><input type="checkbox" id="v21ArtSeamless"><span><b>Arte inteira</b> (sem espaço entre os bolsos)<small>Mostrada como uma imagem só e impressa numa peça única, sem cortes no meio. Use quando a arte vai inteira atrás dos bolsos.</small></span></label>'+
+            '<p class="v21-art-ideal" id="v21ArtIdeal"></p>'+
             '<div class="v21-art-field"><span>Zoom <b id="v21ArtZoomLabel">100%</b></span><div class="v21-art-zoom"><button type="button" class="btn btn-secondary" id="v21ArtZoomOut" title="Diminuir">−</button><input id="v21ArtZoom" type="range" min="30" max="400" step="1" value="100"><button type="button" class="btn btn-secondary" id="v21ArtZoomIn" title="Aumentar">+</button><button type="button" class="btn btn-secondary" id="v21ArtCenter" title="Zoom 100% e imagem centralizada">Centralizar</button></div></div>'+
             '<p class="muted compact-copy">Arraste a imagem na prévia para posicioná-la; a roda do mouse sobre a prévia também muda o zoom.</p>'+
             '<p class="muted compact-copy" id="v21ArtHint">A arte começa no bolso clicado e se estende para a direita e para baixo.</p>'+
@@ -2386,6 +2422,7 @@
       renderArtPreviewV21();
     };
     byId('v21ArtCols').onchange=renderArtPreviewV21;
+    byId('v21ArtSeamless').onchange=renderArtPreviewV21;
     byId('v21ArtRows').onchange=renderArtPreviewV21;
     byId('v21ArtSave').onclick=saveArtV21;
     // Framing: zoom (slider, buttons, mouse wheel) and position (drag the image).
@@ -2427,6 +2464,7 @@
     const d=byId('v21ArtDialog');
     return{
       image_path:d.dataset.previewUrl||'',
+      seamless:!!byId('v21ArtSeamless')?.checked,
       cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,
       zoom:+d.dataset.zoom||1,
       pos_x:d.dataset.px===undefined||d.dataset.px===''?0.5:+d.dataset.px,
@@ -2448,6 +2486,8 @@
     const f=artDialogFramingV21(),cols=f.cols,rows=f.rows;
     const c0=(slot-1)%3,r0=Math.floor((slot-1)/3),src=d.dataset.previewUrl||'';
     const conflicts=artConflictsV21();
+    // Ideal image: 300 dpi of the printed size (pocket = card 63 x 88 mm).
+    byId('v21ArtIdeal').innerHTML='Tamanho ideal da imagem para '+cols+'×'+rows+': <b>'+(cols*744)+' × '+(rows*1039)+' px</b> ('+(cols*63)+' × '+(rows*88)+' mm). Mínimo para boa impressão: '+(cols*372)+' × '+(rows*520)+' px.';
     byId('v21ArtZoom').value=String(Math.round(f.zoom*100));
     byId('v21ArtZoomLabel').textContent=Math.round(f.zoom*100)+'%';
     box.innerHTML='';
@@ -2461,7 +2501,9 @@
         const img=document.createElement('img');img.src=src;img.alt='';
         applyArtCropV21(img,f,c,r,6);
         cell.appendChild(img);box.appendChild(cell);
+        cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       }
+      if(f.seamless&&src)box.appendChild(seamlessArtOverlayV21(f,0,0,src));
       byId('v21ArtSave').disabled=!src;
       byId('v21ArtHint').textContent='Ajuste o enquadramento; os '+cols*rows+' pedaço(s) continuam onde estão no fichário.';
       return;
@@ -2486,8 +2528,10 @@
         cell.classList.add('has-art');
       }
       if(inside&&conflicts.includes(s)){const x=document.createElement('b');x.textContent='ocupado';cell.appendChild(x)}
+      cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       box.appendChild(cell);
     }
+    if(f.seamless&&src&&!conflicts.length)box.appendChild(seamlessArtOverlayV21(f,c0,r0,src));
     const save=byId('v21ArtSave');
     save.disabled=!src||conflicts.length>0;
     byId('v21ArtHint').textContent=conflicts.length
@@ -2508,7 +2552,7 @@
     byId('v21ArtSave').textContent='Colocar arte';
     byId('v21ArtFileField').hidden=false;byId('v21ArtSizeField').hidden=false;
     byId('v21ArtFileField').querySelector('span').textContent='Imagem';
-    byId('v21ArtFile').value='';byId('v21ArtTitle').value='';
+    byId('v21ArtFile').value='';byId('v21ArtTitle').value='';byId('v21ArtSeamless').checked=false;
     const c0=(pos.slot-1)%3,r0=Math.floor((pos.slot-1)/3);
     const opts=n=>Array.from({length:n},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'</option>').join('');
     byId('v21ArtCols').innerHTML=opts(3-c0);byId('v21ArtRows').innerHTML=opts(3-r0);
@@ -2533,6 +2577,7 @@
     byId('v21ArtFileField').querySelector('span').textContent='Trocar imagem (opcional)';
     byId('v21ArtFile').value='';
     byId('v21ArtTitle').value=a.title||'';
+    byId('v21ArtSeamless').checked=!!a.seamless;
     byId('v21ArtHeading').textContent='Ajustar arte';
     byId('v21ArtSave').textContent='Salvar enquadramento';
     byId('v21ArtWhere').textContent='Arte '+a.cols+'×'+a.rows+(a.title?' · '+a.title:'')+'.';
@@ -2549,7 +2594,7 @@
       const old=(V14.binderArt||[]).find(x=>x.id===d.dataset.editId);
       let newPath='';
       try{
-        const patch={...framing,title:byId('v21ArtTitle').value.trim()};
+        const patch={...framing,title:byId('v21ArtTitle').value.trim(),seamless:!!byId('v21ArtSeamless').checked};
         if(file){
           const prepared=await prepareArtFileV21(file);
           const id=globalThis.crypto?.randomUUID?.()||(Date.now()+'-'+Math.random().toString(36).slice(2));
@@ -2583,7 +2628,7 @@
       path=currentUser.id+'/'+id+'.'+prepared.ext;
       const up=await db.storage.from(ART_BUCKET_V21).upload(path,blob,{contentType:prepared.type,upsert:false});
       if(up.error)throw up.error;
-      const row={binder_id:binder.id,page:+d.dataset.page,slot:+d.dataset.slot,cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,image_path:path,title:byId('v21ArtTitle').value.trim(),...framing};
+      const row={binder_id:binder.id,page:+d.dataset.page,slot:+d.dataset.slot,cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,image_path:path,title:byId('v21ArtTitle').value.trim(),seamless:!!byId('v21ArtSeamless').checked,...framing};
       const {data,error}=await db.from('pokemon_binder_art').insert(row).select('*').single();
       if(error)throw error;
       // One piece per pocket, laid out as the original rectangle; each piece
@@ -5454,15 +5499,17 @@
     const binder=activeBinder();
     if(!binder)return toast('Escolha um fichário específico para imprimir as artes.');
     const arts=(V14.binderArt||[]).filter(a=>a.binder_id===binder.id&&(!onlyArtId||a.id===onlyArtId));
-    const pieces=[];
+    const pieces=[],wholes=[];
     for(const a of arts){
+      // "Arte inteira" prints as one uncut piece (cols*63 x rows*88 mm).
+      if(a.seamless){wholes.push(a);continue}
       const own=(V14.artPieces||[]).filter(p=>p.art_id===a.id).sort((x,y)=>x.row-y.row||x.col-y.col);
       own.forEach((p,i)=>pieces.push({a,p,n:i+1,total:own.length}));
     }
     // Arts in binder order (first piece's page/pocket), pieces in reading order.
     const firstPos=a=>Math.min(...(V14.artPieces||[]).filter(p=>p.art_id===a.id).map(p=>p.page*10+p.slot));
     pieces.sort((x,y)=>firstPos(x.a)-firstPos(y.a)||String(x.a.id).localeCompare(String(y.a.id))||x.n-y.n);
-    if(!pieces.length)return toast(onlyArtId?'Esta arte não tem pedaços.':'Este fichário ainda não tem artes.');
+    if(!pieces.length&&!wholes.length)return toast(onlyArtId?'Esta arte não tem pedaços.':'Este fichário ainda não tem artes.');
 
     const M=ART_CARD_MM;
     const gridW=3*M.w+2*M.gap,gridH=3*M.h+2*M.gap;
@@ -5487,6 +5534,17 @@
           '<div class="cap" style="left:'+mm(left)+';top:'+mm(top+M.h+0.6)+'">'+pdfEscapeV1500(caption)+'</div>';
       }).join('');
       sheets.push('<section class="sheet">'+marks+cells+'</section>');
+    }
+    for(const a of wholes){
+      const W=a.cols*M.w,H=a.rows*M.h,left=(M.pageW-W)/2,top=(M.pageH-H)/2;
+      const crop=artCropV21({...a,cols:1,rows:1},0,0,0);
+      const url=artImageUrlV21(a);
+      const style='width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+';object-fit:'+(crop.objectFit||'cover');
+      const cut=[left,left+W].map(x=>'<i class="mk v" style="left:'+mm(x)+';top:'+mm(top-7)+'"></i><i class="mk v" style="left:'+mm(x)+';top:'+mm(top+H+2)+'"></i>').join('')+
+        [top,top+H].map(y=>'<i class="mk h" style="top:'+mm(y)+';left:'+mm(left-5.5)+'"></i><i class="mk h" style="top:'+mm(y)+';left:'+mm(left+W+1)+'"></i>').join('');
+      const caption=(a.title||'Arte')+' · inteira '+a.cols+'×'+a.rows+' ('+W+' × '+H+' mm)';
+      sheets.push('<section class="sheet">'+cut+'<div class="piece" style="left:'+mm(left)+';top:'+mm(top)+';width:'+mm(W)+';height:'+mm(H)+'"><img src="'+pdfEscapeV1500(url)+'" alt="" style="'+style+'"></div>'+
+        '<div class="cap" style="left:'+mm(left)+';top:'+mm(top+H+0.6)+';width:'+mm(W)+'">'+pdfEscapeV1500(caption)+'</div></section>');
     }
 
     byId('v1500PdfOverlay')?.remove();
@@ -5515,7 +5573,7 @@
       '<div id="bar"><span id="st">Carregando imagens…</span><span>Na impressão: <b>Escala 100% (Tamanho real)</b> e <b>Margens: Nenhuma</b>.</span><button id="pr" type="button">Imprimir / Salvar PDF</button><button id="cl" type="button">Fechar</button></div>'+
       sheets.join('')+
       '<script>(function(){var imgs=[].slice.call(document.images),done=0,st=document.getElementById("st");'+
-      'function show(){st.textContent=done<imgs.length?"Carregando imagens "+done+" de "+imgs.length+"…":"'+pieces.length+' pedaço(s) em '+sheets.length+' folha(s) A4, tamanho de carta (63 × 88 mm)."}'+
+      'function show(){st.textContent=done<imgs.length?"Carregando imagens "+done+" de "+imgs.length+"…":"'+(pieces.length+wholes.length)+' peça(s) em '+sheets.length+' folha(s) A4, tamanho de carta (63 × 88 mm)."}'+
       'document.getElementById("pr").onclick=function(){window.print()};'+
       'document.getElementById("cl").onclick=function(){var o=window.frameElement&&window.frameElement.parentElement;if(o)o.remove();else window.close()};'+
       'Promise.all(imgs.map(function(i){return new Promise(function(r){function f(){done++;show();(i.decode?i.decode().catch(function(){}):Promise.resolve()).then(r)}if(i.complete)return f();i.onload=f;i.onerror=f})})).then(function(){show();setTimeout(function(){window.print()},400)});show()})();<\/script>'+
