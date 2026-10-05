@@ -2811,6 +2811,37 @@
     renderAll();renderPagesGrid();
     toast('Páginas '+a+' e '+b+' trocadas.');
   }
+  // Spreads: [2,3], [4,5]… (page 1 stays next to the cover; a last single
+  // page stays last). Moving a spread = a new order of the old page numbers.
+  function binderPairsV22(pages){
+    const pairs=[];let p=2;
+    for(;p+1<=pages;p+=2)pairs.push([p,p+1]);
+    const tail=[];for(;p<=pages;p++)tail.push(p);
+    return{pairs,tail};
+  }
+  async function reorderSpreadsV22(fromFirst,targetFirst,mode){
+    const binder=activeBinder();if(!binder)return;
+    const pages=currentBinderPages(),{pairs,tail}=binderPairsV22(pages);
+    const i=pairs.findIndex(x=>x[0]===fromFirst),j=pairs.findIndex(x=>x[0]===targetFirst);
+    if(i<0||j<0)return;
+    const list=pairs.slice();
+    if(mode==='swap'){if(i===j)return;[list[i],list[j]]=[list[j],list[i]]}
+    else{
+      const [moved]=list.splice(i,1);
+      let k=list.findIndex(x=>x[0]===targetFirst);
+      if(mode==='after')k++;
+      list.splice(k,0,moved);
+    }
+    const order=[1,...list.flat(),...tail];
+    if(order.every((v,idx)=>v===idx+1))return;
+    const {error}=await db.rpc('pokemon_reorder_binder_pages',{p_binder:binder.id,p_order:order});
+    if(error){console.error('[Mover dupla]',error);return toast('Não consegui mover as páginas: '+(error.message||'erro no banco'))}
+    await loadCardsV14(false);
+    const newFirst=2+2*list.findIndex(x=>x[0]===fromFirst);
+    currentPage=binderSessionAnchorV14(newFirst,pages);
+    renderAll();renderPagesGrid();
+    toast(mode==='swap'?'Duplas trocadas.':'Páginas '+fromFirst+'–'+(fromFirst+1)+' agora são '+newFirst+'–'+(newFirst+1)+'.');
+  }
   function miniPageV22(p,binderId){
     const mini=document.createElement('div');
     mini.className='v22-mini';
@@ -2840,8 +2871,22 @@
     g.innerHTML='';g.classList.add('v22-spreads');
     const spreads=[[0,1]];
     for(let p=2;p<=pages;p+=2)spreads.push([p,p+1<=pages?p+1:0]);
+    const pairCount=binderPairsV22(pages).pairs.length;
     for(const pair of spreads){
       const sp=document.createElement('div');sp.className='v22-spread';
+      if(pair[0]&&pair[1]){
+        // Grip: drag the whole spread (or ◀ ▶ one spread at a time).
+        const idx=(pair[0]-2)/2;
+        sp.dataset.first=String(pair[0]);
+        const grip=document.createElement('div');grip.className='v22-spread-grip';
+        grip.innerHTML='<button type="button" data-sdir="-1" title="Dupla para antes"'+(idx<=0?' disabled':'')+'>◀</button><span>⠿ Páginas '+pair[0]+'–'+pair[1]+'</span><button type="button" data-sdir="1" title="Dupla para depois"'+(idx>=pairCount-1?' disabled':'')+'>▶</button>';
+        grip.querySelectorAll('button').forEach(b=>b.onclick=e=>{
+          e.stopPropagation();
+          const dir=+b.dataset.sdir,target=pair[0]+2*dir;
+          reorderSpreadsV22(pair[0],target,dir<0?'before':'after');
+        });
+        sp.appendChild(grip);
+      }
       pair.forEach((p,side)=>{
         if(!p){
           const blank=document.createElement('div');
@@ -2881,7 +2926,14 @@
     if(g.dataset.v22Drag)return;g.dataset.v22Drag='1';
     let drag=null;
     const clearMarks=()=>g.querySelectorAll('.v22-swap,.v22-before,.v22-after').forEach(x=>x.classList.remove('v22-swap','v22-before','v22-after'));
+    // (drag.kind 'spread' targets whole spreads, 'page' single pages)
     const targetAt=(x,y)=>{
+      if(drag?.kind==='spread'){
+        const sp=document.elementFromPoint(x,y)?.closest?.('.v22-spread[data-first]');
+        if(!sp||!g.contains(sp))return null;
+        const r=sp.getBoundingClientRect(),fx=(x-r.left)/Math.max(1,r.width);
+        return{el:sp,page:+sp.dataset.first,mode:fx<0.2?'before':fx>0.8?'after':'swap'};
+      }
       const el=document.elementFromPoint(x,y)?.closest?.('.v22-page');
       if(!el||!g.contains(el))return null;
       const r=el.getBoundingClientRect(),fx=(x-r.left)/Math.max(1,r.width);
@@ -2898,11 +2950,11 @@
       drag.ghost.style.transform='translate('+(x-drag.ghost.offsetWidth/2)+'px,'+(y-30)+'px)';
       mark();
     };
-    const start=(page,x,y,src)=>{
+    const start=(page,x,y,src,kind='page')=>{
       const ghost=src.cloneNode(true);ghost.classList.add('v22-ghost');ghost.style.width=src.offsetWidth+'px';
       document.body.appendChild(ghost);
       src.classList.add('v22-dragging');
-      drag={page,ghost,src,x,y,target:null,scroller:scrollParentV22(g),raf:0};
+      drag={page,ghost,src,x,y,target:null,scroller:scrollParentV22(g),raf:0,kind};
       // Near the top/bottom edge the dialog scrolls by itself.
       const loop=()=>{
         if(!drag)return;
@@ -2923,6 +2975,7 @@
       V14.pageDragJustEndedV22=true;setTimeout(()=>{V14.pageDragJustEndedV22=false},350);
       const t=d.target;if(cancel||!t)return;
       const from=d.page;
+      if(d.kind==='spread'){if(t.page!==from||t.mode!=='swap')await reorderSpreadsV22(from,t.page,t.mode);return}
       if(t.mode==='swap'){if(t.page!==from)await swapBinderPagesV22(from,t.page);return}
       // Insert before/after page q: final position of the moved page.
       const q=t.page;
@@ -2933,12 +2986,14 @@
     // Mouse / pen: drag after a few pixels.
     g.addEventListener('pointerdown',e=>{
       if(e.pointerType==='touch'||e.button!==0||e.target.closest('button'))return;
-      const el=e.target.closest('.v22-page');if(!el)return;
+      const grip=e.target.closest('.v22-spread-grip');
+      const el=grip?grip.closest('.v22-spread'):e.target.closest('.v22-page');if(!el)return;
       e.preventDefault();
-      const sx=e.clientX,sy=e.clientY,page=+el.dataset.page;
+      const kind=grip?'spread':'page';
+      const sx=e.clientX,sy=e.clientY,page=kind==='spread'?+el.dataset.first:+el.dataset.page;
       const off=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);removeEventListener('pointercancel',cn)};
       const mv=ev=>{
-        if(!drag&&Math.hypot(ev.clientX-sx,ev.clientY-sy)>6)start(page,ev.clientX,ev.clientY,el);
+        if(!drag&&Math.hypot(ev.clientX-sx,ev.clientY-sy)>6)start(page,ev.clientX,ev.clientY,el,kind);
         if(drag){ev.preventDefault();move(ev.clientX,ev.clientY)}
       };
       const up=()=>{off();end(false)};
@@ -2948,10 +3003,12 @@
     // Touch: hold the page ~0.4 s, then drag (normal swipes keep scrolling).
     g.addEventListener('touchstart',e=>{
       if(e.touches.length!==1||e.target.closest('button'))return;
-      const el=e.target.closest('.v22-page');if(!el)return;
-      const t0=e.touches[0],sx=t0.clientX,sy=t0.clientY,page=+el.dataset.page;
+      const grip=e.target.closest('.v22-spread-grip');
+      const el=grip?grip.closest('.v22-spread'):e.target.closest('.v22-page');if(!el)return;
+      const kind=grip?'spread':'page';
+      const t0=e.touches[0],sx=t0.clientX,sy=t0.clientY,page=kind==='spread'?+el.dataset.first:+el.dataset.page;
       let lx=sx,ly=sy;
-      const timer=setTimeout(()=>{start(page,lx,ly,el);navigator.vibrate?.(15)},400);
+      const timer=setTimeout(()=>{start(page,lx,ly,el,kind);navigator.vibrate?.(15)},400);
       const off=()=>{clearTimeout(timer);g.removeEventListener('touchmove',tm);g.removeEventListener('touchend',te);g.removeEventListener('touchcancel',tc)};
       const tm=ev=>{
         const t=ev.touches[0];lx=t.clientX;ly=t.clientY;

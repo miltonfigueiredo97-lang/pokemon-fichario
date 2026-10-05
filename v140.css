@@ -2160,3 +2160,16 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v22-page.v22-after{box-shadow:7px 0 0 -2px var(--accent2)}
 .v22-ghost{position:fixed;left:0;top:0;z-index:2147483600;pointer-events:none;opacity:.9;box-shadow:0 18px 40px rgba(0,0,0,.55)}
 @media (max-width:640px){.pages-grid.v22-spreads{grid-template-columns:1fr}}
+
+/* Spread grip: drag/move a whole spread */
+.v22-spread{grid-template-rows:auto 1fr}
+.v22-spread>.v22-page,.v22-spread>.v22-page-blank{grid-row:2}
+.v22-spread:not([data-first])>.v22-page,.v22-spread:not([data-first])>.v22-page-blank{grid-row:1/-1}
+.v22-spread-grip{grid-column:1/-1;grid-row:1;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 2px 4px;cursor:grab;user-select:none;-webkit-user-select:none;font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em}
+.v22-spread-grip span{flex:1;text-align:center}
+.v22-spread-grip button{width:28px;height:24px;border:1px solid var(--line2);border-radius:7px;background:var(--panel3);color:var(--text);font-size:11px;line-height:1;padding:0}
+.v22-spread-grip button:disabled{opacity:.3}
+.v22-spread.v22-dragging{opacity:.35}
+.v22-spread.v22-swap{outline:3px solid var(--accent2);outline-offset:3px}
+.v22-spread.v22-before{box-shadow:-9px 0 0 -3px var(--accent2)}
+.v22-spread.v22-after{box-shadow:9px 0 0 -3px var(--accent2)}
