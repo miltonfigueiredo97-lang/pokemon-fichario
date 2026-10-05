@@ -2537,7 +2537,11 @@
         const img=cardImage(card);
         if(img){const i=document.createElement('img');i.className='v21-art-cell-card';i.src=img;i.alt='';cell.appendChild(i)}
       }else if(other){
+        // Show the art already there (its own crop), dimmed like cards.
         cell.classList.add('has-art');
+        const i=document.createElement('img');i.className='v21-art-cell-other';i.alt='';i.src=artImageUrlV21(other.art);
+        applyArtCropV21(i,other.art,other.col,other.row,6);
+        cell.appendChild(i);
       }
       if(inside&&conflicts.includes(s)){const x=document.createElement('b');x.textContent='ocupado';cell.appendChild(x)}
       cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);

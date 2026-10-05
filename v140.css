@@ -2176,3 +2176,7 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 
 .v22-page-foot .v22-page-remove{font-size:12px}
 .v22-page-foot .v22-page-remove:hover:not(:disabled){border-color:var(--danger);background:rgba(255,69,69,.15)}
+
+/* Art dialog preview: other arts already on the page, dimmed */
+.v21-art-cell.has-art{background:rgba(255,255,255,.04)}
+.v21-art-cell img.v21-art-cell-other{position:absolute;max-width:none;opacity:.5}
