@@ -929,7 +929,7 @@
   function upgradeVersionButton(){const old=$v('#v12VersionButton');if(!old)return;const b=old.cloneNode(true);b.querySelector('strong').textContent=APP_VERSION;b.querySelector('small').textContent='Notas da versão ›';old.replaceWith(b);b.addEventListener('click',openNotes);window.POKEMON_BINDER_VERSION=APP_VERSION;document.documentElement.dataset.appVersion=APP_VERSION}
 
   async function ensureXLSX(){if(window.XLSX)return true;return new Promise(resolve=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onload=()=>resolve(true);s.onerror=()=>resolve(false);document.head.appendChild(s)})}
-  const XLS_HEADERS=['Nome','Número','Coleção','Idioma','Status','Quantidade','Condição','Acabamento','Página','Bolso','Observações','API ID','Set ID','Imagem URL','Liga Mínimo','Liga Médio','Liga Máximo','Link Liga','MYP Mínimo','MYP Médio','MYP Máximo','Link MYP','Preço do Fichário','Fonte principal','Última atualização'];
+  const XLS_HEADERS=['Página','Bolso','ID','Nome','Número','Coleção','Idioma','Status','Quantidade','Condição','Acabamento','Observações','API ID','Set ID','Imagem URL','Liga Mínimo','Liga Médio','Liga Máximo','Link Liga','MYP Mínimo','MYP Médio','MYP Máximo','Link MYP','Preço do Fichário','Fonte principal','Última atualização'];
   const IMPORT_HEADERS=['Nome','Número','Coleção','Idioma','Status','Quantidade','Condição','Acabamento','Observações'];
   const INSTRUCTIONS=[
     ['Coluna','Como preencher','Obrigatório?'],
@@ -943,9 +943,28 @@
     ['Acabamento','Normal, Foil, Reverse Foil, Pokeball Foil, Masterball Foil, Full-Art, Promo ou Especial','Recomendado'],
     ['Observações','Texto livre. Pode ficar vazio.','Não'],
     ['O app preenche sozinho','Página/bolso quando não vierem de um backup, API ID, Set ID, imagem, links e preços de Liga/MYP. Não coloque essas colunas no modelo simples.','Automático'],
-    ['Importação','Aceita tanto este modelo simples quanto o arquivo completo gerado por “Baixar meu fichário em Excel”.','—']
+    ['Importação','Aceita tanto este modelo simples quanto o arquivo completo gerado por “Baixar meu fichário em Excel”.','—'],
+    ['',' ',''],
+    ['REORGANIZAR A ORDEM','O Excel de “Baixar meu fichário em Excel” tem uma linha para CADA bolso de CADA página, na ordem do fichário (página 1 bolsos 1–9, página 2…). Linha sem ID = bolso vazio.','—'],
+    ['Como reordenar','Não mude as colunas Página e Bolso. Mova as cartas inteiras (da coluna ID até o fim) para a linha do bolso desejado. Deixe vazia a linha de um bolso que deve ficar vazio. Pode acrescentar linhas de páginas novas no fim (Página 41, Bolso 1…9).','—'],
+    ['Ao importar','Se a planilha tem a coluna ID, o app só MUDA A POSIÇÃO das cartas: não cria nem apaga nenhuma. Todas as cartas do fichário precisam aparecer uma vez; se faltar alguma ou houver duas no mesmo bolso, nada é alterado.','—']
   ];
-  function rowsForExcel(){return collection.map(c=>({Nome:c.name||'',Número:c.number||'',Coleção:c.set_name||'',Idioma:c.language||'',Status:internalToStatus(c.collection_status),Quantidade:+c.quantity||0,Condição:c.condition||'Nova',Acabamento:normalizeFinish(c.finish),Página:+c.binder_page||'',Bolso:+c.binder_slot||'',Observações:c.notes||'','API ID':c.api_id||'','Set ID':c.set_id||'','Imagem URL':c.image_url||'','Liga Mínimo':+c.liga_price_min||0,'Liga Médio':+c.liga_price_avg||0,'Liga Máximo':+c.liga_price_max||0,'Link Liga':c.liga_price_link||'','MYP Mínimo':+c.myp_price_min||0,'MYP Médio':+c.myp_price_avg||0,'MYP Máximo':+c.myp_price_max||0,'Link MYP':c.myp_price_link||'','Preço do Fichário':+c.price_avg||0,'Fonte principal':c.price_source||'','Última atualização':c.price_checked_at||''}))}
+  // One row per pocket of every page of the active binder, in binder order;
+  // an empty pocket is a row with only Página/Bolso. The card ID lets the
+  // import move exactly these cards (reorder mode).
+  function rowsForExcel(){
+    const binder=(window.PB14?.binders||[]).find(b=>b.id===window.PB14?.activeBinderId);
+    const cards=binder?(window.PB14.allCards||[]).filter(c=>c.binder_id===binder.id):collection;
+    const byPos=new Map(cards.map(c=>[(+c.binder_page||1)+':'+(+c.binder_slot||1),c]));
+    const pages=Math.max(1,+binder?.pages||+settings.binder_pages||1,...cards.map(c=>+c.binder_page||1));
+    const rows=[];
+    for(let page=1;page<=pages;page++)for(let slot=1;slot<=9;slot++){
+      const c=byPos.get(page+':'+slot);
+      rows.push(c?{Página:page,Bolso:slot,ID:c.id,...cardExcelRow(c)}:{Página:page,Bolso:slot});
+    }
+    return rows;
+  }
+  function cardExcelRow(c){return({Nome:c.name||'',Número:c.number||'',Coleção:c.set_name||'',Idioma:c.language||'',Status:internalToStatus(c.collection_status),Quantidade:+c.quantity||0,Condição:c.condition||'Nova',Acabamento:normalizeFinish(c.finish),Observações:c.notes||'','API ID':c.api_id||'','Set ID':c.set_id||'','Imagem URL':c.image_url||'','Liga Mínimo':+c.liga_price_min||0,'Liga Médio':+c.liga_price_avg||0,'Liga Máximo':+c.liga_price_max||0,'Link Liga':c.liga_price_link||'','MYP Mínimo':+c.myp_price_min||0,'MYP Médio':+c.myp_price_avg||0,'MYP Máximo':+c.myp_price_max||0,'Link MYP':c.myp_price_link||'','Preço do Fichário':+c.price_avg||0,'Fonte principal':c.price_source||'','Última atualização':c.price_checked_at||''})}
   function buildWorkbook(rows,template=false){
     const wb=XLSX.utils.book_new();
     const headers=template?IMPORT_HEADERS:XLS_HEADERS;
@@ -961,6 +980,7 @@
     return wb;
   }
   async function exportExcel(template=false){
+    if(!template&&!(window.PB14?.binders||[]).some(b=>b.id===window.PB14?.activeBinderId))return toast('Escolha um fichário específico para baixar em Excel.');
     if(!await ensureXLSX())return toast('Não consegui carregar o módulo de Excel.');
     const wb=buildWorkbook(template?[]:rowsForExcel(),template);
     XLSX.writeFile(wb,template?'modelo-importacao-pokemon.xlsx':'meu-fichario-pokemon-completo.xlsx');
@@ -985,7 +1005,57 @@
     let page=basePages+1;
     while(true){for(let slot=1;slot<=9;slot++){if(!used.has(`${page}:${slot}`)){used.add(`${page}:${slot}`);return{page,slot}}}page++}
   }
-  async function importExcelFile(file){if(!file)return;if(!await ensureXLSX())return toast('Não consegui carregar o módulo de Excel.');const buf=await file.arrayBuffer(),wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets['Fichário']||wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(ws,{defval:''});if(!rows.length)return toast('A planilha não tem cartas.');const valid=rows.filter(r=>String(rowValue(r,'Nome')).trim()&&String(rowValue(r,'Número')).trim());if(!valid.length)return toast('Preencha pelo menos Nome e Número.');const importBinderId=window.PB14?.activeBinderId;if(!(window.PB14?.binders||[]).some(b=>b.id===importBinderId))return toast('Escolha um fichário antes de importar a planilha.');const status=$v('#v12PriceProgress'),used=new Set();let added=0,failed=0,maxPage=+settings.binder_pages||1;bulkBusy=true;
+  // Reorder mode: the sheet carries card IDs (exported by this app). Cards are
+  // only moved, in one database transaction (pokemon_reorder_binder).
+  async function reorderFromRows(rows){
+    const all=window.PB14?.allCards||[];
+    const byId=new Map(all.map(c=>[String(c.id),c]));
+    const positions=[],problems=[],seen=new Set(),pockets=new Set();
+    let binderId='';
+    rows.forEach((row,i)=>{
+      const id=String(rowValue(row,'ID')).trim();
+      if(!id)return;
+      const card=byId.get(id);
+      if(!card){problems.push(`Linha ${i+2}: ID desconhecido (${String(rowValue(row,'Nome'))||id}).`);return}
+      if(binderId&&card.binder_id!==binderId){problems.push(`Linha ${i+2}: ${card.name} é de outro fichário.`);return}
+      binderId=card.binder_id;
+      let page=Math.trunc(Number(rowValue(row,'Página'))),slot=Math.trunc(Number(rowValue(row,'Bolso')));
+      if(!(page>=1&&slot>=1&&slot<=9)){page=Math.floor(i/9)+1;slot=i%9+1}
+      if(seen.has(id)){problems.push(`Linha ${i+2}: ${card.name} aparece duas vezes.`);return}
+      const key=page+':'+slot;
+      if(pockets.has(key)){problems.push(`Linha ${i+2}: página ${page}, bolso ${slot} já tem outra carta.`);return}
+      seen.add(id);pockets.add(key);positions.push({id,page,slot,card});
+    });
+    const binder=(window.PB14?.binders||[]).find(b=>b.id===binderId);
+    if(!binder)return toast('Nenhuma carta da planilha foi encontrada nos seus fichários.');
+    const missing=all.filter(c=>c.binder_id===binderId&&!seen.has(String(c.id)));
+    if(missing.length)problems.push(`${missing.length} carta(s) do fichário não estão na planilha (ex.: ${missing.slice(0,3).map(c=>c.name+' '+(c.number||'')).join(', ')}).`);
+    if(problems.length){
+      const NL=String.fromCharCode(10);
+      alert('A ordem NÃO foi alterada. Corrija a planilha:'+NL+NL+problems.slice(0,12).join(NL)+(problems.length>12?NL+`… e mais ${problems.length-12}.`:''));
+      return;
+    }
+    const moving=positions.filter(p=>+p.card.binder_page!==p.page||+p.card.binder_slot!==p.slot).length;
+    const pages=Math.max(...positions.map(p=>p.page));
+    if(!moving)return toast('A planilha já está na mesma ordem do fichário.');
+    if(!confirm(`Reorganizar o fichário “${binder.name}”?
+
+${moving} de ${positions.length} carta(s) mudam de lugar.
+Páginas usadas: ${pages}.
+Nenhuma carta será criada ou apagada.`))return;
+    const status=$v('#v12PriceProgress');
+    if(status)status.textContent='Reorganizando o fichário…';
+    const {data,error}=await db.rpc('pokemon_reorder_binder',{p_binder:binderId,p_positions:positions.map(({id,page,slot})=>({id,page,slot}))});
+    if(error){
+      console.error('[Reorganizar fichário]',error);
+      if(status)status.textContent='';
+      return alert('A ordem NÃO foi alterada: '+(error.message||error));
+    }
+    await loadCards(false);
+    if(status)status.textContent=`Fichário reorganizado: ${moving} carta(s) mudaram de lugar.`;
+    toast(`Fichário reorganizado: ${moving} carta(s) movidas · ${data?.pages||pages} página(s).`);
+  }
+  async function importExcelFile(file){if(!file)return;if(!await ensureXLSX())return toast('Não consegui carregar o módulo de Excel.');const buf=await file.arrayBuffer(),wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets['Fichário']||wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(ws,{defval:''});if(!rows.length)return toast('A planilha não tem cartas.');if(rows.some(r=>String(rowValue(r,'ID')).trim()))return reorderFromRows(rows);const valid=rows.filter(r=>String(rowValue(r,'Nome')).trim()&&String(rowValue(r,'Número')).trim());if(!valid.length)return toast('Preencha pelo menos Nome e Número.');const importBinderId=window.PB14?.activeBinderId;if(!(window.PB14?.binders||[]).some(b=>b.id===importBinderId))return toast('Escolha um fichário antes de importar a planilha.');const status=$v('#v12PriceProgress'),used=new Set();let added=0,failed=0,maxPage=+settings.binder_pages||1;bulkBusy=true;
     try{for(let i=0;i<valid.length;i++){if(i>0)await sleep(150);const row=valid[i];if(status)status.textContent=`Importando ${i+1}/${valid.length} · ${rowValue(row,'Nome')}`;try{const card=await resolveImportCard(row),finish=normalizeFinish(rowValue(row,'Acabamento')),condition=normalizeCondition(rowValue(row,'Condição')),st=statusToInternal(rowValue(row,'Status')),quantity=st==='owned'?Math.max(1,Number(rowValue(row,'Quantidade'))||1):0,pos=desiredPosition(row,used);maxPage=Math.max(maxPage,pos.page);const dual={finishConfirmed:true};const payload=cardPayload(card,{page:pos.page,slot:pos.slot,status:st,quantity,condition,finish,finishConfirmed:true,notes:String(rowValue(row,'Observações')||'')},dual);payload.binder_id=importBinderId;const queuedAt=new Date().toISOString();Object.assign(payload,{price_pending:true,price_processing_at:null,price_requested_at:queuedAt,price_next_retry_at:queuedAt,price_attempts:0,price_priority:300,price_last_error:null,price_progress:0,price_progress_stage:'queued'});const{data:existing,error:lookupError}=await db.from('pokemon_cards').select('id,quantity').eq('user_id',currentUser.id).eq('binder_id',importBinderId).eq('card_key',payload.card_key).eq('condition',payload.condition).eq('finish',payload.finish).limit(1).maybeSingle();if(lookupError)throw lookupError;if(existing){const patch={quantity:st==='owned'?(+existing.quantity||0)+quantity:0,collection_status:st,finish_confirmed:true};const{error}=await db.from('pokemon_cards').update(patch).eq('id',existing.id).eq('user_id',currentUser.id);if(error)throw error}else{const{error}=await db.from('pokemon_cards').insert(payload);if(error)throw error}added++}catch(e){console.error('Importação:',e);failed++}}
       if(maxPage>+settings.binder_pages)await updateSettings({binder_pages:maxPage},true);await loadCards(false);if(status)status.textContent=`Importação concluída: ${added} carta(s) · ${failed} erro(s).`;toast(`Importação concluída: ${added}/${valid.length}.`)
     }finally{bulkBusy=false}}
