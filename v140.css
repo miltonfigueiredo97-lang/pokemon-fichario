@@ -2181,3 +2181,4 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v21-art-cell.has-art{background:rgba(255,255,255,.04)}
 .v21-art-cell img.v21-art-cell-other{position:absolute;max-width:none;opacity:.5}
 .v21-art-preview .v21-art-other-strip{opacity:.5}
+.v21-art-cell{aspect-ratio:var(--v22-cell-aspect,63/88)!important}

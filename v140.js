@@ -2458,7 +2458,8 @@
       if(!cell||!d.dataset.previewUrl)return;
       e.preventDefault();
       const f=artDialogFramingV21();
-      const W=cell.offsetWidth*f.cols+(6+2)*(f.cols-1),H=cell.offsetHeight*f.rows+(6+2)*(f.rows-1);
+      const pg=+box.dataset.pgap||8;
+      const W=cell.offsetWidth*f.cols+pg*(f.cols-1),H=cell.offsetHeight*f.rows+pg*(f.rows-1);
       const pic=cell.querySelector('img');
       // Overflow of the image beyond the art rectangle (negative when larger).
       const overX=W-(pic?.offsetWidth||W),overY=H-(pic?.offsetHeight||H);
@@ -2495,6 +2496,30 @@
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const s=slot+r*3+c;if(pocketTakenV21(binderId,page,s))out.push(s)}
     return out;
   }
+  // The preview copies the binder's real proportions (pocket aspect, column
+  // and row gaps relative to the pocket width): crops are computed in pixels
+  // of gap, so a preview with other proportions framed the image differently.
+  function binderGeometryV22(){
+    const sheet=document.querySelector('#binderSheet');
+    const pocket=sheet?.querySelector('.binder-pocket');
+    const pw=pocket?.offsetWidth||0,ph=pocket?.offsetHeight||0;
+    if(!sheet||pw<20||ph<20)return{aspect:63/88,kc:0.035,kr:0.035};
+    const cs=getComputedStyle(sheet);
+    return{aspect:pw/ph,kc:(parseFloat(cs.columnGap)||0)/pw,kr:(parseFloat(cs.rowGap)||0)/pw};
+  }
+  function applyPreviewGeometryV22(box,n){
+    const g=binderGeometryV22();
+    const cs=getComputedStyle(box);
+    const inner=box.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+    const cw=inner>0?inner/(n+(n-1)*g.kc):100;
+    const gc=g.kc*cw,gr=g.kr*cw;
+    box.style.columnGap=gc+'px';box.style.rowGap=gr+'px';
+    box.style.setProperty('--v22-cell-aspect',String(g.aspect));
+    // Pieces: gap between two pockets' inner boxes (+ both 1 px borders), as
+    // artPieceEl does in the binder; whole-art strips: the row gap.
+    box.dataset.pgap=String(gc+2);box.dataset.rgap=String(gr);
+    return{pieceGap:gc+2,rowGap:gr};
+  }
   function renderArtPreviewV21(){
     const d=byId('v21ArtDialog'),box=byId('v21ArtPreview');
     if(!d||!box)return;
@@ -2507,6 +2532,7 @@
     byId('v21ArtZoom').value=String(Math.round(f.zoom*100));
     byId('v21ArtZoomLabel').textContent=Math.round(f.zoom*100)+'%';
     box.innerHTML='';
+    const geo=applyPreviewGeometryV22(box,d.dataset.editId?cols:3);
     // Adjusting an existing art: show it assembled (cols x rows), wherever its
     // pieces are in the binder.
     if(d.dataset.editId){
@@ -2515,11 +2541,11 @@
         const cell=document.createElement('div');
         cell.className='v21-art-cell new';
         const img=document.createElement('img');img.src=src;img.alt='';
-        applyArtCropV21(img,f,c,r,6+2);
+        applyArtCropV21(img,f,c,r,geo.pieceGap);
         cell.appendChild(img);box.appendChild(cell);
         cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       }
-      if(f.seamless&&src)seamlessArtOverlayV21(f,0,0,src,gridRowGapV21(box)).forEach(el=>box.appendChild(el));
+      if(f.seamless&&src)seamlessArtOverlayV21(f,0,0,src,geo.rowGap).forEach(el=>box.appendChild(el));
       byId('v21ArtSave').disabled=!src;
       const editing=(V14.binderArt||[]).find(x=>x.id===d.dataset.editId);
       byId('v21ArtHint').textContent=editing&&(cols!==+editing.cols||rows!==+editing.rows)
@@ -2538,7 +2564,7 @@
       if(inside&&src){
         const img=document.createElement('img');
         img.src=src;img.alt='';
-        applyArtCropV21(img,f,c-c0,r-r0,6+2);
+        applyArtCropV21(img,f,c-c0,r-r0,geo.pieceGap);
         cell.appendChild(img);
       }else if(card){
         const img=cardImage(card);
@@ -2549,7 +2575,7 @@
         cell.classList.add('has-art');
         if(!other.art.seamless){
           const i=document.createElement('img');i.className='v21-art-cell-other';i.alt='';i.src=artImageUrlV21(other.art);
-          applyArtCropV21(i,other.art,other.col,other.row,6+2);
+          applyArtCropV21(i,other.art,other.col,other.row,geo.pieceGap);
           cell.appendChild(i);
         }
       }
@@ -2558,9 +2584,9 @@
       box.appendChild(cell);
     }
     for(const w of seamlessInPlaceV21(binderId,page)){
-      seamlessArtOverlayV21(w.a,w.c0,w.r0,artImageUrlV21(w.a),gridRowGapV21(box)).forEach(el=>{el.classList.add('v21-art-other-strip');box.appendChild(el)});
+      seamlessArtOverlayV21(w.a,w.c0,w.r0,artImageUrlV21(w.a),geo.rowGap).forEach(el=>{el.classList.add('v21-art-other-strip');box.appendChild(el)});
     }
-    if(f.seamless&&src&&!conflicts.length)seamlessArtOverlayV21(f,c0,r0,src,gridRowGapV21(box)).forEach(el=>box.appendChild(el));
+    if(f.seamless&&src&&!conflicts.length)seamlessArtOverlayV21(f,c0,r0,src,geo.rowGap).forEach(el=>box.appendChild(el));
     const save=byId('v21ArtSave');
     save.disabled=!src||conflicts.length>0;
     byId('v21ArtHint').textContent=conflicts.length
@@ -2589,6 +2615,7 @@
     byId('v21ArtWhere').textContent='Fichário “'+(binder.name||'')+'” · página '+pos.page+', a partir do bolso '+pos.slot+'.';
     renderArtPreviewV21();
     if(!d.open)d.showModal();
+    requestAnimationFrame(renderArtPreviewV21);
   }
   // Same dialog, adjusting the framing (zoom/position) and title of an art.
   function openArtFramingV21(a){
@@ -2617,6 +2644,7 @@
     byId('v21ArtWhere').textContent='Arte '+a.cols+'×'+a.rows+(a.title?' · '+a.title:'')+'.';
     renderArtPreviewV21();
     if(!d.open)d.showModal();
+    requestAnimationFrame(renderArtPreviewV21);
   }
   async function saveArtV21(){
     const d=byId('v21ArtDialog'),binder=activeBinder(),file=byId('v21ArtFile').files?.[0];
