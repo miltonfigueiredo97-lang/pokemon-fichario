@@ -4992,13 +4992,18 @@
         let src=cardImage(card)||card.image_url||'';
         if(src&&typeof window.PF_FIX_API_URL==='function')src=window.PF_FIX_API_URL(src);
         try{if(src)src=new URL(src,location.href).href}catch{}
+        // Print-size copy (380 px ≈ 48 mm at 200 dpi): full-size images (up to
+        // 1000 px / 500 KB each) made a 40-page print hang and the saved PDF
+        // come out corrupt. wsrv.nl resizes any public image; on failure the
+        // page falls back to the original (data-orig).
+        const printSrc=src?'https://wsrv.nl/?url='+encodeURIComponent(src)+'&w=380&output=jpg&q=78':'';
         const price=priceModeValue(card,mode);
         const status=String(card.collection_status||'owned');
         const statusLabel=({owned:'Tenho',wanted:'Quero',missing:'Não tenho',ordered:'Pedido'})[status]||status;
         slots.push(
           '<div class="slot">'+
             '<div class="card">'+
-              (src?'<img src="'+pdfEscapeV1500(src)+'" alt="'+pdfEscapeV1500(card.name||'Carta')+'">':'<div class="noimg">'+pdfEscapeV1500(card.name||'Carta')+'</div>')+
+              (src?'<img src="'+pdfEscapeV1500(printSrc)+'" data-orig="'+pdfEscapeV1500(src)+'" alt="'+pdfEscapeV1500(card.name||'Carta')+'">':'<div class="noimg">'+pdfEscapeV1500(card.name||'Carta')+'</div>')+
               '<div class="price">'+(price>0?pdfEscapeV1500(moneyPdf(price)):'Buscando cotação')+'</div>'+
             '</div>'+
             '<div class="meta"><strong>'+pdfEscapeV1500(card.name||'')+'</strong><span>'+pdfEscapeV1500(card.number||'')+(card.set_name?' · '+pdfEscapeV1500(card.set_name):'')+'</span><small>'+pdfEscapeV1500(statusLabel)+'</small></div>'+
@@ -5037,7 +5042,7 @@
       'function go(){if(printed)return;printed=true;show();setTimeout(function(){window.print()},300)}'+
       'document.getElementById("pdfPrint").onclick=function(){window.print()};document.getElementById("pdfClose").onclick=function(){var o=window.frameElement&&window.frameElement.parentElement;if(o)o.remove();else window.close()};'+
       'function settle(i){return new Promise(function(r){function fin(){done++;show();(i.decode?i.decode().catch(function(){}):Promise.resolve()).then(r)}'+
-      'function fail(){var s=i.getAttribute("src")||"";if(!i.dataset.retried&&/^https?:/i.test(s)&&s.indexOf(origin)!==0&&s.indexOf(apiBase)!==0){i.dataset.retried="1";i.onload=fin;i.onerror=fin;i.src=apiBase+"image-proxy?url="+encodeURIComponent(s);return}fin()}'+
+      'function fail(){if(i.dataset.orig&&!i.dataset.usedOrig){i.dataset.usedOrig="1";i.onload=fin;i.onerror=fail;i.src=i.dataset.orig;return}var s=i.getAttribute("src")||"";if(!i.dataset.retried&&/^https?:/i.test(s)&&s.indexOf(origin)!==0&&s.indexOf(apiBase)!==0){i.dataset.retried="1";i.onload=fin;i.onerror=fin;i.src=apiBase+"image-proxy?url="+encodeURIComponent(s);return}fin()}'+
       'if(i.complete&&i.naturalWidth)return fin();if(i.complete)return fail();i.onload=fin;i.onerror=fail})}'+
       'show();Promise.all(imgs.map(settle)).then(go);setTimeout(function(){if(!printed){status.textContent="Algumas imagens ainda não carregaram ("+done+" de "+imgs.length+"). Use o botão quando quiser imprimir."}},90000)})();<\/script>'+
       '</body></html>');
