@@ -1959,6 +1959,9 @@
     const {data,error}=await db.from('pokemon_cards').select('*').eq('user_id',currentUser.id).order('binder_page').order('binder_slot');
     if(error){console.error(error);toast('Erro ao carregar cartas.');return}
     V14.allCards=data||[];
+    // Binder art (images spread over pockets). A missing table just means no art.
+    const art=await db.from('pokemon_binder_art').select('*').eq('user_id',currentUser.id);
+    V14.binderArt=art.error?[]:(art.data||[]);
     collection=physicalCollection();
     syncLegacySettings();
     renderBinderControls();
@@ -2171,8 +2174,12 @@
       pocket.dataset.slot=slot;
 
       const card=getCardAt(page,slot);
+      const piece=card?null:artPieceAt(activeBinder()?.id,page,slot);
       if(card){
         pocket.appendChild(renderPocketCard(card));
+      }else if(piece){
+        pocket.classList.add('v21-art-pocket');
+        pocket.appendChild(artPieceEl(piece,sheet));
       }else{
         const add=document.createElement('button');
         add.className='pocket-empty-btn v1425-slot-add';
@@ -2185,6 +2192,253 @@
       }
       sheet.appendChild(pocket);
     }
+  }
+
+  // ---------------------------------------------------------------- binder art
+  // One image spread over a rectangle of pockets (cols x rows, from the
+  // top-left pocket "slot"); each pocket shows its own crop, like a panel of
+  // cards forming one illustration. Table pokemon_binder_art; images in the
+  // public Storage bucket "pokemon-art" under "<user id>/".
+  const ART_BUCKET_V21='pokemon-art';
+  function artImageUrlV21(a){
+    try{return db.storage.from(ART_BUCKET_V21).getPublicUrl(a.image_path).data.publicUrl}catch{return''}
+  }
+  function artPieceAt(binderId,page,slot){
+    if(!binderId)return null;
+    const c=(slot-1)%3,r=Math.floor((slot-1)/3);
+    for(const a of V14.binderArt||[]){
+      if(a.binder_id!==binderId||+a.page!==+page)continue;
+      const c0=(a.slot-1)%3,r0=Math.floor((a.slot-1)/3);
+      if(c>=c0&&c<c0+a.cols&&r>=r0&&r<r0+a.rows)return{art:a,col:c-c0,row:r-r0};
+    }
+    return null;
+  }
+  V14.artPieceAt=artPieceAt;
+  V14.artImageUrl=artImageUrlV21;
+  V14.artPieceEl=(piece,sheet)=>artPieceEl(piece,sheet);
+  function artPieceEl(piece,sheet){
+    const a=piece.art;
+    // Distance between two pockets' inner boxes: grid gap + both 1 px borders.
+    const gap=(parseFloat(getComputedStyle(sheet||document.body).columnGap)||5)+2;
+    const el=document.createElement('button');
+    el.type='button';
+    el.className='v21-art-piece';
+    el.title=(a.title?a.title+' · ':'')+'Arte '+a.cols+'×'+a.rows+' — clique para opções';
+    const img=document.createElement('img');
+    img.alt='';
+    img.loading='lazy';
+    img.draggable=false;
+    img.src=artImageUrlV21(a);
+    img.style.width='calc('+a.cols+' * 100% + '+((a.cols-1)*gap)+'px)';
+    img.style.height='calc('+a.rows+' * 100% + '+((a.rows-1)*gap)+'px)';
+    img.style.left='calc('+(-piece.col)+' * (100% + '+gap+'px))';
+    img.style.top='calc('+(-piece.row)+' * (100% + '+gap+'px))';
+    el.appendChild(img);
+    if(piece.col===0&&piece.row===0){
+      const tag=document.createElement('span');
+      tag.className='v21-art-tag';
+      tag.textContent='ARTE'+(a.title?' · '+a.title:'');
+      el.appendChild(tag);
+    }
+    el.onclick=e=>{e.stopPropagation();openArtMenuV21(a)};
+    return el;
+  }
+  function pocketTakenV21(binderId,page,slot){
+    return !!V14.allCards.find(c=>c.binder_id===binderId&&+(c.binder_page||1)===+page&&+c.binder_slot===+slot)||!!artPieceAt(binderId,page,slot);
+  }
+  // Same order as script.js freePositions, but pockets with art are not free.
+  function freePositionsV21(start=currentPage,count=1){
+    const binderId=activeBinder()?.id;
+    const taken=(p,s)=>!!getCardAt(p,s)||!!artPieceAt(binderId,p,s);
+    const out=[];let pages=Math.max(1,+settings.binder_pages||1);
+    for(let p=start;p<=pages&&out.length<count;p++)for(let s=1;s<=9&&out.length<count;s++)if(!taken(p,s))out.push({page:p,slot:s});
+    for(let p=1;p<start&&out.length<count;p++)for(let s=1;s<=9&&out.length<count;s++)if(!taken(p,s))out.push({page:p,slot:s});
+    while(out.length<count){pages++;for(let s=1;s<=9&&out.length<count;s++)out.push({page:pages,slot:s})}
+    return out;
+  }
+  async function shrinkArtImageV21(file,maxSide=1800){
+    const url=URL.createObjectURL(file);
+    try{
+      const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=url});
+      const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      return await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.88));
+    }finally{URL.revokeObjectURL(url)}
+  }
+  function ensureArtDialogV21(){
+    let d=byId('v21ArtDialog');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v21ArtDialog';
+    d.className='sheet-dialog v21-art-dialog';
+    d.innerHTML=
+      '<div class="dialog-shell v21-art-shell">'+
+        '<div class="dialog-head"><div><p class="kicker">Fichário</p><h2>Adicionar arte</h2><p class="muted compact-copy" id="v21ArtWhere"></p></div><button class="icon-only" type="button" data-v21-close>×</button></div>'+
+        '<div class="v21-art-body">'+
+          '<div class="v21-art-form">'+
+            '<label class="v21-art-field"><span>Imagem</span><input id="v21ArtFile" type="file" accept="image/*"></label>'+
+            '<label class="v21-art-field"><span>Título (opcional)</span><input id="v21ArtTitle" type="text" maxlength="60" placeholder="Ex.: Latias & Latios no pôr do sol"></label>'+
+            '<div class="v21-art-size"><label class="v21-art-field"><span>Largura (bolsos)</span><select id="v21ArtCols"></select></label><label class="v21-art-field"><span>Altura (bolsos)</span><select id="v21ArtRows"></select></label></div>'+
+            '<p class="muted compact-copy" id="v21ArtHint">A arte começa no bolso clicado e se estende para a direita e para baixo.</p>'+
+          '</div>'+
+          '<div class="v21-art-preview" id="v21ArtPreview"></div>'+
+        '</div>'+
+        '<div class="v21-art-actions"><button type="button" class="btn btn-secondary" data-v21-close>Cancelar</button><button type="button" class="btn btn-primary" id="v21ArtSave">Colocar arte</button></div>'+
+      '</div>';
+    document.body.appendChild(d);
+    d.querySelectorAll('[data-v21-close]').forEach(b=>b.onclick=()=>d.close());
+    byId('v21ArtFile').onchange=()=>{
+      const f=byId('v21ArtFile').files?.[0];
+      if(d.dataset.previewUrl)URL.revokeObjectURL(d.dataset.previewUrl);
+      d.dataset.previewUrl=f?URL.createObjectURL(f):'';
+      renderArtPreviewV21();
+    };
+    byId('v21ArtCols').onchange=renderArtPreviewV21;
+    byId('v21ArtRows').onchange=renderArtPreviewV21;
+    byId('v21ArtSave').onclick=saveArtV21;
+    return d;
+  }
+  function artConflictsV21(){
+    const d=byId('v21ArtDialog'),binderId=activeBinder()?.id;
+    const page=+d.dataset.page,slot=+d.dataset.slot,cols=+byId('v21ArtCols').value||1,rows=+byId('v21ArtRows').value||1;
+    const out=[];
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const s=slot+r*3+c;if(pocketTakenV21(binderId,page,s))out.push(s)}
+    return out;
+  }
+  function renderArtPreviewV21(){
+    const d=byId('v21ArtDialog'),box=byId('v21ArtPreview');
+    if(!d||!box)return;
+    const binderId=activeBinder()?.id,page=+d.dataset.page,slot=+d.dataset.slot;
+    const cols=+byId('v21ArtCols').value||1,rows=+byId('v21ArtRows').value||1;
+    const c0=(slot-1)%3,r0=Math.floor((slot-1)/3),src=d.dataset.previewUrl||'';
+    const conflicts=artConflictsV21();
+    box.innerHTML='';
+    box.style.setProperty('--v21-gap','4px');
+    for(let s=1;s<=9;s++){
+      const cell=document.createElement('div');
+      const c=(s-1)%3,r=Math.floor((s-1)/3);
+      const inside=c>=c0&&c<c0+cols&&r>=r0&&r<r0+rows;
+      const card=V14.allCards.find(x=>x.binder_id===binderId&&+(x.binder_page||1)===page&&+x.binder_slot===s);
+      const other=artPieceAt(binderId,page,s);
+      cell.className='v21-art-cell'+(inside?' new':'')+(inside&&conflicts.includes(s)?' conflict':'');
+      if(inside&&src){
+        const img=document.createElement('img');
+        img.src=src;img.alt='';
+        img.style.width='calc('+cols+' * 100% + '+((cols-1)*6)+'px)';
+        img.style.height='calc('+rows+' * 100% + '+((rows-1)*6)+'px)';
+        img.style.left='calc('+(-(c-c0))+' * (100% + 6px))';
+        img.style.top='calc('+(-(r-r0))+' * (100% + 6px))';
+        cell.appendChild(img);
+      }else if(card){
+        const img=cardImage(card);
+        if(img){const i=document.createElement('img');i.className='v21-art-cell-card';i.src=img;i.alt='';cell.appendChild(i)}
+      }else if(other){
+        cell.classList.add('has-art');
+      }
+      if(inside&&conflicts.includes(s)){const x=document.createElement('b');x.textContent='ocupado';cell.appendChild(x)}
+      box.appendChild(cell);
+    }
+    const save=byId('v21ArtSave');
+    save.disabled=!src||conflicts.length>0;
+    byId('v21ArtHint').textContent=conflicts.length
+      ?'Bolso(s) '+conflicts.join(', ')+' já têm carta ou arte. Escolha um tamanho menor ou esvazie esses bolsos.'
+      :(src?'A arte vai ocupar '+cols*rows+' bolso(s): '+cols+' de largura × '+rows+' de altura.':'Escolha a imagem da arte.');
+  }
+  function openArtDialogV21(position){
+    const binder=activeBinder();
+    if(!binder)return toast('Escolha um fichário antes de adicionar uma arte.');
+    const pos=position?.slot?position:freePositionsV21(position?.page||currentPage,1)[0];
+    if(pocketTakenV21(binder.id,pos.page,pos.slot))return toast('Esse bolso já está ocupado. Clique num bolso vazio.');
+    const d=ensureArtDialogV21();
+    d.dataset.page=String(pos.page);d.dataset.slot=String(pos.slot);
+    if(d.dataset.previewUrl)URL.revokeObjectURL(d.dataset.previewUrl);
+    d.dataset.previewUrl='';
+    byId('v21ArtFile').value='';byId('v21ArtTitle').value='';
+    const c0=(pos.slot-1)%3,r0=Math.floor((pos.slot-1)/3);
+    const opts=n=>Array.from({length:n},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'</option>').join('');
+    byId('v21ArtCols').innerHTML=opts(3-c0);byId('v21ArtRows').innerHTML=opts(3-r0);
+    byId('v21ArtCols').value=String(Math.min(2,3-c0));byId('v21ArtRows').value=String(Math.min(2,3-r0));
+    byId('v21ArtWhere').textContent='Fichário “'+(binder.name||'')+'” · página '+pos.page+', a partir do bolso '+pos.slot+'.';
+    renderArtPreviewV21();
+    if(!d.open)d.showModal();
+  }
+  async function saveArtV21(){
+    const d=byId('v21ArtDialog'),binder=activeBinder(),file=byId('v21ArtFile').files?.[0];
+    if(!binder||!file)return;
+    if(artConflictsV21().length)return renderArtPreviewV21();
+    const button=byId('v21ArtSave');
+    busy(button,true,'Enviando imagem…');
+    let path='';
+    try{
+      const blob=await shrinkArtImageV21(file);
+      if(!blob)throw new Error('Não consegui ler a imagem.');
+      const id=globalThis.crypto?.randomUUID?.()||(Date.now()+'-'+Math.random().toString(36).slice(2));
+      path=currentUser.id+'/'+id+'.jpg';
+      const up=await db.storage.from(ART_BUCKET_V21).upload(path,blob,{contentType:'image/jpeg',upsert:false});
+      if(up.error)throw up.error;
+      const row={binder_id:binder.id,page:+d.dataset.page,slot:+d.dataset.slot,cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,image_path:path,title:byId('v21ArtTitle').value.trim()};
+      const {data,error}=await db.from('pokemon_binder_art').insert(row).select('*').single();
+      if(error)throw error;
+      V14.binderArt=[...(V14.binderArt||[]),data];
+      d.close();
+      if(byId('addDialog')?.open)byId('addDialog').close();
+      renderAll();
+      toast('Arte adicionada ao fichário.');
+    }catch(e){
+      console.error('[Arte do fichário]',e);
+      if(path)db.storage.from(ART_BUCKET_V21).remove([path]).catch(()=>{});
+      const msg=String(e?.message||e);
+      toast(/overlaps|pocket_has_art/.test(msg)?'Algum desses bolsos já está ocupado.':'Não consegui salvar a arte: '+msg.slice(0,80));
+    }finally{busy(button,false)}
+  }
+  function ensureArtMenuV21(){
+    let d=byId('v21ArtMenu');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v21ArtMenu';
+    d.className='sheet-dialog v21-art-dialog';
+    d.innerHTML=
+      '<div class="dialog-shell v21-art-shell">'+
+        '<div class="dialog-head"><div><p class="kicker">Arte do fichário</p><h2 id="v21ArtMenuTitle">Arte</h2><p class="muted compact-copy" id="v21ArtMenuWhere"></p></div><button class="icon-only" type="button" data-v21-close>×</button></div>'+
+        '<img id="v21ArtMenuImg" class="v21-art-menu-img" alt="">'+
+        '<div class="v21-art-actions"><button type="button" class="btn btn-secondary" data-v21-close>Fechar</button><button type="button" class="btn btn-danger" id="v21ArtRemove">Remover arte</button></div>'+
+      '</div>';
+    document.body.appendChild(d);
+    d.querySelectorAll('[data-v21-close]').forEach(b=>b.onclick=()=>d.close());
+    return d;
+  }
+  function openArtMenuV21(a){
+    const d=ensureArtMenuV21();
+    const last=a.slot+(a.rows-1)*3+(a.cols-1);
+    byId('v21ArtMenuTitle').textContent=a.title||'Arte';
+    byId('v21ArtMenuWhere').textContent='Página '+a.page+' · bolsos '+a.slot+' a '+last+' ('+a.cols+'×'+a.rows+').';
+    byId('v21ArtMenuImg').src=artImageUrlV21(a);
+    byId('v21ArtRemove').onclick=async()=>{
+      if(!confirm('Remover esta arte do fichário? Os bolsos ficam vazios de novo.'))return;
+      const {error}=await db.from('pokemon_binder_art').delete().eq('id',a.id).eq('user_id',currentUser.id);
+      if(error){console.error('[Remover arte]',error);return toast('Não consegui remover a arte.')}
+      db.storage.from(ART_BUCKET_V21).remove([a.image_path]).catch(()=>{});
+      V14.binderArt=(V14.binderArt||[]).filter(x=>x.id!==a.id);
+      d.close();
+      renderAll();
+      toast('Arte removida.');
+    };
+    if(!d.open)d.showModal();
+  }
+  function installArtButtonV21(){
+    const head=document.querySelector('#addDialog .catalog-head');
+    if(!head||byId('v21AddArt'))return;
+    const b=document.createElement('button');
+    b.id='v21AddArt';
+    b.type='button';
+    b.className='v21-add-art-btn';
+    b.textContent='🎨 Arte';
+    b.title='Colocar uma imagem ocupando um ou mais bolsos, a partir do bolso escolhido';
+    b.onclick=()=>openArtDialogV21(pendingPosition);
+    const close=head.querySelector('[data-close="addDialog"]');
+    head.insertBefore(b,close||null);
   }
 
   function renderBinderV14(){
@@ -2309,6 +2563,7 @@
     const binder=activeBinder();
     if(!binder||String(card?.binder_id||'')!==String(binder.id))return toast('Essa carta não pertence ao fichário aberto.');
     page=Math.max(1,+page||1);slot=Math.min(9,Math.max(1,+slot||1));
+    if(artPieceAt(binder.id,page,slot))return toast('Esse bolso tem uma arte. Remova a arte antes de colocar uma carta nele.');
     try{
       if(page>currentBinderPages()){
         const {error:pageError}=await db.from('pokemon_binders')
@@ -2391,6 +2646,9 @@
 
   function openAddV14(page=currentPage,slot=null){
     if(isGeneral())return toast('Escolha um fichário antes de adicionar cartas.');
+    const piece=slot?artPieceAt(activeBinder()?.id,page,slot):null;
+    if(piece)return openArtMenuV21(piece.art);
+    installArtButtonV21();
     return V14.original.openAddForPosition(page,slot);
   }
   async function addPageV14(){
@@ -3311,6 +3569,7 @@
     // The pocket is physical. Another row cannot be silently replaced.
     const occupant=V14.allCards.find(c=>c.binder_id===binderId&&+c.binder_page===page&&+c.binder_slot===slot&&c.id!==editingCardId);
     if(occupant)return toast('Esse bolso já tem uma carta. Mova a carta ou escolha outro bolso.');
+    if(artPieceAt(binderId,page,slot))return toast('Esse bolso tem uma arte. Escolha outro bolso.');
 
     busy(button,true,'Salvando…');
     try{
@@ -4294,6 +4553,8 @@
     moveCard=moveCardV14;
     contextAction=contextActionV14;
     openAddForPosition=openAddV14;
+    freePositions=freePositionsV21;
+    installArtButtonV21();
     addPage=addPageV14;
     saveSelectedCard=saveSelectedCardV14;
     patchCardPayload();
@@ -4982,6 +5243,20 @@
       const slots=[];
       for(let slot=1;slot<=9;slot++){
         const card=byPosition.get(page+':'+slot);
+        const piece=card?null:(typeof V14.artPieceAt==='function'?V14.artPieceAt(binder.id,page,slot):null);
+        if(piece){
+          // Each pocket of the art shows its own crop of the image.
+          const a=piece.art,url=V14.artImageUrl(a);
+          const artSrc=url?'https://wsrv.nl/?url='+encodeURIComponent(url)+'&w='+(380*a.cols)+'&output=jpg&q=80':'';
+          const style='position:absolute;max-width:none;object-fit:cover;width:'+(a.cols*100)+'%;height:'+(a.rows*100)+'%;left:'+(-piece.col*100)+'%;top:'+(-piece.row*100)+'%';
+          slots.push(
+            '<div class="slot">'+
+              '<div class="card art">'+(artSrc?'<img src="'+pdfEscapeV1500(artSrc)+'" data-orig="'+pdfEscapeV1500(url)+'" alt="'+pdfEscapeV1500(a.title||'Arte')+'" style="'+style+'">':'')+'</div>'+
+              '<div class="meta">'+(piece.col===0&&piece.row===0?'<strong>Arte'+(a.title?' · '+pdfEscapeV1500(a.title):'')+'</strong>':'')+'</div>'+
+            '</div>'
+          );
+          continue;
+        }
         if(!card){
           slots.push('<div class="slot empty"></div>');
           continue;
@@ -5027,7 +5302,7 @@
       'h1{font-size:15pt;margin:0 0 1mm}header p,.price-mode{margin:0;font-size:8pt;color:#555}.price-mode{font-weight:700;padding-top:1mm}'+
       '.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:1.4mm;flex:1;align-items:start}'+
       '.slot{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:.7mm;overflow:hidden;background:transparent;border:0;border-radius:0}'+
-      '.slot.empty{background:transparent;border:0}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm;filter:none!important}'+
+      '.slot.empty{background:transparent;border:0}.card.art{overflow:hidden;border-radius:1.4mm}.card{position:relative;width:48mm;max-width:100%;aspect-ratio:63/88;display:flex;align-items:center;justify-content:center}.card img{width:100%;height:100%;object-fit:contain;border-radius:1.4mm;filter:none!important}'+
       '.price{position:absolute;left:2mm;right:2mm;bottom:2mm;background:rgba(0,0,0,.88);color:#fff;border-radius:1.5mm;padding:1.3mm;text-align:center;font-size:8.5pt;font-weight:800}.noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;border:1px dashed #bbb;color:#777;font-size:9pt;text-align:center;padding:4mm}'+
       '.meta{width:100%;display:grid;gap:.35mm;margin-top:.8mm;text-align:center;line-height:1.08}.meta strong{font-size:7.2pt}.meta span{font-size:6.1pt;color:#555}.meta small{font-size:5.8pt;color:#777}'+
       '#pdfBar{position:sticky;top:0;z-index:5;display:flex;gap:4mm;align-items:center;justify-content:center;padding:3mm;background:#111;color:#fff;font-size:10pt}#pdfBar button{font:inherit;font-weight:700;padding:1.5mm 4mm;border:0;border-radius:1.5mm;cursor:pointer}'+

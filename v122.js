@@ -947,6 +947,7 @@
     ['',' ',''],
     ['REORGANIZAR A ORDEM','O Excel de “Baixar meu fichário em Excel” tem uma linha para CADA bolso de CADA página, na ordem do fichário (página 1 bolsos 1–9, página 2…). Linha sem ID = bolso vazio.','—'],
     ['Como reordenar','Não mude as colunas Página e Bolso. Mova as cartas inteiras (da coluna ID até o fim) para a linha do bolso desejado. Deixe vazia a linha de um bolso que deve ficar vazio. Pode acrescentar linhas de páginas novas no fim (Página 41, Bolso 1…9).','—'],
+    ['Bolsos com arte','Linhas com Nome “[ARTE] …” são bolsos ocupados por uma arte do fichário: não coloque carta nelas (a importação seria recusada). Para mudar a arte de lugar, remova e coloque de novo no app.','—'],
     ['Ao importar','Se a planilha tem a coluna ID, o app só MUDA A POSIÇÃO das cartas: não cria nem apaga nenhuma. Todas as cartas do fichário precisam aparecer uma vez; se faltar alguma ou houver duas no mesmo bolso, nada é alterado.','—']
   ];
   // One row per pocket of every page of the active binder, in binder order;
@@ -960,7 +961,9 @@
     const rows=[];
     for(let page=1;page<=pages;page++)for(let slot=1;slot<=9;slot++){
       const c=byPos.get(page+':'+slot);
-      rows.push(c?{Página:page,Bolso:slot,ID:c.id,...cardExcelRow(c)}:{Página:page,Bolso:slot});
+      const art=!c&&binder&&window.PB14?.artPieceAt?window.PB14.artPieceAt(binder.id,page,slot):null;
+      // A pocket covered by binder art cannot take a card: mark it, no ID.
+      rows.push(c?{Página:page,Bolso:slot,ID:c.id,...cardExcelRow(c)}:art?{Página:page,Bolso:slot,Nome:'[ARTE] '+(art.art.title||'arte '+art.art.cols+'×'+art.art.rows),Observações:'Bolso ocupado por arte — não coloque carta aqui'}:{Página:page,Bolso:slot});
     }
     return rows;
   }
@@ -1028,6 +1031,7 @@
     });
     const binder=(window.PB14?.binders||[]).find(b=>b.id===binderId);
     if(!binder)return toast('Nenhuma carta da planilha foi encontrada nos seus fichários.');
+    for(const p of positions)if(window.PB14?.artPieceAt?.(binderId,p.page,p.slot))problems.push(`${p.card.name}: página ${p.page}, bolso ${p.slot} é ocupado por uma arte.`);
     const missing=all.filter(c=>c.binder_id===binderId&&!seen.has(String(c.id)));
     if(missing.length)problems.push(`${missing.length} carta(s) do fichário não estão na planilha (ex.: ${missing.slice(0,3).map(c=>c.name+' '+(c.number||'')).join(', ')}).`);
     if(problems.length){
