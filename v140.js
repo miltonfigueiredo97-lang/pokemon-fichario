@@ -2585,7 +2585,17 @@
   }
   async function contextActionV14(action){
     if(action==='move'){hideContext();return openMoveToBinderV200(contextCard)}
-    return V14.original.contextAction(action);
+    const card=contextCard;
+    const result=await V14.original.contextAction(action);
+    // The Lista de Desejos follows the status set in a regular binder: "Quero"
+    // adds the card there (if missing), "Tenho" takes it out. It can still
+    // hold cards that are in no binder at all.
+    if(card&&!isWishlistBinder()&&String(card.binder_id||'')!==String(wishlistBinder()?.id||'')){
+      const inWishlist=!!wishlistCardMatch(card);
+      if(action==='wanted'&&!inWishlist)await toggleWishlistCard({...card,collection_status:'wanted'});
+      else if(action==='owned'&&inWishlist)await toggleWishlistCard(card);
+    }
+    return result;
   }
 
   // Right click → "Mover para...": pick any binder; the card goes to the first
