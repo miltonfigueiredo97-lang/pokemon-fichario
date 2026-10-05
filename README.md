@@ -1,11 +1,11 @@
 # Pokémon Binder BR — Supabase
 
-Fichário digital 3×3 de cartas Pokémon hospedado no Vercel.
+Fichário digital 3×3 de cartas Pokémon hospedado no GitHub Pages.
 
 ## Arquitetura
 
 - Frontend estático: HTML/CSS/JS
-- Hospedagem: Vercel
+- Hospedagem: GitHub Pages (endpoints leves em Supabase Edge Functions; leituras da MYP no pokemon-reader dos PCs)
 - Repositório: GitHub
 - Banco/Auth: Supabase
 - Tabelas do fichário: `pokemon_cards` e `pokemon_settings`
