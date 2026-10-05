@@ -3228,18 +3228,24 @@
     'price_pending,price_processing_at,price_progress,price_progress_stage,price_last_error';
   // With cards waiting and no PC reader online, say so instead of leaving the
   // cards on NA FILA with no explanation.
+  // Small, closable notice. Closing it hides it until the site is opened
+  // again (sessionStorage); it comes back on its own in a new visit.
   function showReaderNoticeV198(count,online){
     let el=byId('v198ReaderNotice');
-    if(online||!count){if(el)el.remove();return}
+    let dismissed=false;try{dismissed=sessionStorage.getItem('pf-reader-notice-dismissed')==='1'}catch{}
+    if(online||!count||dismissed){if(el)el.remove();return}
     if(!el){
       el=document.createElement('div');
       el.id='v198ReaderNotice';
       el.setAttribute('role','status');
-      el.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:min(560px,calc(100vw - 32px));'+
-        'background:#2a1214;color:#ffd7d2;border:1px solid #ff6b5a;border-radius:12px;padding:10px 14px;font:600 13px/1.35 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.45)';
+      el.style.cssText='position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:8px;'+
+        'max-width:min(460px,calc(100vw - 24px));background:#2a1214;color:#ffd7d2;border:1px solid #ff6b5a;border-radius:10px;'+
+        'padding:6px 6px 6px 12px;font:600 12px/1.3 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+      el.innerHTML='<span></span><button type="button" aria-label="Fechar aviso" title="Fechar" style="flex:none;width:28px;height:28px;border:0;border-radius:7px;background:rgba(255,255,255,.12);color:inherit;font:700 16px/1 system-ui;cursor:pointer">×</button>';
+      el.querySelector('button').onclick=()=>{try{sessionStorage.setItem('pf-reader-notice-dismissed','1')}catch{}el.remove()};
       document.body.appendChild(el);
     }
-    el.textContent=`Leitor de preços desligado: ${count} carta${count>1?'s':''} na fila. Abra o pokemon-reader.exe em algum PC para cotar.`;
+    el.querySelector('span').textContent=`Leitor de preços desligado · ${count} carta${count>1?'s':''} na fila`;
   }
   let readerStatusAtV198=0,readerOnlineV198=true;
   async function refreshWaitingPricesV195(){

@@ -16,7 +16,7 @@ const net=require('net');
 
 const SUPABASE_URL='https://ryylegveltrypqclimqo.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_Ved1tXBXQN1zofbJj3uPzQ_MqHxIEGw';
-const VERSION='1.1.0';
+const VERSION='1.2.0';
 const CONCURRENCY=3;
 // Idle polling is light on Supabase egress: 4 s, then 10 s after 5 idle minutes
 // (the worker treats a reader as online for 45 s after its last poll).
@@ -72,15 +72,21 @@ process.on('unhandledRejection',e=>log('erro inesperado (seguindo):',String(e?.s
 process.on('exit',code=>log('leitor encerrado, código',code));
 for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])process.on(sig,()=>{log('leitor fechado ('+sig+')');process.exit(0)});
 
+// Every database call has a deadline: after sleep or a network drop a request
+// can otherwise hang forever and the reader looks "off" while still open.
 async function rpc(name,args){
-  const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
-    method:'POST',
-    headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify(args)
-  });
-  const text=await r.text();
-  if(!r.ok)throw new Error(`${name} ${r.status}: ${text.slice(0,160)}`);
-  return text?JSON.parse(text):null;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),15000);
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
+      method:'POST',signal:controller.signal,
+      headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify(args)
+    });
+    const text=await r.text();
+    if(!r.ok)throw new Error(`${name} ${r.status}: ${text.slice(0,160)}`);
+    return text?JSON.parse(text):null;
+  }finally{clearTimeout(timer)}
 }
 
 // Runs api/price-engine.js as Vercel would, collecting its JSON answer.
@@ -127,6 +133,8 @@ function installOnWindows(){
   if(here===target.toLowerCase())return false;
   try{
     fs.mkdirSync(dir,{recursive:true});
+    // Stop the running launcher loop first, so only one is left afterwards.
+    try{cp.execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Get-CimInstance Win32_Process -Filter \"Name='wscript.exe'\" | Where-Object { $_.CommandLine -like '*leitor de precos.vbs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],{stdio:'ignore'})}catch{}
     try{fs.copyFileSync(process.execPath,target)}
     catch(e){
       // The installed copy is running: stop it and copy the new version.
@@ -136,9 +144,11 @@ function installOnWindows(){
       if(!copied&&!fs.existsSync(target))throw e;
     }
     fs.mkdirSync(startupDir,{recursive:true});
-    fs.writeFileSync(launcher,'CreateObject("WScript.Shell").Run """'+target+'""", 0, False\r\n','latin1');
+    // Keeps the reader running: when it exits (watchdog, crash), opens it
+    // again after 15 s. A second copy exits at once (single instance).
+    fs.writeFileSync(launcher,['Set sh = CreateObject("WScript.Shell")','Do','  sh.Run """'+target+'""", 0, True','  WScript.Sleep 15000','Loop',''].join('\r\n'),'latin1');
     try{fs.unlinkSync(oldShortcut)}catch{}
-    cp.spawn(target,[],{detached:true,stdio:'ignore',cwd:dir,windowsHide:true}).unref();
+    cp.spawn('wscript.exe',[launcher],{detached:true,stdio:'ignore',cwd:dir,windowsHide:true}).unref();
     console.log('Leitor de preços instalado e rodando em segundo plano.');
     console.log('Ele liga sozinho sempre que você entrar no Windows. Pode fechar esta janela.');
     setTimeout(()=>process.exit(0),8000);
@@ -208,7 +218,11 @@ async function main(){
     const p=job.params||{};
     const label=p.searchQuery?`busca "${p.searchQuery}"`:p.apiName?`catálogo "${p.apiName}"`:`${p.name||''} ${p.number||''}`.trim();
     try{
-      const answer=await runEngine(handler,p);
+      // A page that never answers must not hold a slot forever.
+      const answer=await Promise.race([
+        runEngine(handler,p),
+        new Promise(r=>setTimeout(()=>r({ok:false,error:'engine_timeout',message:'reader job timeout'}),90000))
+      ]);
       await rpc('engine_respond',{p_key:key,p_id:job.id,p_response:answer});
       done++;
       const price=answer?.myp?.ok?` · R$ ${Number(answer.myp.avg||answer.myp.min||0).toFixed(2)}`:'';
@@ -218,7 +232,14 @@ async function main(){
     }finally{inflight--}
   };
 
+  // Watchdog: if the loop stops turning (frozen request, suspended process),
+  // exit; the Startup launcher opens the reader again in 15 s.
+  let lastTurn=Date.now();
+  setInterval(()=>{
+    if(Date.now()-lastTurn>120000){log('Leitor travado há 2 min; reiniciando.');process.exit(3)}
+  },30000).unref?.();
   for(;;){
+    lastTurn=Date.now();
     let jobs=[];
     try{
       const free=CONCURRENCY-inflight;
