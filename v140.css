@@ -2137,11 +2137,26 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v21-art-check small{display:block;margin-top:2px;color:var(--muted);font-weight:400;font-size:11px;line-height:1.35}
 .v21-art-ideal{margin:0;padding:8px 10px;border-radius:8px;background:rgba(120,190,255,.10);color:#cfe6ff;font-size:12px;line-height:1.4}
 
-/* Page reorder (Páginas dialog) */
-.v22-page-item{display:grid;gap:6px;min-width:0}
-.v22-page-item>.page-thumb{width:100%}
-.v22-page-item.dragging{opacity:.45}
-.v22-page-item.drop>.page-thumb{outline:2px dashed var(--accent2);outline-offset:3px}
-.v22-page-move{display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--muted)}
-.v22-page-move button{width:36px;height:30px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);color:var(--text);font-size:13px;line-height:1}
-.v22-page-move button:disabled{opacity:.3}
+/* Páginas dialog: spreads as in the open binder, drag to swap/insert */
+.pages-grid.v22-spreads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.v22-spread{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:6px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid var(--line)}
+.v22-page{position:relative;display:grid;gap:5px;padding:6px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);cursor:grab;user-select:none;-webkit-user-select:none;touch-action:pan-y}
+.v22-page.active{border-color:var(--accent)}
+.v22-page strong{font-size:12px;text-align:center}
+.v22-page-blank{display:grid;place-items:center;border-radius:9px;border:1px dashed var(--line);color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.v22-mini{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,auto);gap:2px}
+.v22-mini-pocket{position:relative;aspect-ratio:63/88;overflow:hidden;border-radius:3px;background:rgba(255,255,255,.05);container-type:size}
+.v22-mini-pocket img.v22-mini-card{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.v22-mini-pocket.art img{position:absolute;max-width:none}
+.v22-mini .v21-art-whole{border-radius:3px}
+.v22-mini .v21-art-tag{display:none}
+.v22-page-foot{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.v22-page-foot small{color:var(--muted);font-size:11px}
+.v22-page-foot button{width:30px;height:26px;border:1px solid var(--line2);border-radius:7px;background:var(--panel3);color:var(--text);font-size:12px;line-height:1;padding:0}
+.v22-page-foot button:disabled{opacity:.3}
+.v22-page.v22-dragging{opacity:.35}
+.v22-page.v22-swap{outline:3px solid var(--accent2);outline-offset:2px}
+.v22-page.v22-before{box-shadow:-7px 0 0 -2px var(--accent2)}
+.v22-page.v22-after{box-shadow:7px 0 0 -2px var(--accent2)}
+.v22-ghost{position:fixed;left:0;top:0;z-index:2147483600;pointer-events:none;opacity:.9;box-shadow:0 18px 40px rgba(0,0,0,.55)}
+@media (max-width:640px){.pages-grid.v22-spreads{grid-template-columns:1fr}}

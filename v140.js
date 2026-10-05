@@ -2798,38 +2798,178 @@
     renderPagesGrid();
     toast('Página '+from+' movida para a posição '+to+'.');
   }
-  function decoratePageThumbsV22(){
+  // Páginas dialog for a physical binder: pages shown as the open binder shows
+  // them (1 alone next to the cover, then 2-3, 4-5…, the last alone when the
+  // count is even), with cards AND art. Drag a page (mouse, or long-press on
+  // touch) onto another to SWAP them, or onto the gap between two pages
+  // (left/right edge of a page) to INSERT it there. ◀ ▶ move one step.
+  async function swapBinderPagesV22(a,b){
+    const binder=activeBinder();if(!binder||a===b)return;
+    const {error}=await db.rpc('pokemon_swap_binder_pages',{p_binder:binder.id,p_a:a,p_b:b});
+    if(error){console.error('[Trocar páginas]',error);return toast('Não consegui trocar as páginas: '+(error.message||'erro no banco'))}
+    await loadCardsV14(false);
+    renderAll();renderPagesGrid();
+    toast('Páginas '+a+' e '+b+' trocadas.');
+  }
+  function miniPageV22(p,binderId){
+    const mini=document.createElement('div');
+    mini.className='v22-mini';
+    for(let s=1;s<=9;s++){
+      const cell=document.createElement('span');
+      cell.className='v22-mini-pocket';
+      cell.style.gridColumn=String((s-1)%3+1);cell.style.gridRow=String(Math.floor((s-1)/3)+1);
+      const card=getCardAt(p,s);
+      const piece=card?null:artPieceAt(binderId,p,s);
+      if(card){
+        const src=cardImage(card);
+        if(src){const i=document.createElement('img');i.className='v22-mini-card';i.src=src;i.alt='';i.loading='lazy';cell.appendChild(i)}
+      }else if(piece){
+        cell.classList.add('art');
+        const i=document.createElement('img');i.alt='';i.loading='lazy';i.src=artImageUrlV21(piece.art);
+        applyArtCropV21(i,piece.art,piece.col,piece.row,2);
+        cell.appendChild(i);
+      }
+      mini.appendChild(cell);
+    }
+    appendSeamlessArtV21(mini,binderId,p);
+    return mini;
+  }
+  function renderPhysicalPagesGridV22(){
     const g=byId('pagesGrid');if(!g)return;
-    const pages=currentBinderPages();
-    [...g.querySelectorAll(':scope > .page-thumb')].forEach((thumb,i)=>{
-      const p=i+1;
-      const item=document.createElement('div');
-      item.className='v22-page-item';
-      thumb.replaceWith(item);item.appendChild(thumb);
-      thumb.draggable=true;thumb.dataset.page=String(p);
-      thumb.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/x-binder-page',String(p));e.dataTransfer.effectAllowed='move';item.classList.add('dragging')});
-      thumb.addEventListener('dragend',()=>item.classList.remove('dragging'));
-      item.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('text/x-binder-page')){e.preventDefault();item.classList.add('drop')}});
-      item.addEventListener('dragleave',()=>item.classList.remove('drop'));
-      item.addEventListener('drop',e=>{
-        e.preventDefault();item.classList.remove('drop');
-        const from=+e.dataTransfer.getData('text/x-binder-page');
-        if(from&&from!==p)moveBinderPageV22(from,p);
+    const binderId=activeBinder()?.id,pages=currentBinderPages();
+    g.innerHTML='';g.classList.add('v22-spreads');
+    const spreads=[[0,1]];
+    for(let p=2;p<=pages;p+=2)spreads.push([p,p+1<=pages?p+1:0]);
+    for(const pair of spreads){
+      const sp=document.createElement('div');sp.className='v22-spread';
+      pair.forEach((p,side)=>{
+        if(!p){
+          const blank=document.createElement('div');
+          blank.className='v22-page-blank';
+          blank.textContent=pair[1]===1&&side===0?'Capa':'';
+          sp.appendChild(blank);return;
+        }
+        const el=document.createElement('div');
+        el.className='v22-page'+(p===currentPage||(binderSpreadLayoutV14()&&p===currentPage+1&&currentPage>1)?' active':'');
+        el.dataset.page=String(p);
+        const n=cardsOnPage(p).length+(V14.artPieces||[]).filter(x=>x.binder_id===binderId&&+x.page===p).length;
+        el.innerHTML='<strong>Página '+p+'</strong>';
+        el.appendChild(miniPageV22(p,binderId));
+        const foot=document.createElement('div');foot.className='v22-page-foot';
+        foot.innerHTML='<button type="button" data-dir="-1" title="Uma posição para trás"'+(p<=1?' disabled':'')+'>◀</button><small>'+n+'/9</small><button type="button" data-dir="1" title="Uma posição para frente"'+(p>=pages?' disabled':'')+'>▶</button>';
+        foot.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();moveBinderPageV22(p,p+(+b.dataset.dir))});
+        el.appendChild(foot);
+        el.addEventListener('click',e=>{
+          if(V14.pageDragJustEndedV22||e.target.closest('button'))return;
+          try{window.cancelBinderPageFlipV14?.({suppress:true})}catch{}
+          currentPage=binderSessionAnchorV14(p,pages);renderBinder();renderPagesGrid();syncTopbarNavigation();closeDialog('pagesDialog');
+        });
+        sp.appendChild(el);
       });
-      const bar=document.createElement('div');
-      bar.className='v22-page-move';
-      bar.innerHTML='<button type="button" data-dir="-1" title="Mover para antes"'+(p<=1?' disabled':'')+'>◀</button><span>mover</span><button type="button" data-dir="1" title="Mover para depois"'+(p>=pages?' disabled':'')+'>▶</button>';
-      bar.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();moveBinderPageV22(p,p+(+b.dataset.dir))});
-      item.appendChild(bar);
+      g.appendChild(sp);
+    }
+    wirePageDragV22(g);
+  }
+  function scrollParentV22(el){
+    for(let n=el.parentElement;n;n=n.parentElement){
+      const st=getComputedStyle(n);
+      if(/(auto|scroll)/.test(st.overflowY)&&n.scrollHeight>n.clientHeight+2)return n;
+    }
+    return document.scrollingElement;
+  }
+  function wirePageDragV22(g){
+    if(g.dataset.v22Drag)return;g.dataset.v22Drag='1';
+    let drag=null;
+    const clearMarks=()=>g.querySelectorAll('.v22-swap,.v22-before,.v22-after').forEach(x=>x.classList.remove('v22-swap','v22-before','v22-after'));
+    const targetAt=(x,y)=>{
+      const el=document.elementFromPoint(x,y)?.closest?.('.v22-page');
+      if(!el||!g.contains(el))return null;
+      const r=el.getBoundingClientRect(),fx=(x-r.left)/Math.max(1,r.width);
+      return{el,page:+el.dataset.page,mode:fx<0.28?'before':fx>0.72?'after':'swap'};
+    };
+    const mark=()=>{
+      clearMarks();
+      const t=targetAt(drag.x,drag.y);drag.target=t;
+      if(!t||(t.page===drag.page&&t.mode==='swap'))return;
+      t.el.classList.add(t.mode==='swap'?'v22-swap':t.mode==='before'?'v22-before':'v22-after');
+    };
+    const move=(x,y)=>{
+      if(!drag)return;drag.x=x;drag.y=y;
+      drag.ghost.style.transform='translate('+(x-drag.ghost.offsetWidth/2)+'px,'+(y-30)+'px)';
+      mark();
+    };
+    const start=(page,x,y,src)=>{
+      const ghost=src.cloneNode(true);ghost.classList.add('v22-ghost');ghost.style.width=src.offsetWidth+'px';
+      document.body.appendChild(ghost);
+      src.classList.add('v22-dragging');
+      drag={page,ghost,src,x,y,target:null,scroller:scrollParentV22(g),raf:0};
+      // Near the top/bottom edge the dialog scrolls by itself.
+      const loop=()=>{
+        if(!drag)return;
+        const sc=drag.scroller,r=sc===document.scrollingElement?{top:0,bottom:innerHeight}:sc.getBoundingClientRect();
+        const edge=70;let dy=0;
+        if(drag.y<r.top+edge)dy=-Math.ceil((r.top+edge-drag.y)/4);
+        else if(drag.y>r.bottom-edge)dy=Math.ceil((drag.y-(r.bottom-edge))/4);
+        if(dy){sc.scrollTop+=dy;mark()}
+        drag.raf=requestAnimationFrame(loop);
+      };
+      drag.raf=requestAnimationFrame(loop);
+      move(x,y);
+    };
+    const end=async(cancel)=>{
+      if(!drag)return;
+      const d=drag;drag=null;
+      cancelAnimationFrame(d.raf);d.ghost.remove();d.src.classList.remove('v22-dragging');clearMarks();
+      V14.pageDragJustEndedV22=true;setTimeout(()=>{V14.pageDragJustEndedV22=false},350);
+      const t=d.target;if(cancel||!t)return;
+      const from=d.page;
+      if(t.mode==='swap'){if(t.page!==from)await swapBinderPagesV22(from,t.page);return}
+      // Insert before/after page q: final position of the moved page.
+      const q=t.page;
+      let to=t.mode==='before'?(from<q?q-1:q):(from<q?q:q+1);
+      to=Math.max(1,Math.min(currentBinderPages(),to));
+      if(to!==from)await moveBinderPageV22(from,to);
+    };
+    // Mouse / pen: drag after a few pixels.
+    g.addEventListener('pointerdown',e=>{
+      if(e.pointerType==='touch'||e.button!==0||e.target.closest('button'))return;
+      const el=e.target.closest('.v22-page');if(!el)return;
+      e.preventDefault();
+      const sx=e.clientX,sy=e.clientY,page=+el.dataset.page;
+      const off=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);removeEventListener('pointercancel',cn)};
+      const mv=ev=>{
+        if(!drag&&Math.hypot(ev.clientX-sx,ev.clientY-sy)>6)start(page,ev.clientX,ev.clientY,el);
+        if(drag){ev.preventDefault();move(ev.clientX,ev.clientY)}
+      };
+      const up=()=>{off();end(false)};
+      const cn=()=>{off();end(true)};
+      addEventListener('pointermove',mv);addEventListener('pointerup',up);addEventListener('pointercancel',cn);
     });
+    // Touch: hold the page ~0.4 s, then drag (normal swipes keep scrolling).
+    g.addEventListener('touchstart',e=>{
+      if(e.touches.length!==1||e.target.closest('button'))return;
+      const el=e.target.closest('.v22-page');if(!el)return;
+      const t0=e.touches[0],sx=t0.clientX,sy=t0.clientY,page=+el.dataset.page;
+      let lx=sx,ly=sy;
+      const timer=setTimeout(()=>{start(page,lx,ly,el);navigator.vibrate?.(15)},400);
+      const off=()=>{clearTimeout(timer);g.removeEventListener('touchmove',tm);g.removeEventListener('touchend',te);g.removeEventListener('touchcancel',tc)};
+      const tm=ev=>{
+        const t=ev.touches[0];lx=t.clientX;ly=t.clientY;
+        if(!drag){if(Math.hypot(lx-sx,ly-sy)>10)clearTimeout(timer);return}
+        ev.preventDefault();move(lx,ly);
+      };
+      const te=ev=>{off();if(drag){ev.preventDefault();end(false)}};
+      const tc=()=>{off();end(true)};
+      g.addEventListener('touchmove',tm,{passive:false});g.addEventListener('touchend',te);g.addEventListener('touchcancel',tc);
+    },{passive:true});
   }
   function renderPagesGridV14(){
     if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
-      V14.original.renderPagesGrid();
-      decoratePageThumbsV22();
+      renderPhysicalPagesGridV22();
       return;
     }
     const g=byId('pagesGrid');if(!g)return;
+    g.classList.remove('v22-spreads');
     const cards=orderedViewCards(),pages=customViewPages();g.innerHTML='';
     for(let p=1;p<=pages;p++){
       const b=document.createElement('button');b.className='page-thumb'+(p===currentPage?' active':'');
