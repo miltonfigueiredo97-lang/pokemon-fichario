@@ -2842,6 +2842,30 @@
     renderAll();renderPagesGrid();
     toast(mode==='swap'?'Duplas trocadas.':'Páginas '+fromFirst+'–'+(fromFirst+1)+' agora são '+newFirst+'–'+(newFirst+1)+'.');
   }
+  // Remove an empty page (the next pages move up). A page with cards or art
+  // is never removed: the user empties it first.
+  async function removeBinderPageV22(p){
+    const binder=activeBinder();if(!binder)return;
+    const pages=currentBinderPages();
+    if(pages<=1)return toast('O fichário precisa de pelo menos uma página.');
+    const cards=cardsOnPage(p).length,arts=(V14.artPieces||[]).filter(x=>x.binder_id===binder.id&&+x.page===p).length;
+    if(cards+arts>0){
+      const what=[cards?cards+' carta'+(cards>1?'s':''):'',arts?arts+' pedaço'+(arts>1?'s':'')+' de arte':''].filter(Boolean).join(' e ');
+      return toast('A página '+p+' tem '+what+'. Tire tudo dela antes de remover a página.');
+    }
+    const {error}=await db.rpc('pokemon_remove_binder_page',{p_binder:binder.id,p_page:p});
+    if(error){
+      const m=String(error.message||'');
+      if(m.includes('page_not_empty'))return toast('A página '+p+' não está vazia. Tire as cartas e artes antes de remover.');
+      console.error('[Remover página]',error);return toast('Não consegui remover a página: '+m);
+    }
+    binder.pages=pages-1;
+    try{if(+settings.binder_pages>binder.pages)settings.binder_pages=binder.pages}catch{}
+    await loadCardsV14(false);
+    currentPage=binderSessionAnchorV14(Math.min(currentPage,binder.pages),binder.pages);
+    renderAll();renderPagesGrid();
+    toast('Página '+p+' removida.');
+  }
   function miniPageV22(p,binderId){
     const mini=document.createElement('div');
     mini.className='v22-mini';
@@ -2901,8 +2925,14 @@
         el.innerHTML='<strong>Página '+p+'</strong>';
         el.appendChild(miniPageV22(p,binderId));
         const foot=document.createElement('div');foot.className='v22-page-foot';
-        foot.innerHTML='<button type="button" data-dir="-1" title="Uma posição para trás"'+(p<=1?' disabled':'')+'>◀</button><small>'+n+'/9</small><button type="button" data-dir="1" title="Uma posição para frente"'+(p>=pages?' disabled':'')+'>▶</button>';
-        foot.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();moveBinderPageV22(p,p+(+b.dataset.dir))});
+        foot.innerHTML='<button type="button" data-dir="-1" title="Uma posição para trás"'+(p<=1?' disabled':'')+'>◀</button><small>'+n+'/9</small>'+
+          '<button type="button" class="v22-page-remove" data-remove="1" title="'+(n?'Tire as cartas para poder remover esta página':'Remover esta página vazia')+'"'+(pages<=1?' disabled':'')+'>🗑</button>'+
+          '<button type="button" data-dir="1" title="Uma posição para frente"'+(p>=pages?' disabled':'')+'>▶</button>';
+        foot.querySelectorAll('button').forEach(b=>b.onclick=e=>{
+          e.stopPropagation();
+          if(b.dataset.remove)return removeBinderPageV22(p);
+          moveBinderPageV22(p,p+(+b.dataset.dir));
+        });
         el.appendChild(foot);
         el.addEventListener('click',e=>{
           if(V14.pageDragJustEndedV22||e.target.closest('button'))return;
