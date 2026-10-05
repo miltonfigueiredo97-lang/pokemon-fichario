@@ -2292,7 +2292,18 @@
     while(out.length<count){pages++;for(let s=1;s<=9&&out.length<count;s++)out.push({page:pages,slot:s})}
     return out;
   }
-  async function shrinkArtImageV21(file,maxSide=1800){
+  // The original file is kept as is (zoomed framing and print need every
+  // pixel); only a file over 15 MB is re-encoded, at 4096 px, quality 0.95.
+  async function prepareArtFileV21(file){
+    const ok=/^image\/(jpeg|png|webp)$/i.test(file.type||'');
+    if(ok&&file.size<=15*1024*1024){
+      const ext=file.type.includes('png')?'png':file.type.includes('webp')?'webp':'jpg';
+      return{blob:file,type:file.type,ext};
+    }
+    const blob=await shrinkArtImageV21(file,4096,0.95);
+    return{blob,type:'image/jpeg',ext:'jpg'};
+  }
+  async function shrinkArtImageV21(file,maxSide=4096,quality=0.95){
     const url=URL.createObjectURL(file);
     try{
       const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=url});
@@ -2300,7 +2311,7 @@
       const canvas=document.createElement('canvas');
       canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);
       canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-      return await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.88));
+      return await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));
     }finally{URL.revokeObjectURL(url)}
   }
   function ensureArtDialogV21(){
@@ -2451,6 +2462,7 @@
     byId('v21ArtHeading').textContent='Adicionar arte';
     byId('v21ArtSave').textContent='Colocar arte';
     byId('v21ArtFileField').hidden=false;byId('v21ArtSizeField').hidden=false;
+    byId('v21ArtFileField').querySelector('span').textContent='Imagem';
     byId('v21ArtFile').value='';byId('v21ArtTitle').value='';
     const c0=(pos.slot-1)%3,r0=Math.floor((pos.slot-1)/3);
     const opts=n=>Array.from({length:n},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+'</option>').join('');
@@ -2470,7 +2482,11 @@
     d.dataset.px=String(a.pos_x==null?0.5:+a.pos_x);d.dataset.py=String(a.pos_y==null?0.5:+a.pos_y);
     const opts=n=>'<option value="'+n+'">'+n+'</option>';
     byId('v21ArtCols').innerHTML=opts(a.cols);byId('v21ArtRows').innerHTML=opts(a.rows);
-    byId('v21ArtFileField').hidden=true;byId('v21ArtSizeField').hidden=true;
+    // The image can be replaced (e.g. by the full-resolution original); the
+    // pieces stay where they are.
+    byId('v21ArtFileField').hidden=false;byId('v21ArtSizeField').hidden=true;
+    byId('v21ArtFileField').querySelector('span').textContent='Trocar imagem (opcional)';
+    byId('v21ArtFile').value='';
     byId('v21ArtTitle').value=a.title||'';
     byId('v21ArtHeading').textContent='Ajustar arte';
     byId('v21ArtSave').textContent='Salvar enquadramento';
@@ -2485,12 +2501,28 @@
     if(d.dataset.editId){
       const button=byId('v21ArtSave');
       busy(button,true,'Salvando…');
+      const old=(V14.binderArt||[]).find(x=>x.id===d.dataset.editId);
+      let newPath='';
       try{
-        const {data,error}=await db.from('pokemon_binder_art').update({...framing,title:byId('v21ArtTitle').value.trim()}).eq('id',d.dataset.editId).eq('user_id',currentUser.id).select('*').single();
+        const patch={...framing,title:byId('v21ArtTitle').value.trim()};
+        if(file){
+          const prepared=await prepareArtFileV21(file);
+          const id=globalThis.crypto?.randomUUID?.()||(Date.now()+'-'+Math.random().toString(36).slice(2));
+          newPath=currentUser.id+'/'+id+'.'+prepared.ext;
+          const up=await db.storage.from(ART_BUCKET_V21).upload(newPath,prepared.blob,{contentType:prepared.type,upsert:false});
+          if(up.error)throw up.error;
+          patch.image_path=newPath;
+        }
+        const {data,error}=await db.from('pokemon_binder_art').update(patch).eq('id',d.dataset.editId).eq('user_id',currentUser.id).select('*').single();
         if(error)throw error;
+        if(newPath&&old?.image_path)db.storage.from(ART_BUCKET_V21).remove([old.image_path]).catch(()=>{});
         V14.binderArt=(V14.binderArt||[]).map(x=>x.id===data.id?data:x);
-        d.close();renderAll();toast('Enquadramento da arte salvo.');
-      }catch(e){console.error('[Ajustar arte]',e);toast('Não consegui salvar o enquadramento.')}
+        d.close();renderAll();toast(newPath?'Imagem trocada e enquadramento salvo.':'Enquadramento da arte salvo.');
+      }catch(e){
+        console.error('[Ajustar arte]',e);
+        if(newPath)db.storage.from(ART_BUCKET_V21).remove([newPath]).catch(()=>{});
+        toast('Não consegui salvar a arte.');
+      }
       finally{busy(button,false)}
       return;
     }
@@ -2500,11 +2532,11 @@
     busy(button,true,'Enviando imagem…');
     let path='';
     try{
-      const blob=await shrinkArtImageV21(file);
+      const prepared=await prepareArtFileV21(file),blob=prepared.blob;
       if(!blob)throw new Error('Não consegui ler a imagem.');
       const id=globalThis.crypto?.randomUUID?.()||(Date.now()+'-'+Math.random().toString(36).slice(2));
-      path=currentUser.id+'/'+id+'.jpg';
-      const up=await db.storage.from(ART_BUCKET_V21).upload(path,blob,{contentType:'image/jpeg',upsert:false});
+      path=currentUser.id+'/'+id+'.'+prepared.ext;
+      const up=await db.storage.from(ART_BUCKET_V21).upload(path,blob,{contentType:prepared.type,upsert:false});
       if(up.error)throw up.error;
       const row={binder_id:binder.id,page:+d.dataset.page,slot:+d.dataset.slot,cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,image_path:path,title:byId('v21ArtTitle').value.trim(),...framing};
       const {data,error}=await db.from('pokemon_binder_art').insert(row).select('*').single();
@@ -2538,7 +2570,7 @@
       '<div class="dialog-shell v21-art-shell">'+
         '<div class="dialog-head"><div><p class="kicker">Arte do fichário</p><h2 id="v21ArtMenuTitle">Arte</h2><p class="muted compact-copy" id="v21ArtMenuWhere"></p></div><button class="icon-only" type="button" data-v21-close>×</button></div>'+
         '<img id="v21ArtMenuImg" class="v21-art-menu-img" alt="">'+
-        '<div class="v21-art-actions"><button type="button" class="btn btn-secondary" data-v21-close>Fechar</button><button type="button" class="btn btn-secondary" id="v21ArtFrame">Ajustar enquadramento</button><button type="button" class="btn btn-danger" id="v21ArtRemove">Remover arte</button></div>'+
+        '<div class="v21-art-actions"><button type="button" class="btn btn-secondary" data-v21-close>Fechar</button><button type="button" class="btn btn-secondary" id="v21ArtFrame">Ajustar enquadramento</button><button type="button" class="btn btn-secondary" id="v21ArtPrint">Imprimir para recortar</button><button type="button" class="btn btn-danger" id="v21ArtRemove">Remover arte</button></div>'+
       '</div>';
     document.body.appendChild(d);
     d.querySelectorAll('[data-v21-close]').forEach(b=>b.onclick=()=>d.close());
@@ -2553,6 +2585,7 @@
     byId('v21ArtMenuWhere').textContent=(a.cols*a.rows)+' pedaço(s) ('+a.cols+'×'+a.rows+'): '+where+'. Arraste um pedaço para movê-lo.';
     byId('v21ArtMenuImg').src=artImageUrlV21(a);
     byId('v21ArtFrame').onclick=()=>{d.close();openArtFramingV21(a)};
+    byId('v21ArtPrint').onclick=()=>{d.close();exportArtSheetsV21(a.id)};
     byId('v21ArtRemove').onclick=async()=>{
       if(!confirm('Remover esta arte do fichário? Os bolsos ficam vazios de novo.'))return;
       const {error}=await db.from('pokemon_binder_art').delete().eq('id',a.id).eq('user_id',currentUser.id);
@@ -5359,6 +5392,87 @@
     return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
 
+  // ---------------------------------------------------------------- art cut sheets
+  // Every piece of the binder's art (or of one art) at the exact size of a
+  // Pokémon card, 63 x 88 mm, nine per A4 sheet with 4 mm gutters for a
+  // guillotine, cut marks in the margins and a small caption under each piece.
+  // Each piece shows the same crop as in the binder (zoom/position), from the
+  // full-resolution image. Print at 100% scale ("Tamanho real").
+  const ART_CARD_MM={w:63,h:88,gap:4,pageW:210,pageH:297};
+  function exportArtSheetsV21(onlyArtId){
+    const binder=activeBinder();
+    if(!binder)return toast('Escolha um fichário específico para imprimir as artes.');
+    const arts=(V14.binderArt||[]).filter(a=>a.binder_id===binder.id&&(!onlyArtId||a.id===onlyArtId));
+    const pieces=[];
+    for(const a of arts){
+      const own=(V14.artPieces||[]).filter(p=>p.art_id===a.id).sort((x,y)=>x.row-y.row||x.col-y.col);
+      own.forEach((p,i)=>pieces.push({a,p,n:i+1,total:own.length}));
+    }
+    // Arts in binder order (first piece's page/pocket), pieces in reading order.
+    const firstPos=a=>Math.min(...(V14.artPieces||[]).filter(p=>p.art_id===a.id).map(p=>p.page*10+p.slot));
+    pieces.sort((x,y)=>firstPos(x.a)-firstPos(y.a)||String(x.a.id).localeCompare(String(y.a.id))||x.n-y.n);
+    if(!pieces.length)return toast(onlyArtId?'Esta arte não tem pedaços.':'Este fichário ainda não tem artes.');
+
+    const M=ART_CARD_MM;
+    const gridW=3*M.w+2*M.gap,gridH=3*M.h+2*M.gap;
+    const mx=(M.pageW-gridW)/2,my=(M.pageH-gridH)/2;
+    const xs=[0,1,2].flatMap(c=>[mx+c*(M.w+M.gap),mx+c*(M.w+M.gap)+M.w]);
+    const ys=[0,1,2].flatMap(r=>[my+r*(M.h+M.gap),my+r*(M.h+M.gap)+M.h]);
+    const mm=v=>(+v).toFixed(2)+'mm';
+    // Cut marks: ticks in the outer margins on every cut line.
+    const marks=
+      xs.map(x=>'<i class="mk v" style="left:'+mm(x)+';top:'+mm(my-7)+'"></i><i class="mk v" style="left:'+mm(x)+';top:'+mm(my+gridH+2)+'"></i>').join('')+
+      ys.map(y=>'<i class="mk h" style="top:'+mm(y)+';left:'+mm(mx-5.5)+'"></i><i class="mk h" style="top:'+mm(y)+';left:'+mm(mx+gridW+1)+'"></i>').join('');
+    const sheets=[];
+    for(let i=0;i<pieces.length;i+=9){
+      const cells=pieces.slice(i,i+9).map((it,k)=>{
+        const c=k%3,r=Math.floor(k/3);
+        const left=mx+c*(M.w+M.gap),top=my+r*(M.h+M.gap);
+        const crop=artCropV21(it.a,it.p.col,it.p.row,0);
+        const url=artImageUrlV21(it.a);
+        const style='width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition;
+        const caption=(it.a.title||'Arte')+' · pedaço '+it.n+'/'+it.total+' · pág. '+it.p.page+', bolso '+it.p.slot;
+        return '<div class="piece" style="left:'+mm(left)+';top:'+mm(top)+'"><img src="'+pdfEscapeV1500(url)+'" alt="" style="'+style+'"></div>'+
+          '<div class="cap" style="left:'+mm(left)+';top:'+mm(top+M.h+0.6)+'">'+pdfEscapeV1500(caption)+'</div>';
+      }).join('');
+      sheets.push('<section class="sheet">'+marks+cells+'</section>');
+    }
+
+    byId('v1500PdfOverlay')?.remove();
+    const overlay=document.createElement('div');
+    overlay.id='v1500PdfOverlay';
+    overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#fff;display:flex';
+    const frame=document.createElement('iframe');
+    frame.title='Artes para recortar';
+    frame.style.cssText='flex:1;width:100%;height:100%;border:0;background:#fff';
+    overlay.appendChild(frame);
+    document.body.appendChild(overlay);
+    const doc=frame.contentWindow.document;
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Artes para recortar — '+pdfEscapeV1500(binder.name||'Fichário')+'</title><style>'+
+      '@page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#e9e9e9;font-family:Arial,sans-serif}'+
+      '.sheet{position:relative;width:210mm;height:297mm;margin:0 auto 6mm;background:#fff;overflow:hidden;page-break-after:always;break-after:page}'+
+      '.sheet:last-child{page-break-after:auto;break-after:auto}'+
+      '.piece{position:absolute;width:63mm;height:88mm;overflow:hidden;background:#fff}'+
+      '.piece img{position:absolute;max-width:none;object-fit:cover}'+
+      '.cap{position:absolute;width:63mm;font-size:5.5pt;line-height:1.15;color:#666;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '.mk{position:absolute;background:#000}.mk.v{width:0.2mm;height:5mm;margin-left:-0.1mm}.mk.h{height:0.2mm;width:4.5mm;margin-top:-0.1mm}'+
+      '#bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:3mm;align-items:center;justify-content:center;padding:3mm;background:#111;color:#fff;font-size:10pt}'+
+      '#bar button{font:inherit;font-weight:700;padding:1.5mm 4mm;border:0;border-radius:1.5mm;cursor:pointer}'+
+      '@media print{#bar{display:none}html,body{background:#fff}.sheet{margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'+
+      '</style></head><body>'+
+      '<div id="bar"><span id="st">Carregando imagens…</span><span>Na impressão: <b>Escala 100% (Tamanho real)</b> e <b>Margens: Nenhuma</b>.</span><button id="pr" type="button">Imprimir / Salvar PDF</button><button id="cl" type="button">Fechar</button></div>'+
+      sheets.join('')+
+      '<script>(function(){var imgs=[].slice.call(document.images),done=0,st=document.getElementById("st");'+
+      'function show(){st.textContent=done<imgs.length?"Carregando imagens "+done+" de "+imgs.length+"…":"'+pieces.length+' pedaço(s) em '+sheets.length+' folha(s) A4, tamanho de carta (63 × 88 mm)."}'+
+      'document.getElementById("pr").onclick=function(){window.print()};'+
+      'document.getElementById("cl").onclick=function(){var o=window.frameElement&&window.frameElement.parentElement;if(o)o.remove();else window.close()};'+
+      'Promise.all(imgs.map(function(i){return new Promise(function(r){function f(){done++;show();(i.decode?i.decode().catch(function(){}):Promise.resolve()).then(r)}if(i.complete)return f();i.onload=f;i.onerror=f})})).then(function(){show();setTimeout(function(){window.print()},400)});show()})();<\/script>'+
+      '</body></html>');
+    doc.close();
+  }
+  V14.exportArtSheets=exportArtSheetsV21;
+
   function exportBinderPdfV1500(){
     const binder=activeBinder();
     if(!binder){
@@ -5398,7 +5512,7 @@
         if(piece){
           // Each pocket of the art shows its own crop of the image.
           const a=piece.art,url=V14.artImageUrl(a);
-          const artSrc=url?'https://wsrv.nl/?url='+encodeURIComponent(url)+'&w='+(380*a.cols)+'&output=jpg&q=80':'';
+          const artSrc=url?'https://wsrv.nl/?url='+encodeURIComponent(url)+'&w='+Math.min(2400,Math.round(380*a.cols*Math.max(1,+a.zoom||1)))+'&output=jpg&q=88':'';
           const crop=V14.artCrop(a,piece.col,piece.row,0);
           const style='position:absolute;max-width:none;object-fit:cover;width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition;
           slots.push(
@@ -5492,11 +5606,21 @@
       pdf.onclick=exportBinderPdfV1500;
       root.appendChild(pdf);
     }
+    if(!byId('v21ExportArtSheets')){
+      const art=document.createElement('button');
+      art.id='v21ExportArtSheets';
+      art.type='button';
+      art.className='action-btn';
+      art.textContent='Imprimir artes para recortar (A4)';
+      art.title='Todos os pedaços das artes deste fichário no tamanho exato de carta (63 × 88 mm), 9 por folha A4, com espaço e marcas de corte';
+      art.onclick=()=>exportArtSheetsV21();
+      root.appendChild(art);
+    }
 
     const defs=[
       {id:'unpriced',icon:'!',title:'Cotações',hint:'Cartas para ajustar e atualizar',items:[]},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
-      {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'PDF, CSV e impressão',items:['v1500ExportPdf','btnExport','btnPrint']},
+      {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'PDF, CSV e impressão',items:['v1500ExportPdf','v21ExportArtSheets','btnExport','btnPrint']},
       {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
       {id:'settings',icon:'⚙',title:'Configurações',hint:'Aparência e conta',items:['btnSummarySettings','v112Logout']}
     ];
