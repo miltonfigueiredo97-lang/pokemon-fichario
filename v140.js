@@ -2319,8 +2319,8 @@
   function gridRowGapV21(grid){
     return parseFloat(getComputedStyle(grid).rowGap)||0;
   }
-  function appendSeamlessArtV21(sheet,binderId,page){
-    if(!sheet||!binderId)return;
+  function seamlessInPlaceV21(binderId,page){
+    const out=[];
     for(const a of (V14.binderArt||[]).filter(x=>x.binder_id===binderId&&x.seamless)){
       const pieces=(V14.artPieces||[]).filter(p=>p.art_id===a.id);
       if(pieces.length!==a.cols*a.rows||!pieces.every(p=>+p.page===+page))continue;
@@ -2328,6 +2328,13 @@
       const c0=(+first.slot-1)%3,r0=Math.floor((+first.slot-1)/3);
       if(c0+a.cols>3||r0+a.rows>3)continue;
       if(!pieces.every(p=>+p.slot===+first.slot+(+p.row)*3+(+p.col)))continue;
+      out.push({a,c0,r0});
+    }
+    return out;
+  }
+  function appendSeamlessArtV21(sheet,binderId,page){
+    if(!sheet||!binderId)return;
+    for(const {a,c0,r0} of seamlessInPlaceV21(binderId,page)){
       const strips=seamlessArtOverlayV21(a,c0,r0,artImageUrlV21(a),gridRowGapV21(sheet));
       if(a.title){const tag=document.createElement('span');tag.className='v21-art-tag';tag.textContent='ARTE · '+a.title;strips[0].appendChild(tag)}
       strips.forEach(el=>sheet.appendChild(el));
@@ -2451,7 +2458,7 @@
       if(!cell||!d.dataset.previewUrl)return;
       e.preventDefault();
       const f=artDialogFramingV21();
-      const W=cell.offsetWidth*f.cols+6*(f.cols-1),H=cell.offsetHeight*f.rows+6*(f.rows-1);
+      const W=cell.offsetWidth*f.cols+(6+2)*(f.cols-1),H=cell.offsetHeight*f.rows+(6+2)*(f.rows-1);
       const pic=cell.querySelector('img');
       // Overflow of the image beyond the art rectangle (negative when larger).
       const overX=W-(pic?.offsetWidth||W),overY=H-(pic?.offsetHeight||H);
@@ -2508,7 +2515,7 @@
         const cell=document.createElement('div');
         cell.className='v21-art-cell new';
         const img=document.createElement('img');img.src=src;img.alt='';
-        applyArtCropV21(img,f,c,r,6);
+        applyArtCropV21(img,f,c,r,6+2);
         cell.appendChild(img);box.appendChild(cell);
         cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       }
@@ -2531,21 +2538,27 @@
       if(inside&&src){
         const img=document.createElement('img');
         img.src=src;img.alt='';
-        applyArtCropV21(img,f,c-c0,r-r0,6);
+        applyArtCropV21(img,f,c-c0,r-r0,6+2);
         cell.appendChild(img);
       }else if(card){
         const img=cardImage(card);
         if(img){const i=document.createElement('img');i.className='v21-art-cell-card';i.src=img;i.alt='';cell.appendChild(i)}
       }else if(other){
-        // Show the art already there (its own crop), dimmed like cards.
+        // Show the art already there, dimmed like cards. Whole arts are drawn
+        // below as strips, exactly as in the binder.
         cell.classList.add('has-art');
-        const i=document.createElement('img');i.className='v21-art-cell-other';i.alt='';i.src=artImageUrlV21(other.art);
-        applyArtCropV21(i,other.art,other.col,other.row,6);
-        cell.appendChild(i);
+        if(!other.art.seamless){
+          const i=document.createElement('img');i.className='v21-art-cell-other';i.alt='';i.src=artImageUrlV21(other.art);
+          applyArtCropV21(i,other.art,other.col,other.row,6+2);
+          cell.appendChild(i);
+        }
       }
       if(inside&&conflicts.includes(s)){const x=document.createElement('b');x.textContent='ocupado';cell.appendChild(x)}
       cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       box.appendChild(cell);
+    }
+    for(const w of seamlessInPlaceV21(binderId,page)){
+      seamlessArtOverlayV21(w.a,w.c0,w.r0,artImageUrlV21(w.a),gridRowGapV21(box)).forEach(el=>{el.classList.add('v21-art-other-strip');box.appendChild(el)});
     }
     if(f.seamless&&src&&!conflicts.length)seamlessArtOverlayV21(f,c0,r0,src,gridRowGapV21(box)).forEach(el=>box.appendChild(el));
     const save=byId('v21ArtSave');
