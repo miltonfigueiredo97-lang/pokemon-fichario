@@ -2131,7 +2131,8 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v21-art-whole{position:relative;z-index:3;pointer-events:none;overflow:hidden;border-radius:6px;container-type:size;align-self:stretch;justify-self:stretch;background:#0b0f12}
 .v21-art-whole img{position:absolute;max-width:none}
 .v21-art-whole .v21-art-tag{z-index:1}
-.v21-art-check{display:flex!important;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer}
-.v21-art-check input{margin-top:3px;flex:none}
+.v21-art-check{display:flex!important;flex-direction:row!important;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;grid-template-columns:none!important}
+.v21-art-check input[type=checkbox]{width:18px!important;height:18px!important;min-width:18px;margin:2px 0 0;padding:0;flex:0 0 18px}
+.v21-art-check>span{flex:1 1 auto;min-width:0;display:block;color:var(--text);font-weight:600;line-height:1.35}
 .v21-art-check small{display:block;margin-top:2px;color:var(--muted);font-weight:400;font-size:11px;line-height:1.35}
 .v21-art-ideal{margin:0;padding:8px 10px;border-radius:8px;background:rgba(120,190,255,.10);color:#cfe6ff;font-size:12px;line-height:1.4}
