@@ -338,6 +338,12 @@
     const ghost=state.card.cloneNode(true);
     ghost.removeAttribute('id');
     ghost.className='v11-drag-ghost';
+    // An art piece keeps its own crop while dragged (ghost img rules use !important).
+    if(state.pieceId){
+      ghost.classList.add('v21-art-ghost');
+      const gi=ghost.querySelector('img'),si=state.card.querySelector('img');
+      if(gi&&si)for(const k of ['width','height','left','top'])gi.style.setProperty(k,si.style[k],'important');
+    }
     ghost.style.width=r.width+'px';ghost.style.height=r.height+'px';
     ghost.style.left=(state.x-state.offsetX)+'px';ghost.style.top=(state.y-state.offsetY)+'px';
     document.body.appendChild(ghost);state.ghost=ghost;
@@ -391,14 +397,15 @@
     },true);
 
     window.addEventListener('pointerdown',e=>{
-      const card=e.target.closest&&e.target.closest('.pocket-card');
+      // Cards and binder-art pieces are dragged the same way.
+      const card=e.target.closest&&(e.target.closest('.pocket-card')||e.target.closest('.v21-art-piece'));
       if(!card||e.target.closest?.('.v14-favorite-star'))return;
       if(card.dataset.v14Movable==='0'||card.classList.contains('v14-no-drag'))return;
       if(e.pointerType!=='mouse')lastTouch=Date.now();
       clearDrag();
       const rect=card.getBoundingClientRect();
       const state={
-        id:card.dataset.id,card,pointerId:e.pointerId,pointerType:e.pointerType,
+        id:card.dataset.id||'',pieceId:card.dataset.pieceId||'',card,pointerId:e.pointerId,pointerType:e.pointerType,
         startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY,
         offsetX:Math.max(0,Math.min(rect.width,e.clientX-rect.left)),
         offsetY:Math.max(0,Math.min(rect.height,e.clientY-rect.top)),
@@ -444,7 +451,9 @@
         const pocket=hit?.closest('.binder-pocket');
         const source=sourceCardById(s.id);
         suppressClickUntil=Date.now()+750;
-        if(source&&pocket&&typeof moveCard==='function'){
+        if(s.pieceId&&pocket&&typeof window.PB14?.moveArtPiece==='function'){
+          window.PB14.moveArtPiece(s.pieceId,Number(pocket.dataset.page),Number(pocket.dataset.slot));
+        }else if(source&&pocket&&typeof moveCard==='function'){
           moveCard(source,Number(pocket.dataset.page),Number(pocket.dataset.slot));
         }
       }
@@ -452,7 +461,7 @@
     },true);
     window.addEventListener('pointercancel',e=>{if(dragState&&e.pointerId===dragState.pointerId)clearDrag()},true);
     window.addEventListener('click',e=>{
-      if(Date.now()<suppressClickUntil&&e.target.closest?.('.pocket-card')){
+      if(Date.now()<suppressClickUntil&&(e.target.closest?.('.pocket-card')||e.target.closest?.('.v21-art-piece'))){
         e.preventDefault();e.stopImmediatePropagation();
       }
     },true);

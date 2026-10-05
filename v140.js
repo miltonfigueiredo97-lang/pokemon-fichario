@@ -1960,8 +1960,12 @@
     if(error){console.error(error);toast('Erro ao carregar cartas.');return}
     V14.allCards=data||[];
     // Binder art (images spread over pockets). A missing table just means no art.
-    const art=await db.from('pokemon_binder_art').select('*').eq('user_id',currentUser.id);
+    const [art,pieces]=await Promise.all([
+      db.from('pokemon_binder_art').select('*').eq('user_id',currentUser.id),
+      db.from('pokemon_binder_art_pieces').select('*').eq('user_id',currentUser.id)
+    ]);
     V14.binderArt=art.error?[]:(art.data||[]);
+    V14.artPieces=pieces.error?[]:(pieces.data||[]);
     collection=physicalCollection();
     syncLegacySettings();
     renderBinderControls();
@@ -2203,16 +2207,28 @@
   function artImageUrlV21(a){
     try{return db.storage.from(ART_BUCKET_V21).getPublicUrl(a.image_path).data.publicUrl}catch{return''}
   }
+  // Each piece (col,row) of an art sits on its own pocket and moves freely
+  // (table pokemon_binder_art_pieces); it always shows its own crop.
   function artPieceAt(binderId,page,slot){
     if(!binderId)return null;
-    const c=(slot-1)%3,r=Math.floor((slot-1)/3);
-    for(const a of V14.binderArt||[]){
-      if(a.binder_id!==binderId||+a.page!==+page)continue;
-      const c0=(a.slot-1)%3,r0=Math.floor((a.slot-1)/3);
-      if(c>=c0&&c<c0+a.cols&&r>=r0&&r<r0+a.rows)return{art:a,col:c-c0,row:r-r0};
-    }
-    return null;
+    const p=(V14.artPieces||[]).find(x=>x.binder_id===binderId&&+x.page===+page&&+x.slot===+slot);
+    if(!p)return null;
+    const art=(V14.binderArt||[]).find(a=>a.id===p.art_id);
+    return art?{art,col:+p.col,row:+p.row,piece:p}:null;
   }
+  async function moveArtPieceV21(pieceId,page,slot){
+    if(!canMove())return toast('Para mover, selecione Ordem do fichário.');
+    page=Math.max(1,+page||1);slot=Math.min(9,Math.max(1,+slot||1));
+    const piece=(V14.artPieces||[]).find(p=>p.id===pieceId);
+    if(!piece||(+piece.page===page&&+piece.slot===slot))return;
+    const {error}=await db.rpc('pokemon_move_art_piece',{p_piece:pieceId,p_page:page,p_slot:slot});
+    if(error){console.error('[Mover pedaço da arte]',error);return toast('Não consegui mover o pedaço da arte.')}
+    currentPage=binderSessionAnchorV14(page,Math.max(page,currentBinderPages()));
+    await loadCardsV14(false);
+    renderAll();
+    toast('Pedaço da arte movido.');
+  }
+  V14.moveArtPiece=moveArtPieceV21;
   V14.artPieceAt=artPieceAt;
   V14.artImageUrl=artImageUrlV21;
   V14.artPieceEl=(piece,sheet)=>artPieceEl(piece,sheet);
@@ -2223,7 +2239,9 @@
     const el=document.createElement('button');
     el.type='button';
     el.className='v21-art-piece';
-    el.title=(a.title?a.title+' · ':'')+'Arte '+a.cols+'×'+a.rows+' — clique para opções';
+    if(piece.piece?.id)el.dataset.pieceId=piece.piece.id;
+    el.dataset.v14Movable=canMove()?'1':'0';
+    el.title=(a.title?a.title+' · ':'')+'Pedaço '+(piece.col+1)+','+(piece.row+1)+' da arte '+a.cols+'×'+a.rows+' — arraste para outro bolso ou clique para opções';
     const img=document.createElement('img');
     img.alt='';
     img.loading='lazy';
@@ -2381,7 +2399,14 @@
       const row={binder_id:binder.id,page:+d.dataset.page,slot:+d.dataset.slot,cols:+byId('v21ArtCols').value||1,rows:+byId('v21ArtRows').value||1,image_path:path,title:byId('v21ArtTitle').value.trim()};
       const {data,error}=await db.from('pokemon_binder_art').insert(row).select('*').single();
       if(error)throw error;
+      // One piece per pocket, laid out as the original rectangle; each piece
+      // can be moved on its own afterwards.
+      const pieceRows=[];
+      for(let r=0;r<row.rows;r++)for(let c=0;c<row.cols;c++)pieceRows.push({art_id:data.id,binder_id:binder.id,page:row.page,slot:row.slot+r*3+c,col:c,row:r});
+      const pcs=await db.from('pokemon_binder_art_pieces').insert(pieceRows).select('*');
+      if(pcs.error){await db.from('pokemon_binder_art').delete().eq('id',data.id);throw pcs.error}
       V14.binderArt=[...(V14.binderArt||[]),data];
+      V14.artPieces=[...(V14.artPieces||[]),...(pcs.data||[])];
       d.close();
       if(byId('addDialog')?.open)byId('addDialog').close();
       renderAll();
@@ -2411,9 +2436,11 @@
   }
   function openArtMenuV21(a){
     const d=ensureArtMenuV21();
-    const last=a.slot+(a.rows-1)*3+(a.cols-1);
+    const where=(V14.artPieces||[]).filter(p=>p.art_id===a.id)
+      .sort((x,y)=>x.page-y.page||x.slot-y.slot)
+      .map(p=>'p.'+p.page+' b.'+p.slot).join(', ');
     byId('v21ArtMenuTitle').textContent=a.title||'Arte';
-    byId('v21ArtMenuWhere').textContent='Página '+a.page+' · bolsos '+a.slot+' a '+last+' ('+a.cols+'×'+a.rows+').';
+    byId('v21ArtMenuWhere').textContent=(a.cols*a.rows)+' pedaço(s) ('+a.cols+'×'+a.rows+'): '+where+'. Arraste um pedaço para movê-lo.';
     byId('v21ArtMenuImg').src=artImageUrlV21(a);
     byId('v21ArtRemove').onclick=async()=>{
       if(!confirm('Remover esta arte do fichário? Os bolsos ficam vazios de novo.'))return;
@@ -2421,6 +2448,7 @@
       if(error){console.error('[Remover arte]',error);return toast('Não consegui remover a arte.')}
       db.storage.from(ART_BUCKET_V21).remove([a.image_path]).catch(()=>{});
       V14.binderArt=(V14.binderArt||[]).filter(x=>x.id!==a.id);
+      V14.artPieces=(V14.artPieces||[]).filter(x=>x.art_id!==a.id);
       d.close();
       renderAll();
       toast('Arte removida.');
@@ -2563,7 +2591,9 @@
     const binder=activeBinder();
     if(!binder||String(card?.binder_id||'')!==String(binder.id))return toast('Essa carta não pertence ao fichário aberto.');
     page=Math.max(1,+page||1);slot=Math.min(9,Math.max(1,+slot||1));
-    if(artPieceAt(binder.id,page,slot))return toast('Esse bolso tem uma arte. Remova a arte antes de colocar uma carta nele.');
+    // Dropping a card on an art piece swaps them (the piece goes to the card's pocket).
+    const target=artPieceAt(binder.id,page,slot);
+    if(target)return moveArtPieceV21(target.piece.id,+card.binder_page||1,+card.binder_slot||1);
     try{
       if(page>currentBinderPages()){
         const {error:pageError}=await db.from('pokemon_binders')
