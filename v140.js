@@ -2298,17 +2298,26 @@
     }
   }
   V14.artCrop=artCropV21;
-  // "Arte inteira": one picture over the art's pockets, covering the gaps
-  // between them, while its pieces are all in their original rectangle on
-  // this page (pieces moved elsewhere show as separate pieces again).
-  function seamlessArtOverlayV21(a,c0,r0,src){
-    const el=document.createElement('div');
-    el.className='v21-art-whole';
-    el.style.gridColumn=(c0+1)+' / span '+a.cols;el.style.gridRow=(r0+1)+' / span '+a.rows;
-    const img=document.createElement('img');img.alt='';img.draggable=false;img.src=src;
-    applyArtCropV21(img,{...a,cols:1,rows:1},0,0,0);
-    el.appendChild(img);
-    return el;
+  // "Arte inteira": in a binder only the pockets of one ROW can hold one
+  // continuous strip (rows are separate sleeves), so each row of the art is
+  // one strip over its pockets with no gap, and the gap between rows stays.
+  // rowGap = distance between two rows in that grid (px). Returns the strips.
+  function seamlessArtOverlayV21(a,c0,r0,src,rowGap=0){
+    const out=[];
+    for(let r=0;r<a.rows;r++){
+      const el=document.createElement('div');
+      el.className='v21-art-whole';
+      el.style.gridColumn=(c0+1)+' / span '+a.cols;el.style.gridRow=String(r0+1+r);
+      const img=document.createElement('img');img.alt='';img.draggable=false;img.src=src;
+      // One strip = the full width (cols:1 in strip units), row r of the rows.
+      applyArtCropV21(img,{...a,cols:1},0,r,rowGap);
+      el.appendChild(img);
+      out.push(el);
+    }
+    return out;
+  }
+  function gridRowGapV21(grid){
+    return parseFloat(getComputedStyle(grid).rowGap)||0;
   }
   function appendSeamlessArtV21(sheet,binderId,page){
     if(!sheet||!binderId)return;
@@ -2319,9 +2328,9 @@
       const c0=(+first.slot-1)%3,r0=Math.floor((+first.slot-1)/3);
       if(c0+a.cols>3||r0+a.rows>3)continue;
       if(!pieces.every(p=>+p.slot===+first.slot+(+p.row)*3+(+p.col)))continue;
-      const el=seamlessArtOverlayV21(a,c0,r0,artImageUrlV21(a));
-      if(a.title){const tag=document.createElement('span');tag.className='v21-art-tag';tag.textContent='ARTE · '+a.title;el.appendChild(tag)}
-      sheet.appendChild(el);
+      const strips=seamlessArtOverlayV21(a,c0,r0,artImageUrlV21(a),gridRowGapV21(sheet));
+      if(a.title){const tag=document.createElement('span');tag.className='v21-art-tag';tag.textContent='ARTE · '+a.title;strips[0].appendChild(tag)}
+      strips.forEach(el=>sheet.appendChild(el));
       sheet.querySelectorAll('.binder-pocket').forEach(p=>{
         const sl=+p.dataset.slot,c=(sl-1)%3,r=Math.floor((sl-1)/3);
         if(c>=c0&&c<c0+a.cols&&r>=r0&&r<r0+a.rows)p.querySelector('.v21-art-tag')?.remove();
@@ -2403,7 +2412,7 @@
             '<label class="v21-art-field" id="v21ArtFileField"><span>Imagem</span><input id="v21ArtFile" type="file" accept="image/*"></label>'+
             '<label class="v21-art-field"><span>Título (opcional)</span><input id="v21ArtTitle" type="text" maxlength="60" placeholder="Ex.: Latias & Latios no pôr do sol"></label>'+
             '<div class="v21-art-size" id="v21ArtSizeField"><label class="v21-art-field"><span>Largura (bolsos)</span><select id="v21ArtCols"></select></label><label class="v21-art-field"><span>Altura (bolsos)</span><select id="v21ArtRows"></select></label></div>'+
-            '<label class="v21-art-check"><input type="checkbox" id="v21ArtSeamless"><span><b>Arte inteira</b> (sem espaço entre os bolsos)<small>Mostrada como uma imagem só e impressa numa peça única, sem cortes no meio. Use quando a arte vai inteira atrás dos bolsos.</small></span></label>'+
+            '<label class="v21-art-check"><input type="checkbox" id="v21ArtSeamless"><span><b>Arte inteira</b> (sem espaço entre os bolsos da mesma linha)<small>Cada linha vira uma faixa única, sem cortes entre os bolsos lado a lado; as linhas continuam separadas, como as fileiras do fichário. Impressa em uma faixa por linha.</small></span></label>'+
             '<p class="v21-art-ideal" id="v21ArtIdeal"></p>'+
             '<div class="v21-art-field"><span>Zoom <b id="v21ArtZoomLabel">100%</b></span><div class="v21-art-zoom"><button type="button" class="btn btn-secondary" id="v21ArtZoomOut" title="Diminuir">−</button><input id="v21ArtZoom" type="range" min="30" max="400" step="1" value="100"><button type="button" class="btn btn-secondary" id="v21ArtZoomIn" title="Aumentar">+</button><button type="button" class="btn btn-secondary" id="v21ArtCenter" title="Zoom 100% e imagem centralizada">Centralizar</button></div></div>'+
             '<p class="muted compact-copy">Arraste a imagem na prévia para posicioná-la; a roda do mouse sobre a prévia também muda o zoom.</p>'+
@@ -2503,7 +2512,7 @@
         cell.appendChild(img);box.appendChild(cell);
         cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       }
-      if(f.seamless&&src)box.appendChild(seamlessArtOverlayV21(f,0,0,src));
+      if(f.seamless&&src)seamlessArtOverlayV21(f,0,0,src,gridRowGapV21(box)).forEach(el=>box.appendChild(el));
       byId('v21ArtSave').disabled=!src;
       const editing=(V14.binderArt||[]).find(x=>x.id===d.dataset.editId);
       byId('v21ArtHint').textContent=editing&&(cols!==+editing.cols||rows!==+editing.rows)
@@ -2534,7 +2543,7 @@
       cell.style.gridColumn=String(c+1);cell.style.gridRow=String(r+1);
       box.appendChild(cell);
     }
-    if(f.seamless&&src&&!conflicts.length)box.appendChild(seamlessArtOverlayV21(f,c0,r0,src));
+    if(f.seamless&&src&&!conflicts.length)seamlessArtOverlayV21(f,c0,r0,src,gridRowGapV21(box)).forEach(el=>box.appendChild(el));
     const save=byId('v21ArtSave');
     save.disabled=!src||conflicts.length>0;
     byId('v21ArtHint').textContent=conflicts.length
@@ -5825,16 +5834,24 @@
       }).join('');
       sheets.push('<section class="sheet">'+marks+cells+'</section>');
     }
+    // "Arte inteira": one uncut strip per row (cols*63 x 88 mm), the rows
+    // stacked on one sheet with the same 4 mm gutter and cut marks.
     for(const a of wholes){
-      const W=a.cols*M.w,H=a.rows*M.h,left=(M.pageW-W)/2,top=(M.pageH-H)/2;
-      const crop=artCropV21({...a,cols:1,rows:1},0,0,0);
+      const W=a.cols*M.w,H=M.h,stackH=a.rows*M.h+(a.rows-1)*M.gap;
+      const left=(M.pageW-W)/2,top0=(M.pageH-stackH)/2;
       const url=artImageUrlV21(a);
-      const style='width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+';object-fit:'+(crop.objectFit||'cover');
-      const cut=[left,left+W].map(x=>'<i class="mk v" style="left:'+mm(x)+';top:'+mm(top-7)+'"></i><i class="mk v" style="left:'+mm(x)+';top:'+mm(top+H+2)+'"></i>').join('')+
-        [top,top+H].map(y=>'<i class="mk h" style="top:'+mm(y)+';left:'+mm(left-5.5)+'"></i><i class="mk h" style="top:'+mm(y)+';left:'+mm(left+W+1)+'"></i>').join('');
-      const caption=(a.title||'Arte')+' · inteira '+a.cols+'×'+a.rows+' ('+W+' × '+H+' mm)';
-      sheets.push('<section class="sheet">'+cut+'<div class="piece" style="left:'+mm(left)+';top:'+mm(top)+';width:'+mm(W)+';height:'+mm(H)+'"><img src="'+pdfEscapeV1500(url)+'" alt="" style="'+style+'"></div>'+
-        '<div class="cap" style="left:'+mm(left)+';top:'+mm(top+H+0.6)+';width:'+mm(W)+'">'+pdfEscapeV1500(caption)+'</div></section>');
+      let html='';
+      const ys=[];
+      for(let r=0;r<a.rows;r++){
+        const top=top0+r*(M.h+M.gap);ys.push(top,top+H);
+        const crop=artCropV21({...a,cols:1},0,r,0);
+        const style='width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+';object-fit:'+(crop.objectFit||'cover');
+        html+='<div class="piece" style="left:'+mm(left)+';top:'+mm(top)+';width:'+mm(W)+';height:'+mm(H)+'"><img src="'+pdfEscapeV1500(url)+'" alt="" style="'+style+'"></div>'+
+          '<div class="cap" style="left:'+mm(left)+';top:'+mm(top+H+0.6)+';width:'+mm(W)+'">'+pdfEscapeV1500((a.title||'Arte')+' · faixa '+(r+1)+'/'+a.rows+' ('+W+' × '+H+' mm)')+'</div>';
+      }
+      const cut=[left,left+W].map(x=>'<i class="mk v" style="left:'+mm(x)+';top:'+mm(top0-7)+'"></i><i class="mk v" style="left:'+mm(x)+';top:'+mm(top0+stackH+2)+'"></i>').join('')+
+        ys.map(y=>'<i class="mk h" style="top:'+mm(y)+';left:'+mm(left-5.5)+'"></i><i class="mk h" style="top:'+mm(y)+';left:'+mm(left+W+1)+'"></i>').join('');
+      sheets.push('<section class="sheet">'+cut+html+'</section>');
     }
 
     byId('v1500PdfOverlay')?.remove();
