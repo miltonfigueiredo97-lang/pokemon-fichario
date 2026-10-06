@@ -1737,6 +1737,8 @@
     const exact=masterImage(entry);
     if(exact)return exact;
     if(entry.languageCode==='ja')return japaneseImageFallback({...entry,languageCode:'ja'});
+    const classic30=typeof classic30ScanUrl==='function'?classic30ScanUrl(entry.apiId,entry.languageCode):'';
+    if(classic30)return classic30;
     V14.masterImageFallbackCache=V14.masterImageFallbackCache||new Map();
     const key=[entry.apiId,entry.setId,entry.number,entry.name].join('|');
     if(V14.masterImageFallbackCache.has(key))return V14.masterImageFallbackCache.get(key);

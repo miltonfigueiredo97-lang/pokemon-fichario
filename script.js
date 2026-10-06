@@ -791,8 +791,26 @@ function tcgplayerImageFromTCGdex(card){
   const direct="https://tcgplayer-cdn.tcgplayer.com/product/"+encodeURIComponent(String(chosen.id))+"_in_1000x1000.jpg";
   return (window.PF_API_BASE||"/api/")+"image-proxy?url="+encodeURIComponent(direct);
 }
+// TCGdex has no scans for the 30th Classic Collection, and the name+number
+// fallback picked unrelated cards (Charizard 1/30 became Arceus' Charizard
+// 1/99). MYP has a scan of every reprint, named by the original number
+// (4/102 -> pokemon_30cc_004_102).
+function classic30ScanUrl(apiId){
+  const local=String(apiId||"").match(/^30th-c-(\d{3})$/)?.[1];
+  const orig=local&&SPECIAL_ORIGINAL_NUMBERS["30th-c"][local];
+  if(!orig)return"";
+  const [num,total]=orig.split("/");
+  const code="pokemon_30cc_"+num.padStart(3,"0")+"_"+total;
+  return"https://img.mypcards.com/img/2/2980/"+code+"/"+code+"_en.jpg";
+}
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
+  const classic30=classic30ScanUrl(card.apiId);
+  if(classic30){
+    card.imageUrl=classic30;
+    card.imageFallbackSource="MYP Cards · reimpressão";
+    return card;
+  }
 
   // First choice for missing scans: resolve the exact TCGdex printing. If its
   // localized scan is absent, the server uses the TCGplayer product id carried

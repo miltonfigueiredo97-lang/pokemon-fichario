@@ -735,8 +735,10 @@ var require_myp_browser = __commonJS({
       const collector = String(wanted?.number || "").trim();
       const shortCollector = numberParts2(collector).rawN || "";
       const setLabel = cleanName(wanted?.set || wanted?.setName || "");
+      const hyphenNames = [...new Set(names.map((n) => n.replace(/\s+(GX|EX|BREAK|LV\.?X)$/i, (_, s) => "-" + s.toUpperCase())).filter((n) => !names.includes(n)))];
       const queries = [...new Set([
         ...names.map((n) => collector ? n + " (" + collector + ")" : n),
+        ...hyphenNames,
         ...names.map((n) => [n, collector].filter(Boolean).join(" ")),
         ...names.map((n) => [n, setLabel].filter(Boolean).join(" ")),
         ...names.map((n) => [n, shortCollector].filter(Boolean).join(" ")),

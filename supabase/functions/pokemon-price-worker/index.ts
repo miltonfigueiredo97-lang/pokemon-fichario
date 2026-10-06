@@ -362,8 +362,9 @@ async function alphabeticalCandidates(card: any, anchors: { token: string; id: n
 
 type CatalogRow = { product_id: number; slug: string; title: string; name_key: string; num: string; den: string; set_code: string | null; info: string };
 
+// Promos carry a set prefix in the number: "Pikachu e Zekrom-GX (PR-SM_SM168)".
 function parseTitle(text: unknown) {
-  const s = String(text || "");
+  const s = String(text || "").replace(/\(\s*[A-Za-z0-9-]+_(?=[A-Za-z]*\d)/, "(");
   let m = s.match(/^\s*(.+?)\s*\(\s*([A-Za-z]*\d+[A-Za-z]*)\s*\/\s*([A-Za-z]*\d+[A-Za-z]*)\s*\)/);
   if (m) return { name: m[1].trim(), num: collectorToken(m[2]), den: collectorToken(m[3]) };
   m = s.match(/^\s*(.+?)\s*\(\s*([A-Za-z]*\d+[A-Za-z]*)\s*\)/);
@@ -555,11 +556,25 @@ function tileSetToken(text: string) {
   return m ? m[1].toLowerCase() : "";
 }
 
+// MYP writes the older suffixes with a hyphen ("Pikachu e Zekrom-GX") and its
+// search finds nothing for "Pikachu e Zekrom GX".
+function hyphenSuffixName(name: unknown) {
+  const n = String(name || "").trim();
+  const h = n.replace(/\s+(GX|EX|BREAK)$/i, (_m: string, x: string) => "-" + x.toUpperCase());
+  return h === n ? "" : h;
+}
+
 async function searchLookup(db: any, card: any, code: string) {
   const num = collectorToken(card.number), den = denOf(card), target = nameKey(card.name);
   const setToken = String(card?.set_id || "").toLowerCase();
   const query = String(card.name || "").trim() + (card.number ? " (" + String(card.number).trim() + ")" : "");
-  const { cards, blocked } = await engineSearch(query);
+  let { cards, blocked } = await engineSearch(query);
+  const hyphen = hyphenSuffixName(card.name);
+  if (hyphen && !cards.some((c: any) => { const t = parseTitle(c.text); return t && t.num === num; })) {
+    const more = await engineSearch(hyphen);
+    cards = [...cards, ...more.cards];
+    blocked = blocked && more.blocked;
+  }
   const tried = new Set<number>((card.myp_link_tried || []).map(Number));
   const rows: CatalogRow[] = [];
   let best: { link: string; score: number } | null = null;
@@ -628,7 +643,7 @@ async function engineApi(name: string) {
 }
 
 async function apiLookup(db: any, card: any, code: string) {
-  const names = [String(card.name || "").trim()];
+  const names = [String(card.name || "").trim(), hyphenSuffixName(card.name)];
   const apiId = String(card?.api_id || "").trim();
   if (apiId) {
     const en = await tcgdex("/en/cards/" + encodeURIComponent(apiId));
@@ -638,7 +653,7 @@ async function apiLookup(db: any, card: any, code: string) {
   const tried = new Set<number>((card.myp_link_tried || []).map(Number));
   const rows: CatalogRow[] = [];
   let best: { link: string; score: number } | null = null;
-  for (const name of [...new Set(names.filter(Boolean))].slice(0, 2)) {
+  for (const name of [...new Set(names.filter(Boolean))].slice(0, 3)) {
     for (const c of await engineApi(name)) {
       const pc = parseMypCode(c.code);
       const id = Number(c.productId) || productId(c.link);
