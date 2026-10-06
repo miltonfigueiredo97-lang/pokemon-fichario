@@ -3639,16 +3639,19 @@
       <p class="v23-reader-state" id="v23ReaderState">Verificando…</p>
       <p class="muted v23-reader-intro">O leitor roda num PC com Windows e busca os preços da Liga/MYP para as cartas na fila. Instale uma vez em cada PC: ele liga sozinho com o Windows e volta sozinho se fechar.</p>
       <div class="v23-reader-steps" id="v23ReaderSteps">
-        <div class="v23-reader-step">
+        <div class="v23-reader-step" id="v23ReaderStep1">
           <b>1</b>
           <div><strong>Baixe e abra o leitor</strong><small>Só na primeira vez em cada PC. Se o Windows avisar, clique em “Mais informações” e “Executar assim mesmo”. Depois de instalado, ele abre este site para o passo 2.</small></div>
           <a class="action-btn" id="v23ReaderDownload" href="${READER_DOWNLOAD_URL_V23}" download>Baixar leitor</a>
+          <span class="v23-reader-done-chip">✓ Instalado</span>
         </div>
-        <div class="v23-reader-step">
+        <div class="v23-reader-step" id="v23ReaderStep2">
           <b>2</b>
-          <div><strong>Conectar este PC à sua conta</strong><small>O navegador pergunta se pode abrir o leitor: clique em “Abrir”. Também liga o leitor se ele estiver parado.</small></div>
+          <div><strong>Conectar este PC à sua conta</strong><small id="v23ReaderStep2Hint">O navegador pergunta se pode abrir o leitor: clique em “Abrir”. Também liga o leitor se ele estiver parado.</small></div>
           <button class="action-btn primary" type="button" id="v23ReaderConnect">Ligar leitor neste PC</button>
+          <span class="v23-reader-done-chip">✓ Ligado</span>
         </div>
+        <button type="button" class="v23-reader-redo" id="v23ReaderRedo" hidden>Reinstalar ou conectar de novo</button>
       </div>
       <p class="muted v23-reader-other" id="v23ReaderOther" hidden>Neste aparelho não dá para rodar o leitor. Abra o site num PC com Windows (Edge ou Chrome) e use esta mesma tela.</p>
     </div>`;
@@ -3656,7 +3659,30 @@
     d.querySelector('[data-v23-close]').onclick=()=>d.close();
     d.addEventListener('click',e=>{if(e.target===d)d.close()});
     byId('v23ReaderConnect').onclick=()=>connectReaderV23();
+    byId('v23ReaderRedo').onclick=()=>{readerForceStepsV23=true;renderReaderStepsV23(readerLastStatusV23)};
     return d;
+  }
+  // This browser's PC already has the reader: remembered once the account's
+  // reader is seen online from here (or after "Ligar leitor neste PC").
+  const READER_PC_KEY_V23='pf-reader-installed-pc';
+  let readerLastStatusV23=null,readerForceStepsV23=false;
+  function readerPcInstalledV23(){try{return localStorage.getItem(READER_PC_KEY_V23)==='1'}catch{return false}}
+  function rememberReaderPcV23(){try{localStorage.setItem(READER_PC_KEY_V23,'1')}catch{}}
+  // Done steps show "✓ Instalado" / "✓ Ligado" instead of the buttons, so a
+  // working reader does not look like something still to do.
+  function renderReaderStepsV23(st){
+    readerLastStatusV23=st;
+    const mine=Number(st?.mine||0);
+    if(mine>0&&isWindowsPcV23())rememberReaderPcV23();
+    const installed=readerPcInstalledV23()&&!readerForceStepsV23;
+    const on=installed&&mine>0;
+    byId('v23ReaderStep1')?.classList.toggle('v23-done',installed);
+    byId('v23ReaderStep2')?.classList.toggle('v23-done',on);
+    const hint=byId('v23ReaderStep2Hint');
+    if(hint)hint.textContent=on?'O leitor deste PC está conectado à sua conta e rodando.':
+      installed?'O leitor deste PC está parado: clique para ligar de novo.':
+      'O navegador pergunta se pode abrir o leitor: clique em “Abrir”. Também liga o leitor se ele estiver parado.';
+    const redo=byId('v23ReaderRedo');if(redo)redo.hidden=!installed;
   }
   async function readerStatusV23(){
     try{const {data}=await db.rpc('engine_reader_status');return data||null}catch{return null}
@@ -3676,8 +3702,12 @@
     const pc=isWindowsPcV23();
     byId('v23ReaderSteps').hidden=!pc;
     byId('v23ReaderOther').hidden=pc;
+    readerForceStepsV23=false;
+    renderReaderStepsV23(readerLastStatusV23);
     if(!d.open)d.showModal();
-    renderReaderStateV23(await readerStatusV23());
+    const st=await readerStatusV23();
+    renderReaderStateV23(st);
+    renderReaderStepsV23(st);
   }
   let readerConnectingV23=false;
   async function connectReaderV23(){
@@ -3697,12 +3727,16 @@
         await new Promise(r=>setTimeout(r,i?3000:4000));
         const st=await readerStatusV23();
         if(Number(st?.mine||0)>0){
+          rememberReaderPcV23();readerForceStepsV23=false;
           renderReaderStateV23(st,'Pronto! Pode fechar esta janela.');
+          renderReaderStepsV23(st);
           readerStatusAtV198=0;readerOnlineV198=true;showReaderNoticeV198(0,true);
           return;
         }
       }
-      renderReaderStateV23(await readerStatusV23(),'Se nada abriu, faça o passo 1 (baixar e abrir o leitor) e tente de novo.');
+      const last=await readerStatusV23();
+      renderReaderStateV23(last,'Se nada abriu, faça o passo 1 (baixar e abrir o leitor) e tente de novo.');
+      renderReaderStepsV23(last);
     }catch(e){
       console.error('[Leitor]',e);
       toast('Não consegui ligar o leitor: '+(e?.message||'erro'));

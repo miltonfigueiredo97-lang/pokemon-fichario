@@ -2201,3 +2201,14 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v23-reader-step small{display:block;margin-top:2px;font-size:11.5px;line-height:1.35;color:var(--muted)}
 .v23-reader-step .action-btn{white-space:nowrap;text-decoration:none;text-align:center}
 @media (max-width:520px){.v23-reader-step{grid-template-columns:28px minmax(0,1fr)}.v23-reader-step .action-btn{grid-column:1/-1}}
+
+/* Reader steps already done */
+.v23-reader-done-chip{display:none;white-space:nowrap;padding:7px 12px;border-radius:9px;border:1px solid #3fbf6f;color:#8ff0b0;font-size:12px;font-weight:800}
+.v23-reader-step.v23-done{border-color:rgba(63,191,111,.45)}
+.v23-reader-step.v23-done>b{background:#3fbf6f;font-size:0}
+.v23-reader-step.v23-done>b::after{content:"✓";font-size:14px}
+.v23-reader-step.v23-done .action-btn{display:none}
+.v23-reader-step.v23-done .v23-reader-done-chip{display:inline-block}
+.v23-reader-redo{justify-self:start;padding:0;border:0;background:none;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer}
+.v23-reader-redo[hidden]{display:none}
+@media (max-width:520px){.v23-reader-done-chip{grid-column:1/-1;text-align:center}}
