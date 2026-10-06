@@ -2217,61 +2217,17 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .card-3d .card-back{background:#1d3f8f!important;padding:0!important;display:block!important}
 .card-3d .card-back-img{display:block;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none;pointer-events:none}
 
-/* Card viewer foil (TCG Live style). --v24-x/y: where the light hits, from
-   the card's rotation; --v24-d: how far it is turned (0..1). */
-.card-3d .v24-fx{position:absolute;pointer-events:none;border-radius:4.2%/3%;overflow:hidden;z-index:2}
-.card-3d .v24-fx i{position:absolute;inset:0;display:none}
-.card-3d .v24-glare{display:block!important;background:radial-gradient(farthest-corner circle at var(--v24-x,50%) var(--v24-y,50%),rgba(255,255,255,.8) 6%,rgba(255,255,255,.22) 26%,rgba(0,0,0,.4) 92%);mix-blend-mode:overlay;opacity:calc(.12 + var(--v24-d,0)*.55)}
-/* Art window of a modern card, and everything but it (for reverse holo). */
-.card-3d.v24-holo .v24-foil{display:block;clip-path:inset(10.5% 8.2% 51% 8.2%)}
-.card-3d.v24-reverse .v24-foil,.card-3d.v24-reverse .v24-sparkle{display:block;clip-path:polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,8.2% 10.5%,8.2% 49%,91.8% 49%,91.8% 10.5%,8.2% 10.5%)}
-.card-3d.v24-ultra .v24-foil,.card-3d.v24-ultra .v24-sparkle,
-.card-3d.v24-secret .v24-foil,.card-3d.v24-secret .v24-sparkle,
-.card-3d.v24-illus .v24-foil,.card-3d.v24-illus .v24-sparkle{display:block}
+/* Card viewer foil: layers for fx/pokemon-cards.css, placed on the scan. */
+.card-3d .pfx-layers{position:absolute;display:grid;pointer-events:none;border-radius:var(--card-radius,4.55% / 3.5%);overflow:hidden}
+.card-3d .pfx-layers>.card__shine,.card-3d .pfx-layers>.card__glare{grid-area:1/1;width:100%;height:100%;border-radius:var(--card-radius,4.55% / 3.5%);overflow:hidden}
 
-/* Holo rare: vertical rainbow bars that slide sideways, with fine scanlines. */
-.card-3d.v24-holo .v24-foil{
-  background-image:
-    repeating-linear-gradient(90deg,rgba(0,0,0,.55) 0 1px,transparent 1px 3px),
-    repeating-linear-gradient(90deg,#f80e35 0%,#eedf10 6%,#21e985 12%,#0dbde9 18%,#c929f1 24%,#f80e35 30%);
-  background-size:100% 100%,400% 100%;
-  background-position:0 0,var(--v24-bx,50%) 0;
-  mix-blend-mode:color-dodge;filter:brightness(.55) contrast(2) saturate(1.5);opacity:calc(.25 + var(--v24-d,0)*.7)}
-/* Reverse holo: rainbow sheen and dense sparkles around the art. */
-.card-3d.v24-reverse .v24-foil{
-  background-image:linear-gradient(115deg,#ff2a6d 0%,#ffcf3a 20%,#34f5a5 40%,#3ac8ff 60%,#b45cff 80%,#ff2a6d 100%);
-  background-size:300% 300%;background-position:var(--v24-bx,50%) var(--v24-by,50%);
-  mix-blend-mode:color-dodge;filter:brightness(.5) contrast(1.6) saturate(1.3);opacity:calc(.22 + var(--v24-d,0)*.6)}
-/* Glitter shared by reverse, ultra, secret and illustration cards. */
-.card-3d .v24-sparkle{
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='1' seed='7'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 9 -6.3'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>");
-  background-size:220px 220px;background-position:var(--v24-bx,50%) var(--v24-by,50%);
-  mix-blend-mode:color-dodge;opacity:calc(var(--v24-d,0)*.9)}
-/* ex / V / GX / full art: sharp diagonal rainbow that sweeps across. */
-.card-3d.v24-ultra .v24-foil{
-  background-image:
-    repeating-linear-gradient(133deg,#ff1f5a 0%,#ffb31f 4%,#f4ff1f 8%,#1fff8f 12%,#1fc4ff 16%,#8a4dff 20%,#ff1f5a 24%),
-    repeating-linear-gradient(43deg,rgba(255,255,255,.18) 0 2px,transparent 2px 9px);
-  background-size:400% 400%,auto;
-  background-position:var(--v24-bx,50%) var(--v24-by,50%),0 0;
-  mix-blend-mode:color-dodge;filter:brightness(.55) contrast(1.7) saturate(1.4);opacity:calc(.2 + var(--v24-d,0)*.65)}
-/* Gold / hyper / secret: metallic gold sheen. */
-.card-3d.v24-secret .v24-foil{
-  background-image:linear-gradient(115deg,#5a3d08 0%,#d9a93a 18%,#fff1b8 30%,#c48a22 42%,#ffe08a 55%,#8a5a12 70%,#fff4c9 84%,#b07a1a 100%);
-  background-size:300% 300%;background-position:var(--v24-bx,50%) var(--v24-by,50%);
-  mix-blend-mode:overlay;filter:contrast(1.2);opacity:calc(.3 + var(--v24-d,0)*.55)}
-/* Illustration rares: the fine wavy etched texture, lit in rainbow. */
-.card-3d.v24-illus .v24-foil{
-  background-image:
-    repeating-radial-gradient(circle at var(--v24-x,50%) var(--v24-y,50%),rgba(255,255,255,.0) 0 3px,rgba(255,255,255,.35) 3.5px,rgba(255,255,255,0) 4.5px 6px),
-    repeating-linear-gradient(120deg,#ff2f6d 0%,#ffcf2f 6%,#2fff8f 12%,#2fbfff 18%,#a85cff 24%,#ff2f6d 30%);
-  background-size:auto,350% 350%;
-  background-position:0 0,var(--v24-bx,50%) var(--v24-by,50%);
-  background-blend-mode:overlay,normal;
-  mix-blend-mode:color-dodge;filter:brightness(.55) contrast(1.7) saturate(1.2);opacity:calc(.18 + var(--v24-d,0)*.6)}
-@media (prefers-reduced-motion:reduce){.card-3d .v24-foil{opacity:.25!important}}
 
 
 /* Version badge next to the "Resumo" title */
 .summary-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .summary-title-row .app-build-version{font-size:11px!important;min-height:22px;padding:3px 8px;letter-spacing:.04em}
+/* The foil must blend with the scan: keep the front face one flat, isolated
+   group (pokemon-cards-css lifts its layers with translateZ, which in this
+   3D viewer puts them on separate planes where blending does not apply). */
+.card-3d.pfx .card-front{transform-style:flat!important;isolation:isolate}
+.card-3d.pfx .pfx-layers,.card-3d.pfx .pfx-layers *,.card-3d.pfx .pfx-layers *::before,.card-3d.pfx .pfx-layers *::after{transform:none!important;transform-style:flat!important}

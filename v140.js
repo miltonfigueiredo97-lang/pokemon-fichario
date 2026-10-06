@@ -6400,88 +6400,151 @@
   else bootV14();
 })();
 
-// Card viewer foil, in the spirit of TCG Live: the light moves only when the
-// card is turned (drag), never with the mouse. Each kind of card gets its own
-// foil, placed where the real card has it:
-//   holo     rainbow bars in the art window only (classic holo rare)
-//   reverse  sparkly foil everywhere except the art window
-//   ultra    ex / V / GX / full art: diagonal rainbow sweep with glitter
-//   secret   gold, hyper and secret rares: metallic gold sheen with glitter
-//   illus    illustration rares: the fine wavy "fingerprint" texture
-// Every card also gets a soft glare.
-(function cardFoilV25(){
+// Card viewer foil: the effects of pokemon-cards-css (fx/pokemon-cards.css,
+// GPL-3.0, by @simeydotme). The viewer card (#card3d) gets the class .pfx and
+// the data-* attributes those rules select on (rarity, subtypes, supertype,
+// number, type); the light (--pointer-x/y …) comes only from the card's
+// rotation while it is dragged, never from the mouse.
+(function cardFoilV26(){
   const byIdF=id=>document.getElementById(id);
-  function foilKindV25(){
-    const finish=String(byIdF('cardFinish')?.value||'Normal');
-    const rarity=String(byIdF('detailRarity')?.textContent||'').replace(/^Raridade\s*·\s*/i,'').replace(/^—$/,'');
-    const name=String(byIdF('selectedTitle')?.textContent||'');
-    if(/reverse/i.test(finish))return 'reverse';
-    if(/ilustra|illustration|art rare|\b(ar|sar|sir|chr|csr)\b/i.test(rarity))return 'illus';
-    if(/secret|secreta|hyper|hiper|gold|dourad|rainbow|arco[- ]?[íi]ris|\bur\b/i.test(rarity))return 'secret';
-    if(/full|especial/i.test(finish)||/ultra|dupla|double|shiny|brilhante|radiant|radiante|amazing|incr[ií]vel|ace spec|prism|tag team|vmax|vstar|\bv\b|\bgx\b|\bex\b|\brr\b|\bsr\b/i.test(rarity)||/\b(ex|gx|v|vmax|vstar)\b/i.test(name))return 'ultra';
-    if(/holo|foil/i.test(finish)||/holo/i.test(rarity))return 'holo';
-    return 'plain';
+  const TCGDEX='https://api.tcgdex.net/v2/en/cards/';
+  const infoCache=new Map();
+  let current=null;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const adjust=(v,fromMin,fromMax,toMin,toMax)=>toMin+(toMax-toMin)*(v-fromMin)/(fromMax-fromMin);
+
+  // Wrap the inspector so the viewer knows which card it shows.
+  function hookInspector(){
+    if(typeof window.fillInspector!=='function'||window.fillInspector.__pfx){setTimeout(hookInspector,400);return}
+    const orig=window.fillInspector;
+    const wrapped=function(c,v){current={card:c||{},view:v||{}};const r=orig.apply(this,arguments);setTimeout(applyCard,0);return r};
+    wrapped.__pfx=true;
+    window.fillInspector=wrapped;
   }
-  function ensureLayersV25(){
+
+  async function tcgdexInfo(apiId){
+    if(!apiId)return null;
+    if(infoCache.has(apiId))return infoCache.get(apiId);
+    const p=fetch(TCGDEX+encodeURIComponent(apiId),{cache:'force-cache'}).then(r=>r.ok?r.json():null).catch(()=>null);
+    infoCache.set(apiId,p);
+    return p;
+  }
+
+  // TCGdex rarity (English) + finish -> the rarity names the effects use.
+  function effectRarity(rarity,name,finish,number,info){
+    const r=String(rarity||'').toLowerCase().trim();
+    const n=String(name||'');
+    const f=String(finish||'');
+    if(/reverse/i.test(f))return 'reverse holo';
+    if(/full|especial/i.test(f)&&!r.includes('illustration'))return 'rare ultra';
+    if(r==='special illustration rare')return 'rare rainbow alt';
+    if(r==='illustration rare')return 'rare ultra';
+    if(r==='hyper rare'||r==='rare secret'||r==='secret rare'||r==='gold rare')return /\b(v|vmax|vstar|gx|ex)\b/i.test(n)&&r!=='hyper rare'?'rare rainbow':'rare secret';
+    if(r==='rare rainbow'||r==='rainbow rare')return 'rare rainbow';
+    if(r.includes('shiny')){
+      if(/vmax/i.test(n))return 'rare shiny vmax';
+      if(/\b(v|vstar|ex|gx)\b/i.test(n)||r.includes('ultra'))return 'rare shiny v';
+      return 'rare shiny';
+    }
+    if(r==='radiant rare')return 'radiant rare';
+    if(r==='amazing rare')return 'amazing rare';
+    if(r.includes('vmax')||/\bvmax\b/i.test(n))return 'rare holo vmax';
+    if(r.includes('vstar')||/\bvstar\b/i.test(n))return 'rare holo vstar';
+    if(r==='ultra rare'||r==='rare ultra'||r.includes('full art'))return 'rare ultra';
+    if(r==='double rare'||r.includes('rare holo v')||/\b(v|ex|gx|break|lv\.?x|prime)\b/i.test(n)&&r.includes('rare'))return 'rare holo v';
+    if(r.includes('cosmos'))return 'rare holo cosmos';
+    if(r.includes('holo')||r==='ace spec rare'||r.includes('trainer gallery'))return 'rare holo';
+    if(/holo|foil/i.test(f))return 'rare holo';
+    if(r==='rare'&&info?.variants&&info.variants.holo&&!info.variants.normal)return 'rare holo';
+    return r||'common';
+  }
+
+  function ensureLayers(){
     const front=document.querySelector('#card3d .card-front');
     if(!front)return null;
-    let fx=front.querySelector('.v24-fx');
-    if(!fx){
-      fx=document.createElement('div');
-      fx.className='v24-fx';
-      fx.innerHTML='<i class="v24-foil"></i><i class="v24-sparkle"></i><i class="v24-glare"></i>';
-      front.appendChild(fx);
+    let box=front.querySelector('.pfx-layers');
+    if(!box){
+      box=document.createElement('div');
+      box.className='pfx-layers';
+      box.innerHTML='<div class="card__shine"></div><div class="card__glare"></div>';
+      front.appendChild(box);
     }
-    return fx;
+    return box;
   }
   // The scan is drawn with object-fit:contain: put the layers exactly on it.
-  function fitLayersV25(){
-    const fx=ensureLayersV25(),img=byIdF('card3dImage');
-    if(!fx||!img)return;
+  function fitLayers(){
+    const box=ensureLayers(),img=byIdF('card3dImage');
+    if(!box||!img)return;
     const bw=img.clientWidth,bh=img.clientHeight,nw=img.naturalWidth,nh=img.naturalHeight;
-    if(!bw||!bh||!nw||!nh){fx.style.display='none';return}
+    if(!bw||!bh||!nw||!nh){box.style.display='none';return}
     const s=Math.min(bw/nw,bh/nh),w=nw*s,h=nh*s;
-    Object.assign(fx.style,{display:'',left:(img.offsetLeft+(bw-w)/2)+'px',top:(img.offsetTop+(bh-h)/2)+'px',width:w+'px',height:h+'px'});
+    Object.assign(box.style,{display:'',left:(img.offsetLeft+(bw-w)/2)+'px',top:(img.offsetTop+(bh-h)/2)+'px',width:w+'px',height:h+'px'});
   }
-  const KINDS=['plain','holo','reverse','ultra','secret','illus'];
-  function applyKindV25(){
-    const card=byIdF('card3d');if(!card)return;
-    const kind=foilKindV25();
-    KINDS.forEach(k=>card.classList.toggle('v24-'+k,k===kind));
-    fitLayersV25();
+
+  const TYPES=['grass','fire','water','lightning','psychic','fighting','darkness','metal','dragon','fairy','colorless'];
+  async function applyCard(){
+    const el=byIdF('card3d');if(!el)return;
+    el.classList.add('pfx');
+    el.style.setProperty('--seedx',String(Math.random()));
+    el.style.setProperty('--seedy',String(Math.random()));
+    el.style.setProperty('--cosmosbg',Math.floor(Math.random()*734)+'px '+Math.floor(Math.random()*1280)+'px');
+    const c=current?.card||{},v=current?.view||{};
+    const finish=byIdF('cardFinish')?.value||v.finish||'';
+    const apiId=c.apiId||c.api_id||'';
+    const token=apiId+'|'+finish;
+    el.dataset.pfxToken=token;
+    const info=await tcgdexInfo(apiId);
+    if(el.dataset.pfxToken!==token)return;
+    const rarity=info?.rarity||c.rarity||'';
+    const name=info?.name||c.name||'';
+    const number=String(info?.localId||c.number||'').toLowerCase();
+    const category=String(info?.category||'Pokemon').toLowerCase();
+    const subtypes=[info?.stage,info?.suffix,info?.trainerType,info?.energyType].filter(Boolean).join(' ').toLowerCase().replace(/stage(\d)/,'stage $1');
+    el.dataset.rarity=effectRarity(rarity,name,finish,number,info);
+    el.dataset.supertype=category==='pokemon'?'pokémon':category;
+    el.dataset.subtypes=subtypes||'basic';
+    el.dataset.number=number;
+    el.dataset.set=String(info?.set?.id||c.setId||c.set_id||'').toLowerCase();
+    el.dataset.trainerGallery=String(/^(tg|gg)/i.test(number));
+    const type=String((info?.types||[])[0]||'').toLowerCase();
+    TYPES.forEach(t=>el.classList.toggle(t,t===type));
+    fitLayers();
   }
-  let cur={x:50,y:50},raf=0;
-  function setLightV25(x,y){
-    const card=byIdF('card3d');if(!card)return;
-    const cx=Math.max(0,Math.min(100,x)),cy=Math.max(0,Math.min(100,y));
-    const d=Math.min(1,Math.hypot(cx-50,cy-50)/50);
-    card.style.setProperty('--v24-x',cx.toFixed(1)+'%');
-    card.style.setProperty('--v24-y',cy.toFixed(1)+'%');
-    card.style.setProperty('--v24-bx',(50+(cx-50)*0.8).toFixed(1)+'%');
-    card.style.setProperty('--v24-by',(50+(cy-50)*0.8).toFixed(1)+'%');
-    card.style.setProperty('--v24-d',d.toFixed(3));
-  }
-  // The light comes from the card's rotation (the viewer's rotateX/rotateY).
+
+  // Light from the rotation set by the viewer (rotateX / rotateY).
+  let cur={x:50,y:50,o:0},raf=0;
   function tick(){
     raf=0;
     if(!byIdF('cardDialog')?.open)return;
-    const t=String(document.querySelector('#card3d .card-3d-inner')?.style.transform||'');
+    const el=byIdF('card3d');
+    const t=String(el?.querySelector('.card-3d-inner')?.style.transform||'');
     const rx=Number(t.match(/rotateX\((-?[\d.]+)deg\)/)?.[1]||0);
     const ry=Number(t.match(/rotateY\((-?[\d.]+)deg\)/)?.[1]||0);
-    const x=50+Math.sin(ry*Math.PI/180)*110,y=50-Math.sin(rx*Math.PI/180)*110;
-    cur.x+=(x-cur.x)*0.3;cur.y+=(y-cur.y)*0.3;
-    setLightV25(cur.x,cur.y);
+    const x=50-clamp(ry,-20,20)*2.5,y=50+clamp(rx,-20,20)*2.5;
+    const o=clamp(0.35+Math.hypot(rx,ry)/12,0,1);
+    cur.x+=(x-cur.x)*0.25;cur.y+=(y-cur.y)*0.25;cur.o+=(o-cur.o)*0.2;
+    if(el){
+      const s=el.style;
+      s.setProperty('--pointer-x',cur.x.toFixed(2)+'%');
+      s.setProperty('--pointer-y',cur.y.toFixed(2)+'%');
+      s.setProperty('--pointer-from-center',clamp(Math.hypot(cur.x-50,cur.y-50)/50,0,1).toFixed(3));
+      s.setProperty('--pointer-from-top',(cur.y/100).toFixed(3));
+      s.setProperty('--pointer-from-left',(cur.x/100).toFixed(3));
+      s.setProperty('--background-x',adjust(cur.x,0,100,37,63).toFixed(2)+'%');
+      s.setProperty('--background-y',adjust(cur.y,0,100,33,67).toFixed(2)+'%');
+      s.setProperty('--card-opacity',cur.o.toFixed(3));
+    }
     raf=requestAnimationFrame(tick);
   }
-  function startV25(){applyKindV25();if(!raf)raf=requestAnimationFrame(tick)}
-  document.addEventListener('change',e=>{if(e.target?.id==='cardFinish')applyKindV25()});
-  window.addEventListener('resize',fitLayersV25);
-  function bindV25(){
+  function start(){applyCard();if(!raf)raf=requestAnimationFrame(tick)}
+  document.addEventListener('change',e=>{if(e.target?.id==='cardFinish')applyCard()});
+  window.addEventListener('resize',fitLayers);
+  function bind(){
     const dlg=byIdF('cardDialog');
-    if(!dlg){setTimeout(bindV25,500);return}
-    new MutationObserver(()=>{if(dlg.open)setTimeout(startV25,30)}).observe(dlg,{attributes:true,attributeFilter:['open']});
-    document.addEventListener('load',e=>{if(e.target?.id==='card3dImage')applyKindV25()},true);
-    new MutationObserver(()=>{if(dlg.open)setTimeout(applyKindV25,30)}).observe(dlg,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['src']});
+    if(!dlg){setTimeout(bind,500);return}
+    new MutationObserver(()=>{if(dlg.open)setTimeout(start,30)}).observe(dlg,{attributes:true,attributeFilter:['open']});
+    document.addEventListener('load',e=>{if(e.target?.id==='card3dImage')fitLayers()},true);
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindV25);else bindV25();
+  hookInspector();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
 })();
