@@ -16,7 +16,7 @@ const net=require('net');
 
 const SUPABASE_URL='https://ryylegveltrypqclimqo.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_Ved1tXBXQN1zofbJj3uPzQ_MqHxIEGw';
-const VERSION='1.2.0';
+const VERSION='1.3.0';
 const CONCURRENCY=3;
 // Idle polling is light on Supabase egress: 4 s, then 10 s after 5 idle minutes
 // (the worker treats a reader as online for 45 s after its last poll).
@@ -29,9 +29,16 @@ const LOCK_PORT=47321;
 const ENGINE_URL='https://raw.githubusercontent.com/miltonfigueiredo97-lang/pokemon-fichario/main/reader/engine.bundle.cjs';
 const ENGINE_REFRESH_MS=20*60000;
 
+// The reader's key: a reader token made on the site ("Ligar leitor neste
+// PC", saved in token.txt by the pokemonreader:// link) or, for old builds,
+// the engine secret. Read again on every poll, so pairing works while the
+// reader is already running.
+const DATA_DIR=path.join(process.env.LOCALAPPDATA||os.tmpdir(),'PokemonFichario');
+const TOKEN_FILE=path.join(DATA_DIR,'token.txt');
 function readerKey(){
   if(process.env.PF_READER_KEY)return process.env.PF_READER_KEY.trim();
-  try{return require('./key.generated.js')}catch{}
+  try{const t=fs.readFileSync(TOKEN_FILE,'utf8').trim();if(t)return t}catch{}
+  try{const k=require('./key.generated.js');if(k)return k}catch{}
   const nextToExe=path.join(path.dirname(process.execPath),'reader-key.txt');
   try{return fs.readFileSync(nextToExe,'utf8').trim()}catch{}
   return '';
@@ -56,7 +63,7 @@ function findBrowser(){
 const stamp=()=>new Date().toLocaleString('pt-BR');
 // Console + LOCALAPPDATA/PokemonFichario/reader.log (last ~1 MB), so a
 // reader that stopped can be diagnosed later.
-const LOG_FILE=path.join(process.env.LOCALAPPDATA||os.tmpdir(),'PokemonFichario','reader.log');
+const LOG_FILE=path.join(DATA_DIR,'reader.log');
 function log(...a){
   const line=`[${stamp()}] `+a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');
   console.log(line);
@@ -69,7 +76,8 @@ function log(...a){
 // One bad page (or a browser that refuses to start) must never stop the reader.
 process.on('uncaughtException',e=>log('erro inesperado (seguindo):',String(e?.stack||e).slice(0,300)));
 process.on('unhandledRejection',e=>log('erro inesperado (seguindo):',String(e?.stack||e).slice(0,300)));
-process.on('exit',code=>log('leitor encerrado, código',code));
+let quietExit=false;
+process.on('exit',code=>{if(!quietExit)log('leitor encerrado, código',code)});
 for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])process.on(sig,()=>{log('leitor fechado ('+sig+')');process.exit(0)});
 
 // Every database call has a deadline: after sleep or a network drop a request
@@ -120,14 +128,112 @@ function singleInstance(){
 // in the user's Startup folder, no window that could be closed by accident)
 // and run that copy in the background. Opening the exe again installs the
 // newer version over the running one.
+const WIN_DIR=DATA_DIR;
+const WIN_TARGET=path.join(WIN_DIR,'pokemon-reader.exe');
+const STARTUP_DIR=path.join(process.env.APPDATA||'','Microsoft','Windows','Start Menu','Programs','Startup');
+const LAUNCHER=path.join(STARTUP_DIR,'Pokemon Fichario - leitor de precos.vbs');
+const OPENER=path.join(WIN_DIR,'abrir-leitor.vbs');
+const TASK_NAME='Pokemon Fichario - leitor de precos';
+const SITE_PAIR_URL='https://miltonfigueiredo97-lang.github.io/pokemon-fichario/?leitor=conectar';
+// Writes a helper file only when its content changed, through a temporary
+// file, so a script started at that moment never finds it missing or half
+// written.
+function writeIfChanged(file,content,enc){
+  try{if(fs.readFileSync(file,enc)===content)return}catch{}
+  const tmp=file+'.tmp';
+  fs.writeFileSync(tmp,content,enc);
+  fs.renameSync(tmp,file);
+}
+
+function launcherRunning(){
+  try{
+    const out=require('child_process').execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"@(Get-CimInstance Win32_Process -Filter \"Name='wscript.exe'\" | Where-Object { $_.CommandLine -like '*leitor de precos.vbs*' }).Count"],{encoding:'utf8',windowsHide:true});
+    return Number(String(out).trim())>0;
+  }catch{return false}
+}
+// Starts the Startup launcher loop unless it is already running. Used by the
+// scheduled task (at logon and every 5 min) and by the site's button.
+function ensureLauncher(why){
+  if(!fs.existsSync(LAUNCHER)||launcherRunning())return false;
+  require('child_process').spawn('wscript.exe',['//B','//Nologo',LAUNCHER],{detached:true,stdio:'ignore',cwd:WIN_DIR,windowsHide:true}).unref();
+  log('Leitor ligado ('+why+').');
+  return true;
+}
+// pokemonreader://start?token=... (site button) or --ensure (scheduled task):
+// save the token, make sure the reader runs, exit.
+function handleCommand(){
+  const link=process.argv.find(a=>/^pokemonreader:/i.test(a));
+  if(!link&&!process.argv.includes('--ensure'))return false;
+  if(link){
+    try{
+      const token=new URL(link).searchParams.get('token')||'';
+      if(/^[0-9a-f]{32,128}$/i.test(token)){
+        fs.mkdirSync(DATA_DIR,{recursive:true});
+        const old=(()=>{try{return fs.readFileSync(TOKEN_FILE,'utf8').trim()}catch{return ''}})();
+        if(old!==token){fs.writeFileSync(TOKEN_FILE,token);log('Leitor conectado à conta pelo site.')}
+      }
+    }catch(e){log('Link do site inválido: '+String(e?.message||e).slice(0,100))}
+  }
+  quietExit=true;
+  ensureLauncher(link?'botão do site':'tarefa agendada');
+  setTimeout(()=>process.exit(0),300);
+  return true;
+}
+
+// The site button opens pokemonreader://...; Windows hands it to
+// abrir-leitor.vbs, which runs the installed reader hidden with that link.
+function registerProtocol(){
+  const cp=require('child_process');
+  fs.mkdirSync(WIN_DIR,{recursive:true});
+  writeIfChanged(OPENER,['Set sh = CreateObject("WScript.Shell")','arg = ""','If WScript.Arguments.Count > 0 Then arg = " """ & WScript.Arguments(0) & """"','sh.Run """'+WIN_TARGET+'""" & arg, 0, False',''].join('\r\n'),'latin1');
+  const key='HKCU\\Software\\Classes\\pokemonreader';
+  const reg=args=>cp.execFileSync('reg.exe',args,{stdio:'ignore',windowsHide:true});
+  reg(['add',key,'/ve','/d','URL:Pokemon Fichario - leitor de precos','/f']);
+  reg(['add',key,'/v','URL Protocol','/d','','/f']);
+  reg(['add',key+'\\shell\\open\\command','/ve','/d','wscript.exe //B //Nologo "'+OPENER+'" "%1"','/f']);
+}
+// Scheduled task: at logon and every 5 minutes, start the reader if it is not
+// running (the Startup folder alone missed some logons). Runs on battery too,
+// through abrir-leitor.vbs so no console window flashes.
+function registerTask(){
+  const cp=require('child_process');
+  const esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const user=(process.env.USERDOMAIN?process.env.USERDOMAIN+'\\':'')+(process.env.USERNAME||'');
+  const d=new Date(Date.now()+60000),pad=n=>String(n).padStart(2,'0');
+  const start=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes())+':00';
+  const xml=`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>Liga o leitor de precos do Pokemon Fichario se ele nao estiver rodando.</Description></RegistrationInfo>
+  <Triggers>
+    <LogonTrigger><Enabled>true</Enabled><UserId>${esc(user)}</UserId><Delay>PT30S</Delay></LogonTrigger>
+    <TimeTrigger><Enabled>true</Enabled><StartBoundary>${start}</StartBoundary><Repetition><Interval>PT5M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition></TimeTrigger>
+  </Triggers>
+  <Principals><Principal id="Author"><UserId>${esc(user)}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author"><Exec><Command>wscript.exe</Command><Arguments>//B //Nologo "${esc(OPENER)}" --ensure</Arguments></Exec></Actions>
+</Task>`;
+  const xmlFile=path.join(WIN_DIR,'tarefa.xml');
+  fs.writeFileSync(xmlFile,Buffer.concat([Buffer.from([0xff,0xfe]),Buffer.from(xml.replace(/\n/g,'\r\n'),'utf16le')]));
+  try{cp.execFileSync('schtasks.exe',['/Create','/F','/TN',TASK_NAME,'/XML',xmlFile],{stdio:'ignore',windowsHide:true})}
+  finally{try{fs.unlinkSync(xmlFile)}catch{}}
+}
+
 function installOnWindows(){
   if(process.platform!=='win32'||!process.env.LOCALAPPDATA||process.env.PF_NO_INSTALL)return false;
   if(!/pokemon-reader\.exe$/i.test(process.execPath))return false;
   const cp=require('child_process');
-  const dir=path.join(process.env.LOCALAPPDATA,'PokemonFichario');
-  const target=path.join(dir,'pokemon-reader.exe');
-  const startupDir=path.join(process.env.APPDATA||'','Microsoft','Windows','Start Menu','Programs','Startup');
-  const launcher=path.join(startupDir,'Pokemon Fichario - leitor de precos.vbs');
+  const dir=WIN_DIR,target=WIN_TARGET,startupDir=STARTUP_DIR,launcher=LAUNCHER;
   const oldShortcut=path.join(startupDir,'Pokemon Fichario - leitor de precos.lnk');
   const here=path.resolve(process.execPath).toLowerCase();
   if(here===target.toLowerCase())return false;
@@ -148,9 +254,17 @@ function installOnWindows(){
     // again after 15 s. A second copy exits at once (single instance).
     fs.writeFileSync(launcher,['Set sh = CreateObject("WScript.Shell")','Do','  sh.Run """'+target+'""", 0, True','  WScript.Sleep 15000','Loop',''].join('\r\n'),'latin1');
     try{fs.unlinkSync(oldShortcut)}catch{}
-    cp.spawn('wscript.exe',[launcher],{detached:true,stdio:'ignore',cwd:dir,windowsHide:true}).unref();
+    try{registerProtocol()}catch(e){console.log('Aviso: botão do site não registrado ('+String(e?.message||e).slice(0,80)+').')}
+    try{registerTask()}catch(e){console.log('Aviso: tarefa agendada não criada ('+String(e?.message||e).slice(0,80)+').')}
+    cp.spawn('wscript.exe',['//B','//Nologo',launcher],{detached:true,stdio:'ignore',cwd:dir,windowsHide:true}).unref();
     console.log('Leitor de preços instalado e rodando em segundo plano.');
     console.log('Ele liga sozinho sempre que você entrar no Windows. Pode fechar esta janela.');
+    if(!readerKey()){
+      // First install: open the site, which connects this PC to the account
+      // that is signed in there (pokemonreader://start?token=...).
+      console.log('Abrindo o site para conectar o leitor à sua conta...');
+      try{cp.spawn('cmd.exe',['/c','start','',SITE_PAIR_URL],{detached:true,stdio:'ignore',windowsHide:true}).unref()}catch{}
+    }
     setTimeout(()=>process.exit(0),8000);
     return true;
   }catch(e){console.log('Não foi possível instalar ('+String(e?.message||e).slice(0,120)+'); rodando daqui mesmo.')}
@@ -158,14 +272,21 @@ function installOnWindows(){
 }
 
 async function main(){
+  if(handleCommand())return;
   console.log(`Pokémon Fichário - leitor de preços v${VERSION}`);
   if(installOnWindows())return;
+  // Installed copy updated by an older version: add the site button and the task.
+  if(process.platform==='win32'&&path.resolve(process.execPath).toLowerCase()===WIN_TARGET.toLowerCase()){
+    try{registerProtocol()}catch{}
+    try{require('child_process').execFileSync('schtasks.exe',['/Query','/TN',TASK_NAME],{stdio:'ignore',windowsHide:true})}catch{try{registerTask()}catch{}}
+  }
   if(!await singleInstance()){
     log('Já existe um leitor aberto neste PC. Pode fechar esta janela.');
     return setTimeout(()=>process.exit(0),8000);
   }
-  const key=readerKey();
-  if(!key){log('Chave do leitor não encontrada (reader-key.txt).');return setTimeout(()=>process.exit(1),15000)}
+  let key=readerKey();
+  if(!key)log('Leitor sem conta: no site, clique em "Ligar leitor neste PC". Aguardando...');
+  while(!key){await new Promise(r=>setTimeout(r,3000));key=readerKey()}
   const browsers=findBrowser();
   const browser=browsers[0]||'';
   if(!browser){log('Nem o Edge nem o Chrome foram encontrados neste PC.');return setTimeout(()=>process.exit(1),15000)}
@@ -240,6 +361,7 @@ async function main(){
   },30000).unref?.();
   for(;;){
     lastTurn=Date.now();
+    key=readerKey()||key;
     let jobs=[];
     try{
       const free=CONCURRENCY-inflight;
@@ -247,7 +369,8 @@ async function main(){
       failures=0;
     }catch(e){
       failures++;
-      if(failures===1||failures%30===0)log(`Sem conexão com o banco (${String(e?.message||e).slice(0,100)}). Tentando de novo...`);
+      if(/unauthorized/.test(String(e?.message))&&(failures===1||failures%30===0))log('Chave do leitor recusada: no site, clique em "Ligar leitor neste PC" de novo.');
+      else if(failures===1||failures%30===0)log(`Sem conexão com o banco (${String(e?.message||e).slice(0,100)}). Tentando de novo...`);
     }
     for(const job of jobs||[])handle(job);
     if((jobs&&jobs.length)||inflight)lastWork=Date.now();

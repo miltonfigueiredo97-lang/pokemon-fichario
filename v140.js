@@ -3615,6 +3615,113 @@
   const PRICE_ROW_COLUMNS='id,price_min,price_avg,price_max,price_source,price_link,price_br_source,price_br_link,price_checked_at,'+
     'myp_price_min,myp_price_avg,myp_price_max,myp_price_link,myp_price_checked_at,liga_price_link,'+
     'price_pending,price_processing_at,price_progress,price_progress_stage,price_last_error';
+  // Price reader setup: each account runs the reader on its own Windows PCs.
+  // Step 1 downloads the exe (installs itself once, starts with Windows and
+  // is restarted every 5 min by a scheduled task); step 2 makes a reader
+  // token for the signed-in account and hands it to the PC through the
+  // pokemonreader:// link the installer registered. The installer opens this
+  // site with ?leitor=conectar, so a new PC only needs the one click.
+  const READER_DOWNLOAD_URL_V23='https://github.com/miltonfigueiredo97-lang/pokemon-fichario/releases/latest/download/pokemon-reader.exe';
+  const isWindowsPcV23=()=>/Windows NT/i.test(navigator.userAgent)&&!/Mobile|Android/i.test(navigator.userAgent);
+  function ensureReaderDialogV23(){
+    let d=byId('v23ReaderDialog');
+    if(d)return d;
+    d=document.createElement('dialog');
+    d.id='v23ReaderDialog';
+    d.className='v23-reader-dialog';
+    d.innerHTML=`<div class="v23-reader-shell">
+      <header class="v23-reader-head">
+        <div><p class="kicker">COTAÇÕES</p><h2>Leitor de preços</h2></div>
+        <button class="icon-only" type="button" data-v23-close aria-label="Fechar">×</button>
+      </header>
+      <p class="v23-reader-state" id="v23ReaderState">Verificando…</p>
+      <p class="muted v23-reader-intro">O leitor roda num PC com Windows e busca os preços da Liga/MYP para as cartas na fila. Instale uma vez em cada PC: ele liga sozinho com o Windows e volta sozinho se fechar.</p>
+      <div class="v23-reader-steps" id="v23ReaderSteps">
+        <div class="v23-reader-step">
+          <b>1</b>
+          <div><strong>Baixe e abra o leitor</strong><small>Só na primeira vez em cada PC. Se o Windows avisar, clique em “Mais informações” e “Executar assim mesmo”. Depois de instalado, ele abre este site para o passo 2.</small></div>
+          <a class="action-btn" id="v23ReaderDownload" href="${READER_DOWNLOAD_URL_V23}" download>Baixar leitor</a>
+        </div>
+        <div class="v23-reader-step">
+          <b>2</b>
+          <div><strong>Conectar este PC à sua conta</strong><small>O navegador pergunta se pode abrir o leitor: clique em “Abrir”. Também liga o leitor se ele estiver parado.</small></div>
+          <button class="action-btn primary" type="button" id="v23ReaderConnect">Ligar leitor neste PC</button>
+        </div>
+      </div>
+      <p class="muted v23-reader-other" id="v23ReaderOther" hidden>Neste aparelho não dá para rodar o leitor. Abra o site num PC com Windows (Edge ou Chrome) e use esta mesma tela.</p>
+    </div>`;
+    document.body.appendChild(d);
+    d.querySelector('[data-v23-close]').onclick=()=>d.close();
+    d.addEventListener('click',e=>{if(e.target===d)d.close()});
+    byId('v23ReaderConnect').onclick=()=>connectReaderV23();
+    return d;
+  }
+  async function readerStatusV23(){
+    try{const {data}=await db.rpc('engine_reader_status');return data||null}catch{return null}
+  }
+  function renderReaderStateV23(st,note){
+    const el=byId('v23ReaderState');if(!el)return;
+    const mine=Number(st?.mine||0),all=Number(st?.readers||0);
+    let text,cls;
+    if(mine>0){text=mine===1?'Seu leitor está ligado.':'Seu leitor está ligado em '+mine+' PCs.';cls='on'}
+    else if(all>0){text='Nenhum leitor seu ligado agora, mas o leitor de outra conta está cuidando da fila.';cls='shared'}
+    else{text='Nenhum leitor ligado agora: as cartas ficam na fila até um PC ligar.';cls='off'}
+    el.textContent=text+(note?' '+note:'');
+    el.dataset.state=cls;
+  }
+  async function openReaderDialogV23(){
+    const d=ensureReaderDialogV23();
+    const pc=isWindowsPcV23();
+    byId('v23ReaderSteps').hidden=!pc;
+    byId('v23ReaderOther').hidden=pc;
+    if(!d.open)d.showModal();
+    renderReaderStateV23(await readerStatusV23());
+  }
+  let readerConnectingV23=false;
+  async function connectReaderV23(){
+    if(readerConnectingV23)return;
+    if(typeof currentUser==='undefined'||!currentUser){toast('Entre na sua conta primeiro.');return}
+    readerConnectingV23=true;
+    const btn=byId('v23ReaderConnect');
+    if(btn){btn.disabled=true;btn.textContent='Ligando…'}
+    try{
+      const {data:token,error}=await db.rpc('pokemon_reader_pair');
+      if(error||!token)throw error||new Error('sem token');
+      location.href='pokemonreader://start?token='+encodeURIComponent(token);
+      renderReaderStateV23(null,'');
+      byId('v23ReaderState').textContent='Ligando o leitor…';
+      // The reader polls every 4 s once it is up; give it ~25 s.
+      for(let i=0;i<9;i++){
+        await new Promise(r=>setTimeout(r,i?3000:4000));
+        const st=await readerStatusV23();
+        if(Number(st?.mine||0)>0){
+          renderReaderStateV23(st,'Pronto! Pode fechar esta janela.');
+          readerStatusAtV198=0;readerOnlineV198=true;showReaderNoticeV198(0,true);
+          return;
+        }
+      }
+      renderReaderStateV23(await readerStatusV23(),'Se nada abriu, faça o passo 1 (baixar e abrir o leitor) e tente de novo.');
+    }catch(e){
+      console.error('[Leitor]',e);
+      toast('Não consegui ligar o leitor: '+(e?.message||'erro'));
+    }finally{
+      readerConnectingV23=false;
+      if(btn){btn.disabled=false;btn.textContent='Ligar leitor neste PC'}
+    }
+  }
+  // Opened by the installer (?leitor=conectar): show the dialog once signed in.
+  (function readerLinkFromInstallerV23(){
+    let params;try{params=new URLSearchParams(location.search)}catch{return}
+    if(params.get('leitor')!=='conectar')return;
+    try{params.delete('leitor');history.replaceState(null,'',location.pathname+(params.toString()?'?'+params:'')+location.hash)}catch{}
+    let tries=0;
+    const wait=()=>{
+      if(typeof currentUser!=='undefined'&&currentUser){openReaderDialogV23();return}
+      if(++tries<240)setTimeout(wait,500);
+    };
+    setTimeout(wait,300);
+  })();
+
   // With cards waiting and no PC reader online, say so instead of leaving the
   // cards on NA FILA with no explanation.
   // Small, closable notice. Closing it hides it until the site is opened
@@ -3630,8 +3737,9 @@
       el.style.cssText='position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:8px;'+
         'max-width:min(460px,calc(100vw - 24px));background:#2a1214;color:#ffd7d2;border:1px solid #ff6b5a;border-radius:10px;'+
         'padding:6px 6px 6px 12px;font:600 12px/1.3 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-      el.innerHTML='<span></span><button type="button" aria-label="Fechar aviso" title="Fechar" style="flex:none;width:28px;height:28px;border:0;border-radius:7px;background:rgba(255,255,255,.12);color:inherit;font:700 16px/1 system-ui;cursor:pointer">×</button>';
-      el.querySelector('button').onclick=()=>{try{sessionStorage.setItem('pf-reader-notice-dismissed','1')}catch{}el.remove()};
+      el.innerHTML='<span></span><button type="button" data-v23-open style="flex:none;height:28px;padding:0 10px;border:0;border-radius:7px;background:#ff6b5a;color:#1b0807;font:800 12px/1 system-ui;cursor:pointer">Ligar</button><button type="button" data-v23-dismiss aria-label="Fechar aviso" title="Fechar" style="flex:none;width:28px;height:28px;border:0;border-radius:7px;background:rgba(255,255,255,.12);color:inherit;font:700 16px/1 system-ui;cursor:pointer">×</button>';
+      el.querySelector('[data-v23-open]').onclick=()=>openReaderDialogV23();
+      el.querySelector('[data-v23-dismiss]').onclick=()=>{try{sessionStorage.setItem('pf-reader-notice-dismissed','1')}catch{}el.remove()};
       document.body.appendChild(el);
     }
     el.querySelector('span').textContent=`Leitor de preços desligado · ${count} carta${count>1?'s':''} na fila`;
@@ -6080,6 +6188,7 @@
 
     const defs=[
       {id:'unpriced',icon:'!',title:'Cotações',hint:'Cartas para ajustar e atualizar',items:[]},
+      {id:'reader',icon:'⟳',title:'Leitor de preços',hint:'Ligar o leitor neste PC',items:[]},
       {id:'excel',icon:'▦',title:'Planilhas e backup',hint:'Excel e importação',items:['v122ExportExcel','v122TemplateExcel','v122ImportExcel']},
       {id:'export',icon:'⇩',title:'Exportar e imprimir',hint:'PDF, CSV e impressão',items:['v1500ExportPdf','v21ExportArtSheets','btnExport','btnPrint']},
       {id:'friends',icon:'♙',title:'Amigos',hint:'Buscar usuários e ver fichários',items:[]},
@@ -6100,10 +6209,12 @@
         details.addEventListener('toggle',()=>{
           if(!details.open)return;
           if(def.id==='unpriced'){details.open=false;openUnpricedPopupV1468();return}
+          if(def.id==='reader'){details.open=false;openReaderDialogV23();return}
           root.querySelectorAll('.v1411-action-group[open]').forEach(other=>{if(other!==details)other.open=false});
           if(def.id==='friends')refreshFriendsSummaryV14();
         });
         if(def.id==='unpriced')summary.addEventListener('click',e=>{e.preventDefault();openUnpricedPopupV1468()});
+        if(def.id==='reader')summary.addEventListener('click',e=>{e.preventDefault();openReaderDialogV23()});
         if(def.id==='friends'&&byId('v1411Group_settings'))root.insertBefore(details,byId('v1411Group_settings'));
         else root.appendChild(details);
       }

@@ -1,11 +1,13 @@
 // Packages the PC price reader as a single Windows executable (Node SEA).
 //
-//   PF_READER_KEY=<engine secret> node reader/build.mjs <node_modules dir>
+//   node reader/build.mjs <node_modules dir>
 //   node reader/build.mjs <node_modules dir> --engine-only   (engine bundle only)
 //
 // The node_modules dir must contain puppeteer-core, esbuild and postject.
-// Output: dist/pokemon-reader.exe. The key is baked into the executable and
-// never written to the repository (reader/key.generated.js is git-ignored).
+// Output: dist/pokemon-reader.exe, safe to publish: it carries no key. Each
+// PC is connected to an account from the site ("Ligar leitor neste PC").
+// PF_READER_KEY=<engine secret> bakes the old shared secret in instead; such
+// a build must never be published (reader/key.generated.js is git-ignored).
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -20,7 +22,6 @@ const requireFrom = createRequire(path.join(modules, 'noop.js'));
 const esbuild = requireFrom('esbuild');
 const { inject } = requireFrom('postject');
 const key = String(process.env.PF_READER_KEY || '').trim();
-if (!key && !process.argv.includes('--engine-only')) throw new Error('PF_READER_KEY is required');
 fs.mkdirSync(work, { recursive: true });
 
 // The engine alone, committed to the repository: running readers download it

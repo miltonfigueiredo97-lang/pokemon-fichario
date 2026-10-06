@@ -2182,3 +2182,22 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v21-art-cell img.v21-art-cell-other{position:absolute;max-width:none;opacity:.5}
 .v21-art-preview .v21-art-other-strip{opacity:.5}
 .v21-art-cell{aspect-ratio:var(--v22-cell-aspect,63/88)!important}
+
+/* Price reader setup dialog */
+.v23-reader-dialog{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--line2);border-radius:16px;background:var(--panel);color:var(--text)}
+.v23-reader-dialog::backdrop{background:rgba(0,0,0,.55)}
+.v23-reader-shell{display:grid;gap:12px;padding:16px}
+.v23-reader-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.v23-reader-head h2{margin:2px 0 0}
+.v23-reader-intro,.v23-reader-other{margin:0;font-size:13px;line-height:1.45}
+.v23-reader-state{margin:0;padding:10px 12px;border-radius:10px;font-weight:700;font-size:13px;background:var(--panel3);border:1px solid var(--line2)}
+.v23-reader-state[data-state="on"]{border-color:#3fbf6f;color:#8ff0b0}
+.v23-reader-state[data-state="off"]{border-color:#ff6b5a;color:#ffb3a8}
+.v23-reader-steps{display:grid;gap:10px}
+.v23-reader-steps[hidden],.v23-reader-other[hidden]{display:none}
+.v23-reader-step{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px;border:1px solid var(--line2);border-radius:12px}
+.v23-reader-step>b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent2);color:#111;font-size:13px}
+.v23-reader-step strong{display:block;font-size:13px}
+.v23-reader-step small{display:block;margin-top:2px;font-size:11.5px;line-height:1.35;color:var(--muted)}
+.v23-reader-step .action-btn{white-space:nowrap;text-decoration:none;text-align:center}
+@media (max-width:520px){.v23-reader-step{grid-template-columns:28px minmax(0,1fr)}.v23-reader-step .action-btn{grid-column:1/-1}}
