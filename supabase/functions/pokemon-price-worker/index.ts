@@ -142,8 +142,11 @@ async function setProgress(db: any, id: string, progress: number, stage: string)
 // /api/price-engine, so the rest of the worker is unchanged.
 let DB: any = null;
 async function engineFetch(q: URLSearchParams, signal: AbortSignal) {
-  const params = Object.fromEntries(q.entries());
-  const { data, error } = await DB.from("engine_requests").insert({ params }).select("id").single();
+  // "owner" = the card's user: only that user's PCs read it (engine_claim).
+  const params: Record<string, string> = Object.fromEntries(q.entries());
+  const owner = params.owner || null;
+  delete params.owner;
+  const { data, error } = await DB.from("engine_requests").insert({ params, user_id: owner }).select("id").single();
   if (error || !data) return { ok: false, status: 500, json: async () => null };
   const id = data.id;
   while (!signal.aborted) {
@@ -535,8 +538,8 @@ async function nextWalkPage(db: any, card: any, code: string, near: number) {
 // Runs once per card (marker -2 in myp_link_tried). Results feed the catalog.
 const SEARCH_MARK = -2;
 
-async function engineSearch(query: string) {
-  const q = new URLSearchParams({ name: query, number: "0", searchQuery: query, myp: "0" });
+async function engineSearch(query: string, owner = "") {
+  const q = new URLSearchParams({ name: query, number: "0", searchQuery: query, myp: "0", owner });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
   try {
@@ -568,10 +571,10 @@ async function searchLookup(db: any, card: any, code: string) {
   const num = collectorToken(card.number), den = denOf(card), target = nameKey(card.name);
   const setToken = String(card?.set_id || "").toLowerCase();
   const query = String(card.name || "").trim() + (card.number ? " (" + String(card.number).trim() + ")" : "");
-  let { cards, blocked } = await engineSearch(query);
+  let { cards, blocked } = await engineSearch(query, String(card.user_id || ""));
   const hyphen = hyphenSuffixName(card.name);
   if (hyphen && !cards.some((c: any) => { const t = parseTitle(c.text); return t && t.num === num; })) {
-    const more = await engineSearch(hyphen);
+    const more = await engineSearch(hyphen, String(card.user_id || ""));
     cards = [...cards, ...more.cards];
     blocked = blocked && more.blocked;
   }
@@ -627,8 +630,8 @@ function parseMypCode(code: unknown) {
   return { set: parts[1], reprint: parts.length > 3, num: collectorToken(n), den: d ? collectorToken(d) : "" };
 }
 
-async function engineApi(name: string) {
-  const q = new URLSearchParams({ name, number: "0", apiName: name, myp: "0" });
+async function engineApi(name: string, owner = "") {
+  const q = new URLSearchParams({ name, number: "0", apiName: name, myp: "0", owner });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 40000);
   try {
@@ -654,7 +657,7 @@ async function apiLookup(db: any, card: any, code: string) {
   const rows: CatalogRow[] = [];
   let best: { link: string; score: number } | null = null;
   for (const name of [...new Set(names.filter(Boolean))].slice(0, 3)) {
-    for (const c of await engineApi(name)) {
+    for (const c of await engineApi(name, String(card.user_id || ""))) {
       const pc = parseMypCode(c.code);
       const id = Number(c.productId) || productId(c.link);
       if (!pc || !id || !slugOf(c.link)) continue;
@@ -693,6 +696,7 @@ async function readProduct(card: any, link: string, ctx: ReadCtx = { code: "", r
     exactOnly: ctx.exactOnly ? "1" : "0",
     // English name (TCGdex): MYP titles many promos in English only.
     aliases: String(card._aliases || ""),
+    owner: String(card.user_id || ""),
   });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ENGINE_TIMEOUT_MS);
@@ -947,7 +951,7 @@ Deno.serve(async (req: Request) => {
   // Reads happen on the user's PCs: with none online, cards wait in the queue.
   DB = db;
   try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
-  if (!(await readerOnline())) return json({ ok: true, build: "19.8", skipped: "no_reader_online" });
+  if (!(await readerOnline())) return json({ ok: true, build: "19.9", skipped: "no_reader_online" });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -968,5 +972,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.8", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "19.9", claimed, states, elapsedMs: Date.now() - started });
 });
