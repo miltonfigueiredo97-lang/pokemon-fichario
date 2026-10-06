@@ -1466,11 +1466,21 @@ function friendCardHtml(card){
     '<b>'+esc(status)+'</b>'+
     '</div>';
 }
+// A piece of binder art in a friend's pocket, with the owner's framing.
+// Pockets are 7 px apart plus a 1 px border on each side.
+function friendArtHtml(art,piece){
+  const crop=window.PB14?.artCrop?.(art,+piece.col,+piece.row,9);
+  const url=window.PB14?.artImageUrl?.(art)||"";
+  if(!crop||!url)return"";
+  return '<div class="v21-friend-art" title="'+esc(art.title||"Arte")+'"><img src="'+esc(url)+'" alt="" loading="lazy" style="width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+'"></div>';
+}
 function friendPageHtml(page){
   let html='<section class="v1451-friend-page" data-page="'+page+'"><span class="v1451-friend-page-number">Página '+page+'</span><div class="v1451-friend-pockets">';
   for(let slot=1;slot<=9;slot++){
     const card=friendViewer.cards.find(c=>+(c.binder_page||1)===+page&&+(c.binder_slot||0)===slot);
-    html+='<div class="v1451-friend-pocket">'+(card?friendCardHtml(card):'')+'</div>';
+    const piece=card?null:(friendViewer.pieces||[]).find(p=>+p.page===+page&&+p.slot===slot);
+    const art=piece?(friendViewer.art||[]).find(a=>a.id===piece.art_id):null;
+    html+='<div class="v1451-friend-pocket'+(art?' v21-friend-art-pocket':'')+'">'+(card?friendCardHtml(card):art?friendArtHtml(art,piece):'')+'</div>';
   }
   return html+'</div></section>';
 }
@@ -1504,18 +1514,25 @@ async function loadFriendBinderSelection(id,resetPage=true){
     .order("binder_slot");
   if(error){
     console.error("[Amigos fichário]",error);
-    friendViewer.cards=[];
+    friendViewer.cards=[];friendViewer.art=[];friendViewer.pieces=[];
     $("friendBinderStatus").textContent="Este fichário não está disponível para sua conta.";
     renderFriendBinder();
     return;
   }
   friendViewer.cards=data||[];
-  $("friendBinderStatus").textContent=`${friendViewer.cards.length} cartas · somente leitura`;
+  // The binder's art (visible to whoever can see the cards).
+  const [art,pieces]=await Promise.all([
+    db.from("pokemon_binder_art").select("*").eq("user_id",friendViewer.profile.user_id).eq("binder_id",binder.id),
+    db.from("pokemon_binder_art_pieces").select("*").eq("user_id",friendViewer.profile.user_id).eq("binder_id",binder.id)
+  ]);
+  friendViewer.art=art.error?[]:(art.data||[]);
+  friendViewer.pieces=pieces.error?[]:(pieces.data||[]);
+  $("friendBinderStatus").textContent=`${friendViewer.cards.length} cartas${friendViewer.art.length?` · ${friendViewer.art.length} arte(s)`:""} · somente leitura`;
   renderFriendBinder();
 }
 async function viewFriendBinders(p){
   if(!p)return;
-  friendViewer={profile:p,binders:[],binderId:null,cards:[],page:1};
+  friendViewer={profile:p,binders:[],binderId:null,cards:[],art:[],pieces:[],page:1};
   $("friendBinderTitle").textContent=`@${p.username||"usuário"}`;
   $("friendBinderStatus").textContent="Carregando fichários…";
   $("friendBinderMeta").textContent="";

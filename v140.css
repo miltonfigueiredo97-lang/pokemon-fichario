@@ -2235,3 +2235,7 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .viewer-controls .pfx-intensity{display:inline-flex;align-items:center;gap:6px;margin-left:6px;padding:0 6px;color:var(--muted);font-size:11px;font-weight:800}
 .viewer-controls .pfx-intensity input{width:96px;accent-color:var(--accent);margin:0}
 .viewer-controls .pfx-intensity b{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+/* V21.5 · binder art in a friend's binder */
+.v1451-friend-pocket{position:relative}
+.v21-friend-art{position:absolute;inset:0;overflow:hidden;border-radius:inherit;background:#0b0f12}
+.v21-friend-art img{position:absolute;max-width:none;object-fit:cover}
