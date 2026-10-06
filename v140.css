@@ -2252,3 +2252,7 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
   mix-blend-mode:color-dodge;filter:brightness(.52) contrast(1.6) saturate(1.1);opacity:calc(.2 + var(--v24-d,0)*.42)}
 .card-3d.v24-special .v24-glare{opacity:calc(.3 + var(--v24-d,0)*.35)}
 @media (prefers-reduced-motion:reduce){.card-3d .v24-foil{opacity:.25!important}}
+
+/* Version badge next to the "Resumo" title */
+.summary-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.summary-title-row .app-build-version{font-size:11px!important;min-height:22px;padding:3px 8px;letter-spacing:.04em}
