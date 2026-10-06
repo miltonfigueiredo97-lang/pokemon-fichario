@@ -1351,7 +1351,15 @@ async function loadFriendships(){
     (p||[]).forEach(x=>profilesById.set(x.user_id,x));
   }
   renderFriends();
+  renderFriendSearchResults();
 }
+// While the friends panel is open (or when the tab comes back), re-read the
+// friendships so an accepted request shows up without reopening anything.
+function friendsPanelOpen(){
+  return !!(document.getElementById("friendsDialog")?.open||document.getElementById("v1411Group_friends")?.open);
+}
+setInterval(()=>{if(currentUser&&friendsPanelOpen()&&!document.hidden)loadFriendships().catch(()=>{})},15000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&currentUser&&friendsPanelOpen())loadFriendships().catch(()=>{})});
 async function openFriendsPanel(){
   if(!currentUser)return toast("Entre na sua conta para usar Amigos.");
   try{
@@ -1420,7 +1428,17 @@ async function searchFriends(){
     .neq("user_id",currentUser.id)
     .limit(20);
   if(error)return toast("Erro na busca.");
-  if(!data?.length)return box.innerHTML='<p class="muted">Nenhum usuário encontrado.</p>';
+  lastFriendSearch=data||[];
+  renderFriendSearchResults();
+}
+// Search results follow the friendships: a request accepted on the other side
+// must not keep showing "Pendente" (re-drawn by loadFriendships).
+let lastFriendSearch=null;
+function renderFriendSearchResults(){
+  const box=$("friendSearchResults"),data=lastFriendSearch;
+  if(!box||!Array.isArray(data))return;
+  box.innerHTML="";
+  if(!data.length)return box.innerHTML='<p class="muted">Nenhum usuário encontrado.</p>';
   data.forEach(p=>{
     const ex=friendships.find(f=>(f.requester_id===p.user_id||f.addressee_id===p.user_id));
     const actions=ex
@@ -1467,9 +1485,9 @@ function friendCardHtml(card){
     '</div>';
 }
 // A piece of binder art in a friend's pocket, with the owner's framing.
-// Pockets are 7 px apart plus a 1 px border on each side.
+// Pockets are 6 px apart plus a 1 px border on each side.
 function friendArtHtml(art,piece){
-  const crop=window.PB14?.artCrop?.(art,+piece.col,+piece.row,9);
+  const crop=window.PB14?.artCrop?.(art,+piece.col,+piece.row,8);
   const url=window.PB14?.artImageUrl?.(art)||"";
   if(!crop||!url)return"";
   return '<div class="v21-friend-art" title="'+esc(art.title||"Arte")+'"><img src="'+esc(url)+'" alt="" loading="lazy" style="width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+'"></div>';
@@ -1498,7 +1516,30 @@ function renderFriendBinder(){
   $("friendBinderMeta").textContent=[binder.binder_kind==="set"?"Master Set":"Fichário",binder.set_name,binder.set_language].filter(Boolean).join(" · ");
   $("friendBinderPrev").disabled=p<=1;
   $("friendBinderNext").disabled=p>=friendBinderLastAnchor(pages);
+  requestAnimationFrame(fitFriendSpread);
 }
+// Full-screen viewer: both sheets are sized to fit the free space whole (side
+// by side; one above the other on a portrait phone), never cropped/scrolled.
+const FRIEND_PAGE_RATIO=0.735;
+function fitFriendSpread(){
+  const s=$("friendBinderSpread");
+  if(!s||!s.isConnected||!s.clientWidth)return;
+  const n=Math.max(1,s.querySelectorAll(".v1451-friend-page").length),gap=18;
+  const W=s.clientWidth,H=s.clientHeight;
+  const sideH=Math.min(H,(W-gap*(n-1))/n/FRIEND_PAGE_RATIO);
+  const stackH=Math.min((H-gap*(n-1))/n,W/FRIEND_PAGE_RATIO);
+  const stacked=n>1&&stackH>sideH*1.15;
+  const h=Math.max(120,Math.floor(stacked?stackH:sideH));
+  s.classList.toggle("v1451-stacked",stacked);
+  s.style.setProperty("--fp-h",h+"px");
+  s.style.setProperty("--fp-w",Math.floor(h*FRIEND_PAGE_RATIO)+"px");
+}
+window.addEventListener("resize",()=>{if($("friendBinderDialog")?.open)fitFriendSpread()});
+document.addEventListener("keydown",e=>{
+  if(!$("friendBinderDialog")?.open||e.target?.closest?.("input,select,textarea"))return;
+  if(e.key==="ArrowLeft"&&!$("friendBinderPrev").disabled){e.preventDefault();$("friendBinderPrev").click()}
+  if(e.key==="ArrowRight"&&!$("friendBinderNext").disabled){e.preventDefault();$("friendBinderNext").click()}
+});
 async function loadFriendBinderSelection(id,resetPage=true){
   const binder=friendViewer.binders.find(b=>String(b.id)===String(id));
   if(!binder)return;

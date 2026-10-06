@@ -1076,7 +1076,7 @@
     sets.disabled=true;
     sets.innerHTML='<option value="">Carregando coleções…</option>';
     try{
-      const r=await fetch((window.PF_API_BASE||'/api/')+'set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const r=await fetchRetryV25((window.PF_API_BASE||'/api/')+'set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
       const j=await r.json();
       if(!j?.ok)throw new Error(j?.message||'Falha ao carregar coleções');
       const list=Array.isArray(j.sets)?j.sets:[];
@@ -1361,7 +1361,7 @@
     if(spec.all)p.set('all','1');
     if(spec.jumbo)p.set('jumbo','1');
     if(Array.isArray(spec.only)&&spec.only.length)p.set('only',spec.only.join(','));
-    const r=await fetch((window.PF_API_BASE||'/api/')+'master-set?'+p.toString(),{cache:'no-store'});
+    const r=await fetchRetryV25((window.PF_API_BASE||'/api/')+'master-set?'+p.toString(),{cache:'no-store'});
     const data=await r.json();
     if(!r.ok||!data?.ok)throw new Error(data?.message||('Falha ao carregar '+(spec.label||spec.id)));
     let entries=Array.isArray(data.entries)?data.entries:[];
@@ -1383,10 +1383,26 @@
     return {...data,entries,__spec:spec};
   }
 
+  // Generations, collections and Master Set loads: a cold or busy server (or
+  // TCGdex) can answer 5xx/429 or drop the connection once; try 3 times
+  // (1.5 s, then 4 s apart) before showing an error.
+  async function fetchRetryV25(url,opts){
+    let last=null;
+    for(const wait of [0,1500,4000]){
+      if(wait)await new Promise(r=>setTimeout(r,wait));
+      try{
+        const r=await fetch(url,opts);
+        if(r.ok||(r.status<500&&r.status!==429))return r;
+        last=r;
+      }catch(e){last=e}
+    }
+    if(last instanceof Response)return last;
+    throw last||new Error('network');
+  }
   async function fetchSeries(lang){
     const key='series|'+lang;
     if(V14.seriesCache.has(key))return V14.seriesCache.get(key);
-    const r=await fetch('https://api.tcgdex.net/v2/'+lang+'/series',{cache:'force-cache'});
+    const r=await fetchRetryV25('https://api.tcgdex.net/v2/'+lang+'/series',{cache:'force-cache'});
     if(!r.ok)throw new Error('TCGdex '+r.status);
     const data=await r.json();
     const list=Array.isArray(data)?data:[];
@@ -1396,7 +1412,7 @@
   async function fetchSeriesDetail(lang,seriesId){
     const key='series-detail|'+lang+'|'+seriesId;
     if(V14.seriesCache.has(key))return V14.seriesCache.get(key);
-    const r=await fetch('https://api.tcgdex.net/v2/'+lang+'/series/'+encodeURIComponent(seriesId),{cache:'force-cache'});
+    const r=await fetchRetryV25('https://api.tcgdex.net/v2/'+lang+'/series/'+encodeURIComponent(seriesId),{cache:'force-cache'});
     if(!r.ok)throw new Error('TCGdex '+r.status);
     const data=await r.json();
     V14.seriesCache.set(key,data||{});
@@ -1432,7 +1448,10 @@
       byId('v14SetStatus').textContent='Escolha a geração e depois a coleção.';
     }catch(e){
       console.error(e);series.innerHTML='<option value="">Erro ao carregar gerações</option>';
-      byId('v14SetStatus').textContent='Não consegui carregar as gerações.';
+      const st=byId('v14SetStatus');
+      st.textContent='Não consegui carregar as gerações. ';
+      const again=document.createElement('button');again.type='button';again.className='btn btn-secondary';again.textContent='Tentar de novo';
+      again.onclick=()=>loadGenerationOptions(true);st.appendChild(again);
     }
   }
   async function loadCollectionsForGeneration(){
@@ -1446,7 +1465,7 @@
     sets.disabled=true;sets.innerHTML='<option value="">Carregando coleções…</option>';
     byId('v14SetStatus').textContent='Carregando coleções da geração…';
     try{
-      const r=await fetch((window.PF_API_BASE||'/api/')+'set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
+      const r=await fetchRetryV25((window.PF_API_BASE||'/api/')+'set-catalog?lang='+encodeURIComponent(lang)+'&series='+encodeURIComponent(seriesId),{cache:'no-store'});
       const catalog=await r.json();
       if(epoch!==V14.masterEpoch)return;
       if(!catalog?.ok)throw new Error(catalog?.message||'Falha ao carregar as coleções');
@@ -1465,7 +1484,10 @@
         (promoCount?' · '+promoCount+' coleção de promos disponível':'')+'.';
     }catch(e){
       console.error(e);sets.innerHTML='<option value="">Erro ao carregar coleções</option>';
-      byId('v14SetStatus').textContent='Não consegui carregar as coleções desta geração.';
+      const st=byId('v14SetStatus');
+      st.textContent='Não consegui carregar as coleções desta geração. ';
+      const again=document.createElement('button');again.type='button';again.className='btn btn-secondary';again.textContent='Tentar de novo';
+      again.onclick=()=>loadCollectionsForGeneration();st.appendChild(again);
     }
   }
 
@@ -1490,7 +1512,7 @@
           v:'30',strictLang:'1',all:'1',lang:String(lang||'pt'),
           set:String(spec.set),only:spec.only.join(',')
         });
-        const rr=await fetch((window.PF_API_BASE||'/api/')+'master-set?'+p.toString(),{cache:'no-store'});
+        const rr=await fetchRetryV25((window.PF_API_BASE||'/api/')+'master-set?'+p.toString(),{cache:'no-store'});
         const jj=await rr.json();
         if(!jj?.ok)return null;
         return{
@@ -1578,7 +1600,7 @@
           anniversaryWarnings:warnings
         };
       }else{
-        const r=await fetch((window.PF_API_BASE||'/api/')+'master-set?v=30&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
+        const r=await fetchRetryV25((window.PF_API_BASE||'/api/')+'master-set?v=30&strictLang=1&lang='+encodeURIComponent(lang)+'&set='+encodeURIComponent(setId),{cache:'no-store'});
         j=await r.json();
         if(epoch!==V14.masterEpoch)return;
         if(!j?.ok)throw new Error(j?.message||'Falha no Master Set');
