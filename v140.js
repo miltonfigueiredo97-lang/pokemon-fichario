@@ -6399,3 +6399,97 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootV14);
   else bootV14();
 })();
+
+// Card viewer foil, TCG Live style: a light glare on every card, a rainbow
+// sheen on holo cards, sparkles on reverse holos and an etched, embossed
+// rainbow on special cards (ex, V, GX, illustration, secret, full art…). The
+// light follows the card's tilt (drag) or the mouse over it.
+(function cardFoilV24(){
+  const SPECIAL=/ilustra|illustration|ultra|hiper|hyper|secret|secreta|dupla|double|shiny|brilhante|amazing|incr[ií]vel|radiant|radiante|vmax|vstar|\bv\b|\bgx\b|\bex\b|full|gold|dourad|rainbow|arco[- ]?[íi]ris|ace spec|mega|prism|tag team/i;
+  const HOLO=/holo|foil/i;
+  const byIdF=id=>document.getElementById(id);
+  function foilKindV24(){
+    const finish=String(byIdF('cardFinish')?.value||'Normal');
+    const rarity=String(byIdF('detailRarity')?.textContent||'').replace(/^Raridade\s*·\s*/i,'').replace(/^—$/,'');
+    const name=String(byIdF('selectedTitle')?.textContent||'');
+    const special=SPECIAL.test(rarity)||/\b(ex|gx|v|vmax|vstar)\b/i.test(name);
+    if(/reverse/i.test(finish))return 'reverse';
+    if(/full|especial/i.test(finish))return 'special';
+    if(/holo|foil/i.test(finish))return special?'special':'holo';
+    if(special)return 'special';
+    if(HOLO.test(rarity))return 'holo';
+    return 'plain';
+  }
+  function ensureLayersV24(){
+    const front=document.querySelector('#card3d .card-front');
+    if(!front)return null;
+    let fx=front.querySelector('.v24-fx');
+    if(!fx){
+      fx=document.createElement('div');
+      fx.className='v24-fx';
+      fx.innerHTML='<i class="v24-foil"></i><i class="v24-glare"></i>';
+      front.appendChild(fx);
+    }
+    return fx;
+  }
+  // The scan is drawn with object-fit:contain: put the layers exactly on it.
+  function fitLayersV24(){
+    const fx=ensureLayersV24(),img=byIdF('card3dImage');
+    if(!fx||!img)return;
+    const bw=img.clientWidth,bh=img.clientHeight,nw=img.naturalWidth,nh=img.naturalHeight;
+    if(!bw||!bh||!nw||!nh){fx.style.display='none';return}
+    const s=Math.min(bw/nw,bh/nh),w=nw*s,h=nh*s;
+    Object.assign(fx.style,{display:'',left:(img.offsetLeft+(bw-w)/2)+'px',top:(img.offsetTop+(bh-h)/2)+'px',width:w+'px',height:h+'px'});
+  }
+  function applyKindV24(){
+    const card=byIdF('card3d');if(!card)return;
+    const kind=foilKindV24();
+    card.classList.remove('v24-plain','v24-holo','v24-reverse','v24-special');
+    card.classList.add('v24-'+kind);
+    fitLayersV24();
+  }
+  let target={x:50,y:50},hover=null,raf=0;
+  function setLightV24(x,y){
+    const card=byIdF('card3d');if(!card)return;
+    const cx=Math.max(0,Math.min(100,x)),cy=Math.max(0,Math.min(100,y));
+    card.style.setProperty('--v24-x',cx.toFixed(1)+'%');
+    card.style.setProperty('--v24-y',cy.toFixed(1)+'%');
+    card.style.setProperty('--v24-bx',(30+cx*0.4).toFixed(1)+'%');
+    card.style.setProperty('--v24-by',(30+cy*0.4).toFixed(1)+'%');
+    const d=Math.min(1,Math.hypot(cx-50,cy-50)/50);
+    card.style.setProperty('--v24-d',d.toFixed(3));
+  }
+  // Tilt from the viewer's transform (rotateX/rotateY set while dragging).
+  function tick(){
+    raf=0;
+    const dlg=byIdF('cardDialog');
+    if(!dlg?.open)return;
+    const inner=document.querySelector('#card3d .card-3d-inner');
+    const t=String(inner?.style.transform||'');
+    const rx=Number(t.match(/rotateX\((-?[\d.]+)deg\)/)?.[1]||0);
+    const ry=Number(t.match(/rotateY\((-?[\d.]+)deg\)/)?.[1]||0);
+    let x=50+Math.sin(ry*Math.PI/180)*70,y=50-Math.sin(rx*Math.PI/180)*70;
+    if(hover&&!rx&&!ry){x=hover.x;y=hover.y}
+    target.x+=(x-target.x)*0.25;target.y+=(y-target.y)*0.25;
+    setLightV24(target.x,target.y);
+    raf=requestAnimationFrame(tick);
+  }
+  function startV24(){applyKindV24();if(!raf)raf=requestAnimationFrame(tick)}
+  document.addEventListener('pointermove',e=>{
+    const card=e.target?.closest?.('#card3d');
+    if(!card){hover=null;return}
+    const r=card.getBoundingClientRect();
+    hover={x:(e.clientX-r.left)/Math.max(1,r.width)*100,y:(e.clientY-r.top)/Math.max(1,r.height)*100};
+  },{passive:true});
+  document.addEventListener('change',e=>{if(e.target?.id==='cardFinish')applyKindV24()});
+  window.addEventListener('resize',fitLayersV24);
+  function bindV24(){
+    const dlg=byIdF('cardDialog');
+    if(!dlg){setTimeout(bindV24,500);return}
+    new MutationObserver(()=>{if(dlg.open)setTimeout(startV24,30)}).observe(dlg,{attributes:true,attributeFilter:['open']});
+    // A new card in the viewer (src change) or a scan that just loaded.
+    document.addEventListener('load',e=>{if(e.target?.id==='card3dImage')applyKindV24()},true);
+    new MutationObserver(()=>{if(dlg.open)setTimeout(applyKindV24,30)}).observe(dlg,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['src']});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindV24);else bindV24();
+})();
