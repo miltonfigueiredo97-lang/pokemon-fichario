@@ -6430,33 +6430,71 @@
     return p;
   }
 
-  // TCGdex rarity (English) + finish -> the rarity names the effects use.
-  function effectRarity(rarity,name,finish,number,info){
-    const r=String(rarity||'').toLowerCase().trim();
+  // Rarity names come in English (TCGdex), Portuguese ("Rara Dupla",
+  // "Ilustração Rara Especial") or Japanese site codes ("RARE RR", "RARE
+  // SAR"). They are reduced to one kind, then to the foil it gets.
+  function rarityKind(raw){
+    const r=' '+String(raw||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' ';
+    if(/ ace spec /.test(r))return 'ace';
+    if(/ilustracao rara especial|special illustration| sar /.test(r))return 'sir';
+    if(/ilustracao rara|illustration rare| ar |arte alternativa|alternate art| c c | chr | csr |character/.test(r))return 'ir';
+    if(/hiper|hyper| ur |gold|dourad/.test(r))return 'gold';
+    if(/arco iris|rainbow/.test(r))return 'rainbow';
+    if(/secret|secreta/.test(r))return 'secret';
+    if(/radiant|radiante/.test(r))return 'radiant';
+    if(/amazing|incrivel/.test(r))return 'amazing';
+    if(/shiny|brilhante| ssr | s | s 2 /.test(r))return 'shiny';
+    if(/vmax/.test(r))return 'vmax';
+    if(/vstar|v astro/.test(r))return 'vstar';
+    if(/dupla|double| rr | rrr |holo v |holo rare v |rare holo v |rara holo v /.test(r))return 'double';
+    if(/ultra| sr | full art|trainer gallery/.test(r))return 'ultra';
+    if(/holo|cosmos/.test(r))return 'holo';
+    if(/promo/.test(r))return 'promo';
+    if(/classic collection/.test(r))return 'holo';
+    if(/incomum|uncommon| u /.test(r))return 'uncommon';
+    if(/comum|common| c /.test(r))return 'common';
+    if(/ rara | rare | r /.test(r))return 'rare';
+    return '';
+  }
+  // Returns the pokemon-cards-css rarity, and whether the card must be styled
+  // as a Pokémon full art (those rules select data-supertype="pokémon").
+  function effectRarity(rarity,localRarity,name,finish,info,apiId){
     const n=String(name||'');
     const f=String(finish||'');
-    if(/reverse/i.test(f))return 'reverse holo';
-    if(/full|especial/i.test(f)&&!r.includes('illustration'))return 'rare ultra';
-    if(r==='special illustration rare')return 'rare rainbow alt';
-    if(r==='illustration rare')return 'rare ultra';
-    if(r==='hyper rare'||r==='rare secret'||r==='secret rare'||r==='gold rare')return /\b(v|vmax|vstar|gx|ex)\b/i.test(n)&&r!=='hyper rare'?'rare rainbow':'rare secret';
-    if(r==='rare rainbow'||r==='rainbow rare')return 'rare rainbow';
-    if(r.includes('shiny')){
-      if(/vmax/i.test(n))return 'rare shiny vmax';
-      if(/\b(v|vstar|ex|gx)\b/i.test(n)||r.includes('ultra'))return 'rare shiny v';
-      return 'rare shiny';
+    const suffix=/\b(ex|gx|v|vmax|vstar|v-astro|break|lv\.?x|prime)\b|-ex\b|-gx\b/i.test(n);
+    let kind=rarityKind(rarity)||rarityKind(localRarity);
+    // 30th Classic Collection: reprints of holo cards, listed without rarity.
+    if(!kind&&/^30th-c-/i.test(String(apiId||'')))kind='holo';
+    if(!kind||kind==='promo'||kind==='common'||kind==='uncommon'||kind==='rare'){
+      if(/vmax/i.test(n))kind='vmax';
+      else if(/vstar|v-astro/i.test(n))kind='vstar';
+      else if(suffix)kind='double';
+      else if(kind==='promo'||kind==='')kind=/foil|holo|promo/i.test(f)||info?.variants?.holo?'holo':'common';
     }
-    if(r==='radiant rare')return 'radiant rare';
-    if(r==='amazing rare')return 'amazing rare';
-    if(r.includes('vmax')||/\bvmax\b/i.test(n))return 'rare holo vmax';
-    if(r.includes('vstar')||/\bvstar\b/i.test(n))return 'rare holo vstar';
-    if(r==='ultra rare'||r==='rare ultra'||r.includes('full art'))return 'rare ultra';
-    if(r==='double rare'||r.includes('rare holo v')||/\b(v|ex|gx|break|lv\.?x|prime)\b/i.test(n)&&r.includes('rare'))return 'rare holo v';
-    if(r.includes('cosmos'))return 'rare holo cosmos';
-    if(r.includes('holo')||r==='ace spec rare'||r.includes('trainer gallery'))return 'rare holo';
-    if(/holo|foil/i.test(f))return 'rare holo';
-    if(r==='rare'&&info?.variants&&info.variants.holo&&!info.variants.normal)return 'rare holo';
-    return r||'common';
+    if(/full|especial/i.test(f)&&!['sir','gold','rainbow','secret'].includes(kind))kind='ultra';
+    if(/reverse/i.test(f)&&['common','uncommon','rare','holo'].includes(kind))return {rarity:'reverse holo'};
+    switch(kind){
+      case 'ace':return {rarity:'rare ultra',fullArt:true};
+      case 'sir':return {rarity:'rare rainbow alt'};
+      case 'ir':return {rarity:'rare ultra',fullArt:true};
+      case 'gold':return {rarity:'rare secret'};
+      case 'rainbow':return {rarity:'rare rainbow'};
+      case 'secret':return {rarity:suffix?'rare rainbow':'rare secret'};
+      case 'radiant':return {rarity:'radiant rare'};
+      case 'amazing':return {rarity:'amazing rare'};
+      case 'shiny':return {rarity:/vmax/i.test(n)?'rare shiny vmax':suffix?'rare shiny v':'rare shiny'};
+      case 'vmax':return {rarity:'rare holo vmax'};
+      case 'vstar':return {rarity:'rare holo vstar'};
+      case 'double':return {rarity:'rare holo v'};
+      case 'ultra':return {rarity:'rare ultra',fullArt:true};
+      case 'holo':return {rarity:suffix?'rare holo v':'rare holo'};
+      case 'rare':
+        if(/foil|holo/i.test(f)||(info?.variants?.holo&&!info?.variants?.normal))return {rarity:'rare holo'};
+        return {rarity:'rare'};
+      default:
+        if(/foil|holo/i.test(f))return {rarity:'rare holo'};
+        return {rarity:kind||'common'};
+    }
   }
 
   function ensureLayers(){
@@ -6495,20 +6533,42 @@
     el.dataset.pfxToken=token;
     const info=await tcgdexInfo(apiId);
     if(el.dataset.pfxToken!==token)return;
-    const rarity=info?.rarity||c.rarity||'';
     const name=info?.name||c.name||'';
     const number=String(info?.localId||c.number||'').toLowerCase();
     const category=String(info?.category||'Pokemon').toLowerCase();
     const subtypes=[info?.stage,info?.suffix,info?.trainerType,info?.energyType].filter(Boolean).join(' ').toLowerCase().replace(/stage(\d)/,'stage $1');
-    el.dataset.rarity=effectRarity(rarity,name,finish,number,info);
-    el.dataset.supertype=category==='pokemon'?'pokémon':category;
-    el.dataset.subtypes=subtypes||'basic';
+    const fx=effectRarity(info?.rarity||'',c.rarity||'',name,finish,info,apiId);
+    const supporter=/supporter/.test(subtypes);
+    el.dataset.rarity=fx.rarity;
+    // Full-art foils (ACE SPEC, items, illustration rares) use the Pokémon
+    // full-art rules; supporters keep the trainer full-art ones.
+    el.dataset.supertype=fx.fullArt&&!supporter?'pokémon':category==='pokemon'?'pokémon':category;
+    el.dataset.subtypes=fx.fullArt&&!supporter?'basic':(subtypes||'basic');
     el.dataset.number=number;
     el.dataset.set=String(info?.set?.id||c.setId||c.set_id||'').toLowerCase();
     el.dataset.trainerGallery=String(/^(tg|gg)/i.test(number));
     const type=String((info?.types||[])[0]||'').toLowerCase();
     TYPES.forEach(t=>el.classList.toggle(t,t===type));
     fitLayers();
+  }
+
+  // Foil strength chosen by the viewer (0–200 %), kept in this browser.
+  const INTENSITY_KEY='pf-foil-intensity';
+  let intensity=(()=>{try{const v=Number(localStorage.getItem(INTENSITY_KEY));return Number.isFinite(v)&&localStorage.getItem(INTENSITY_KEY)!==null?v:100}catch{return 100}})();
+  const foilIntensity=()=>intensity/100;
+  function ensureIntensityControl(){
+    const controls=document.querySelector('#cardDialog .viewer-controls');
+    if(!controls||controls.querySelector('.pfx-intensity'))return;
+    const label=document.createElement('label');
+    label.className='pfx-intensity';
+    label.title='Intensidade do brilho (foil)';
+    label.innerHTML='<span>✦</span><input type="range" min="0" max="200" step="10" aria-label="Intensidade do brilho"><b></b>';
+    const input=label.querySelector('input'),out=label.querySelector('b');
+    const show=()=>{input.value=String(intensity);out.textContent=intensity+'%'};
+    input.addEventListener('input',()=>{intensity=Number(input.value)||0;out.textContent=intensity+'%';try{localStorage.setItem(INTENSITY_KEY,String(intensity))}catch{}});
+    for(const ev of ['pointerdown','pointermove','wheel','touchstart'])label.addEventListener(ev,e=>e.stopPropagation(),{passive:true});
+    show();
+    controls.appendChild(label);
   }
 
   // Light from the rotation set by the viewer (rotateX / rotateY).
@@ -6521,7 +6581,7 @@
     const rx=Number(t.match(/rotateX\((-?[\d.]+)deg\)/)?.[1]||0);
     const ry=Number(t.match(/rotateY\((-?[\d.]+)deg\)/)?.[1]||0);
     const x=50-clamp(ry,-20,20)*2.5,y=50+clamp(rx,-20,20)*2.5;
-    const o=clamp(0.35+Math.hypot(rx,ry)/12,0,1);
+    const o=clamp((0.35+Math.hypot(rx,ry)/12)*foilIntensity(),0,1);
     cur.x+=(x-cur.x)*0.25;cur.y+=(y-cur.y)*0.25;cur.o+=(o-cur.o)*0.2;
     if(el){
       const s=el.style;
@@ -6536,7 +6596,7 @@
     }
     raf=requestAnimationFrame(tick);
   }
-  function start(){applyCard();if(!raf)raf=requestAnimationFrame(tick)}
+  function start(){ensureIntensityControl();applyCard();if(!raf)raf=requestAnimationFrame(tick)}
   document.addEventListener('change',e=>{if(e.target?.id==='cardFinish')applyCard()});
   window.addEventListener('resize',fitLayers);
   function bind(){

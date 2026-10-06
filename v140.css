@@ -2231,3 +2231,7 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
    3D viewer puts them on separate planes where blending does not apply). */
 .card-3d.pfx .card-front{transform-style:flat!important;isolation:isolate}
 .card-3d.pfx .pfx-layers,.card-3d.pfx .pfx-layers *,.card-3d.pfx .pfx-layers *::before,.card-3d.pfx .pfx-layers *::after{transform:none!important;transform-style:flat!important}
+/* Foil intensity slider in the viewer controls */
+.viewer-controls .pfx-intensity{display:inline-flex;align-items:center;gap:6px;margin-left:6px;padding:0 6px;color:var(--muted);font-size:11px;font-weight:800}
+.viewer-controls .pfx-intensity input{width:96px;accent-color:var(--accent);margin:0}
+.viewer-controls .pfx-intensity b{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
