@@ -955,7 +955,7 @@
   // import move exactly these cards (reorder mode).
   function rowsForExcel(){
     const binder=(window.PB14?.binders||[]).find(b=>b.id===window.PB14?.activeBinderId);
-    const cards=binder?(window.PB14.allCards||[]).filter(c=>c.binder_id===binder.id):collection;
+    const cards=(binder?(window.PB14.allCards||[]).filter(c=>c.binder_id===binder.id):collection).filter(c=>!c.stack_of);
     const byPos=new Map(cards.map(c=>[(+c.binder_page||1)+':'+(+c.binder_slot||1),c]));
     const pages=Math.max(1,+binder?.pages||+settings.binder_pages||1,...cards.map(c=>+c.binder_page||1));
     const rows=[];
@@ -1032,7 +1032,7 @@
     const binder=(window.PB14?.binders||[]).find(b=>b.id===binderId);
     if(!binder)return toast('Nenhuma carta da planilha foi encontrada nos seus fichários.');
     for(const p of positions)if(window.PB14?.artPieceAt?.(binderId,p.page,p.slot))problems.push(`${p.card.name}: página ${p.page}, bolso ${p.slot} é ocupado por uma arte.`);
-    const missing=all.filter(c=>c.binder_id===binderId&&!seen.has(String(c.id)));
+    const missing=all.filter(c=>c.binder_id===binderId&&!c.stack_of&&!seen.has(String(c.id)));
     if(missing.length)problems.push(`${missing.length} carta(s) do fichário não estão na planilha (ex.: ${missing.slice(0,3).map(c=>c.name+' '+(c.number||'')).join(', ')}).`);
     if(problems.length){
       const NL=String.fromCharCode(10);

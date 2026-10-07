@@ -242,7 +242,7 @@
 
   function orderedViewCards(){
     const physical=physicalCollection();
-    let arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical)];
+    let arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical.filter(c=>!c.stack_of))];
     if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
       arr=arr.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
     }
@@ -445,6 +445,10 @@
               '<div class="v14-master-head"><div><strong id="v14MasterTitle">Coleção</strong><small id="v14MasterMeta"></small></div><div><b id="v14OwnedCount">0</b> marcadas como Tenho</div></div>'+
               '<p class="v14-master-help">Marque as variantes que você já possui. As demais entram como Não tenho. Normal, Holo, Reverse, Poké Ball, Master Ball e outras variantes só aparecem quando existem na base.</p>'+
               '<div class="v1418-master-bulk"><button id="v1418MarkAll" class="btn btn-secondary" type="button">✓ Marcar todas como Tenho</button><button id="v1418ClearAll" class="btn btn-secondary" type="button">Limpar marcações</button></div>'+
+              '<fieldset class="v27-layout"><legend>Bolsos no fichário</legend>'+
+                '<label><input type="radio" name="v27MasterLayout" value="variant" checked><span><strong>Um bolso por variante</strong><small>Normal, Holo, Reverse… cada uma no seu bolso.</small></span></label>'+
+                '<label><input type="radio" name="v27MasterLayout" value="card"><span><strong>Um bolso por carta</strong><small>As variantes da mesma carta ficam juntas num bolso só; cada uma continua com seu Tenho e seu preço.</small></span></label>'+
+              '</fieldset>'+
               '<div id="v14MasterGrid" class="v14-master-grid"></div>'+
               '<div id="v1418MasterQueue" class="v1418-master-queue hidden"></div>'+
               '<div class="v1418-master-actions"><button id="v1418AddAnotherMaster" class="btn btn-secondary" type="button">＋ Adicionar outro Master Set</button><button id="v14CreateMaster" class="btn btn-primary" type="button">Criar Master Set</button></div>'+
@@ -727,6 +731,8 @@
 
   function resetMasterBuilderState({resetCatalog=false,keepSelections=false}={}){
     V14.masterEpoch++;
+    V14.masterTargetBinderId=null;
+    setCreatorTargetUiV27(null);
     V14.masterPreview=null;
     if(!keepSelections)V14.masterSelections=[];
     const step=byId('v14MasterStep');if(step)step.classList.add('hidden');
@@ -1689,7 +1695,8 @@
       renderMasterQueue();
     });
     const total=masterPreviewsForCreate().length;
-    create.textContent=total>1?'Criar fichário com '+total+' Master Sets':'Criar Master Set';
+    if(V14.masterTargetBinderId)create.textContent=total>1?'Adicionar '+total+' Master Sets ao fichário':'Adicionar ao fichário';
+    else create.textContent=total>1?'Criar fichário com '+total+' Master Sets':'Criar Master Set';
   }
 
   function markAllMasterOwned(owned){
@@ -1844,19 +1851,134 @@
     return total?n+'/'+total:n;
   }
 
+  // ---------------------------------------------------------------- V27
+  // Master Set pockets: one per variant (as before) or one per card.
+  function masterLayoutV27(){
+    return document.querySelector('input[name="v27MasterLayout"]:checked')?.value==='card'?'card':'variant';
+  }
+  // Pocket units in binder order. "card": the variants of one card (same
+  // card id and language) share a unit; an owned variant goes first so the
+  // pocket shows a card you have.
+  function masterUnitsV27(previews,layout){
+    const items=[];
+    for(const preview of previews)preview.entries.forEach((entry,index)=>items.push({preview,entry,index}));
+    if(layout!=='card')return items.map(item=>({items:[item]}));
+    const units=[],byKey=new Map();
+    for(const item of items){
+      const e=item.entry;
+      const key=String(e.apiId||'')?[e.apiId,e.languageCode].join('|'):[e.setId,e.number,e.name,e.languageCode].join('|');
+      let unit=byKey.get(key);
+      if(!unit){unit={items:[]};byKey.set(key,unit);units.push(unit)}
+      unit.items.push(item);
+    }
+    for(const unit of units){
+      const ownedIx=unit.items.findIndex(it=>it.preview.owned.has(it.index));
+      if(ownedIx>0)unit.items.unshift(unit.items.splice(ownedIx,1)[0]);
+    }
+    return units;
+  }
+  // First page after the last page that has a card or a piece of art.
+  function nextFreeMasterPageV27(binderId){
+    let last=0;
+    for(const c of V14.allCards)if(c.binder_id===binderId&&c.binder_slot!=null)last=Math.max(last,+c.binder_page||1);
+    for(const p of V14.artPieces||[])if(p.binder_id===binderId)last=Math.max(last,+p.page||1);
+    return last+1;
+  }
+  function setCreatorTargetUiV27(binder){
+    const d=byId('v14BinderDialog');if(!d)return;
+    const h=d.querySelector('.dialog-head h2'),p=d.querySelector('.dialog-head .compact-copy');
+    if(h)h.textContent=binder?'Adicionar Master Set':'Novo fichário';
+    if(p)p.textContent=binder?'As cartas entram no fichário “'+(binder.name||'')+'”, a partir da primeira página livre depois da última usada.':'Crie vazio ou monte um Master Set completo de uma coleção.';
+    d.querySelector('.v14-create-tabs')?.classList.toggle('hidden',!!binder);
+    renderMasterQueue();
+  }
+  function openMasterIntoBinderV27(){
+    const b=activeBinder();
+    if(!b||isGeneral()||isWishlistBinder())return toast('Abra um fichário para adicionar um Master Set nele.');
+    hardCloseDialog('pagesDialog');
+    openBinderCreator();
+    V14.masterTargetBinderId=b.id;
+    switchCreateTab('set');
+    setCreatorTargetUiV27(b);
+  }
+  // Variants grouped in one pocket.
+  function stackOfV27(card){
+    if(!card?.id)return card?[card]:[];
+    const root=card.stack_of?V14.allCards.find(x=>x.id===card.stack_of)||card:card;
+    return [root,...V14.allCards.filter(x=>x.stack_of===root.id)];
+  }
+  function variantLabelV27(card){
+    return String(card?.notes||'').trim()||String(card?.finish||'Normal');
+  }
+  const ownedV27=c=>(c.collection_status||'owned')==='owned';
+  function renderStackPanelV27(){
+    const panel=document.querySelector('#cardDialog .card-details-panel');
+    let box=byId('v27StackPanel');
+    const card=typeof editingCardId!=='undefined'&&editingCardId?V14.allCards.find(x=>x.id===editingCardId):null;
+    const stack=card?stackOfV27(card):[];
+    if(stack.length<2){box?.remove();return}
+    if(!box){
+      box=document.createElement('section');
+      box.id='v27StackPanel';
+      box.className='v27-stack-panel';
+      const anchor=panel?.querySelector('.detail-chips');
+      if(anchor)anchor.after(box);else panel?.prepend(box);
+    }
+    const owned=stack.filter(ownedV27).length;
+    box.innerHTML='<div class="v27-stack-head"><strong>Variantes neste bolso</strong><small>'+owned+' de '+stack.length+' Tenho</small></div>'+
+      stack.map(x=>{
+        const price=Number(x.price_avg||x.price_min||0);
+        return '<div class="v27-stack-row"><span>'+esc(variantLabelV27(x))+(x.id===stack[0].id?' <em>no bolso</em>':'')+'</span>'+
+          '<small>'+(price>0?money(price):'—')+'</small>'+
+          '<button type="button" class="'+(ownedV27(x)?'on':'')+'" data-v27-variant="'+esc(x.id)+'">'+(ownedV27(x)?'✓ Tenho':'Não tenho')+'</button></div>';
+      }).join('');
+    box.querySelectorAll('[data-v27-variant]').forEach(btn=>btn.onclick=async()=>{
+      const row=V14.allCards.find(x=>x.id===btn.dataset.v27Variant);if(!row)return;
+      const nowOwned=!ownedV27(row);
+      const patch=nowOwned?{collection_status:'owned',quantity:Math.max(1,+row.quantity||0)}:{collection_status:'missing',quantity:0};
+      btn.disabled=true;
+      const {error}=await db.from('pokemon_cards').update({...patch,updated_at:new Date().toISOString()}).eq('id',row.id).eq('user_id',currentUser.id);
+      btn.disabled=false;
+      if(error)return toast('Não consegui salvar a variante.');
+      Object.assign(row,patch);
+      // The pocket's own status follows the main card in the inspector.
+      if(row.id===editingCardId&&typeof setSelectedStatus==='function')setSelectedStatus(patch.collection_status);
+      collection=physicalCollection();
+      renderStackPanelV27();
+      renderAll();
+    });
+  }
+  (function hookStackInspectorV27(){
+    const hook=()=>{
+      if(typeof window.fillInspector!=='function'){setTimeout(hook,400);return}
+      if(window.fillInspector.__v27)return;
+      const orig=window.fillInspector;
+      const wrapped=function(){const r=orig.apply(this,arguments);setTimeout(renderStackPanelV27,0);return r};
+      wrapped.__v27=true;
+      for(const k of Object.keys(orig))wrapped[k]=orig[k];
+      window.fillInspector=wrapped;
+    };
+    setTimeout(hook,0);
+  })();
+
   async function createMasterBinder(){
     const previews=masterPreviewsForCreate();
     if(!previews.length)return toast('Escolha pelo menos um Master Set.');
-    const btn=byId('v14CreateMaster');busy(btn,true,previews.length>1?'Criando fichário…':'Criando Master Set…');
-    let createdBinder=null;
+    const target=V14.masterTargetBinderId||null;
+    const btn=byId('v14CreateMaster');busy(btn,true,target?'Adicionando ao fichário…':previews.length>1?'Criando fichário…':'Criando Master Set…');
+    let createdBinder=null,targetBefore=null;
+    const insertedIds=[];
     try{
       await loadBinders();
 
-      const flat=[];
-      for(const preview of previews){
-        preview.entries.forEach((entry,index)=>flat.push({preview,entry,index}));
-      }
-      const pages=Math.max(1,Math.ceil(flat.length/9));
+      const layout=masterLayoutV27();
+      const units=masterUnitsV27(previews,layout);
+      const entryCount=units.reduce((n,u)=>n+u.items.length,0);
+      const targetBinder=target?V14.binders.find(b=>b.id===target):null;
+      if(target&&!targetBinder)throw new Error('fichário não encontrado');
+      // Into an existing binder: start on the page after its last used one.
+      const startPage=targetBinder?nextFreeMasterPageV27(targetBinder.id):1;
+      const pages=startPage-1+Math.max(1,Math.ceil(units.length/9));
       const sortOrder=Math.max(0,...V14.binders.map(b=>+b.sort_order||0))+1;
       const names=previews.map(p=>p.displaySetName||p.set.name);
       let baseName=names.join(' + ');
@@ -1875,7 +1997,18 @@
       }
 
       const single=previews.length===1?previews[0]:null;
-      const {data:binder,error:be}=await db.from('pokemon_binders').insert({
+      let binder;
+      if(targetBinder){
+        targetBefore={pages:targetBinder.pages,master_total:targetBinder.master_total};
+        const {data,error}=await db.from('pokemon_binders').update({
+          pages:Math.max(+targetBinder.pages||1,pages),
+          master_total:(+targetBinder.master_total||0)+entryCount,
+          updated_at:new Date().toISOString()
+        }).eq('id',targetBinder.id).eq('user_id',currentUser.id).select('*').single();
+        if(error)throw error;
+        binder=data;
+      }else{
+      const {data:newBinder,error:be}=await db.from('pokemon_binders').insert({
         user_id:currentUser.id,
         name:binderName,
         pages,
@@ -1886,14 +2019,16 @@
         set_name:single?(single.displaySetName||single.set.name):names.join(' + '),
         set_language:single?single.set.languageCode:null,
         master_language:single?single.set.languageCode:null,
-        master_total:flat.length
+        master_total:entryCount
       }).select('*').single();
       if(be)throw be;
+      binder=newBinder;
       createdBinder=binder;
+      }
 
       V14.masterPriceRequestedAt=new Date().toISOString();
-      const rows=flat.map(({preview:p,entry:e,index:localIndex},globalIndex)=>{
-        const owned=p.owned.has(localIndex),page=Math.floor(globalIndex/9)+1,slot=globalIndex%9+1;
+      const rowFor=({preview:p,entry:e,index:localIndex},page,slot)=>{
+        const owned=p.owned.has(localIndex);
         const base={
           source:e.source,apiId:e.apiId,name:e.name,languageCode:e.languageCode,language:e.language,
           setName:e.setName,setId:e.setId,number:fullMasterEntryNumberV1450(e),
@@ -1918,13 +2053,39 @@
         payload.price_priority=500;
         payload.price_last_error=null;
         payload.price_checked_at=null;
+        payload.binder_page=page;
+        payload.binder_slot=slot;
         return payload;
-      });
+      };
 
-      for(let i=0;i<rows.length;i+=100){
-        const {error}=await db.from('pokemon_cards').insert(rows.slice(i,i+100));
+      // One pocket per unit. In "one pocket per card" a unit holds every
+      // variant of a card: the first goes in the pocket, the others point at
+      // it (stack_of) and have no pocket.
+      const rows=[];
+      const parents=units.map((u,i)=>({u,page:startPage+Math.floor(i/9),slot:i%9+1}));
+      for(let i=0;i<parents.length;i+=100){
+        const chunk=parents.slice(i,i+100);
+        const payloads=chunk.map(x=>rowFor(x.u.items[0],x.page,x.slot));
+        const {data,error}=await db.from('pokemon_cards').insert(payloads).select('id');
+        if(error)throw error;
+        if(!Array.isArray(data)||data.length!==chunk.length)throw new Error('resposta incompleta do banco');
+        data.forEach((r,k)=>{chunk[k].id=r.id;insertedIds.push(r.id)});
+        rows.push(...payloads);
+      }
+      const children=[];
+      for(const x of parents){
+        for(const item of x.u.items.slice(1)){
+          const payload=rowFor(item,x.page,null);
+          payload.binder_slot=null;
+          payload.stack_of=x.id;
+          children.push(payload);
+        }
+      }
+      for(let i=0;i<children.length;i+=100){
+        const {error}=await db.from('pokemon_cards').insert(children.slice(i,i+100));
         if(error)throw error;
       }
+      rows.push(...children);
 
       hardCloseDialog('v14BinderDialog');
       resetMasterBuilderState({resetCatalog:true});
@@ -1934,7 +2095,7 @@
       V14.activeBinderId=binder.id;
       V14.favoritesOnly=false;
       V14.viewScope='all';
-      currentPage=1;
+      currentPage=targetBinder?startPage:1;
       try{activeStatusFilter='all'}catch{}
       await db.from('pokemon_settings').update({current_binder_id:binder.id}).eq('user_id',currentUser.id);
       await loadCardsV14(false);
@@ -1951,13 +2112,21 @@
 
       const ownedCount=rows.filter(x=>x.collection_status==='owned').length;
       const setText=previews.length>1?' · '+previews.length+' Master Sets':'';
-      toast('Fichário criado: '+rows.length+' entradas · '+ownedCount+' Tenho'+setText+'.');
+      const pocketText=layout==='card'?' em '+units.length+' bolsos':'';
+      if(targetBinder)toast('Master Set adicionado a partir da página '+startPage+': '+rows.length+' entradas'+pocketText+' · '+ownedCount+' Tenho'+setText+'.');
+      else toast('Fichário criado: '+rows.length+' entradas'+pocketText+' · '+ownedCount+' Tenho'+setText+'.');
     }catch(e){
       console.error(e);
       if(createdBinder?.id){
         try{await db.from('pokemon_binders').delete().eq('id',createdBinder.id).eq('user_id',currentUser.id)}catch{}
+      }else if(target){
+        // Undo a partial add to an existing binder.
+        for(let i=0;i<insertedIds.length;i+=100){
+          try{await db.from('pokemon_cards').delete().in('id',insertedIds.slice(i,i+100)).eq('user_id',currentUser.id)}catch{}
+        }
+        if(targetBefore){try{await db.from('pokemon_binders').update(targetBefore).eq('id',target).eq('user_id',currentUser.id)}catch{}}
       }
-      toast('Erro ao criar Master Set: '+(e.message||e));
+      toast((target?'Erro ao adicionar o Master Set: ':'Erro ao criar Master Set: ')+(e.message||e));
     }finally{
       V14.masterPriceRequestedAt=null;
       busy(btn,false);
@@ -2042,7 +2211,7 @@
     return V14.allCards.find(x=>x.binder_id===wishlist.id&&canonicalCardIdentityKey(x)===key)||null;
   }
   function nextWishlistPosition(wishlist){
-    const used=new Set(V14.allCards.filter(x=>x.binder_id===wishlist.id).map(x=>(+x.binder_page||1)+':'+(+x.binder_slot||1)));
+    const used=new Set(V14.allCards.filter(x=>x.binder_id===wishlist.id&&!x.stack_of).map(x=>(+x.binder_page||1)+':'+(+x.binder_slot||1)));
     const pages=Math.max(1,+wishlist.pages||1);
     for(let page=1;page<=pages;page++)for(let slot=1;slot<=9;slot++)if(!used.has(page+':'+slot))return{page,slot};
     return{page:pages+1,slot:1};
@@ -2121,6 +2290,19 @@
       wish.addEventListener('click',wishAct);wish.addEventListener('pointerdown',e=>e.stopPropagation());
       wish.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();wishAct(e)}});
       b.appendChild(wish);
+    }
+
+    if(!isGeneral()&&card.id){
+      const stack=stackOfV27(card);
+      if(stack.length>1){
+        const owned=stack.filter(ownedV27).length;
+        const tag=document.createElement('span');
+        tag.className='v27-stack-badge'+(owned===stack.length?' all':owned?' some':'');
+        tag.textContent=owned+'/'+stack.length;
+        tag.title=stack.map(x=>variantLabelV27(x)+': '+(ownedV27(x)?'Tenho':'Não tenho')).join(String.fromCharCode(10));
+        tag.setAttribute('aria-label',owned+' de '+stack.length+' variantes neste bolso');
+        b.appendChild(tag);
+      }
     }
 
     const processingAt=Date.parse(card.price_processing_at||0);
@@ -2969,6 +3151,16 @@
   }
   function renderPhysicalPagesGridV22(){
     const g=byId('pagesGrid');if(!g)return;
+    let addMaster=byId('v27AddMasterHere');
+    if(!addMaster){
+      addMaster=document.createElement('button');
+      addMaster.id='v27AddMasterHere';addMaster.type='button';
+      addMaster.className='btn btn-secondary full v27-add-master';
+      addMaster.textContent='＋ Adicionar Master Set neste fichário';
+      addMaster.onclick=()=>openMasterIntoBinderV27();
+      (byId('btnAddPageModal')||g).after(addMaster);
+    }
+    addMaster.classList.toggle('hidden',isGeneral()||isWishlistBinder());
     const binderId=activeBinder()?.id,pages=currentBinderPages();
     g.innerHTML='';g.classList.add('v22-spreads');
     const spreads=[[0,1]];
@@ -2999,7 +3191,7 @@
         const el=document.createElement('div');
         el.className='v22-page'+(p===currentPage||(binderSpreadLayoutV14()&&p===currentPage+1&&currentPage>1)?' active':'');
         el.dataset.page=String(p);
-        const n=cardsOnPage(p).length+(V14.artPieces||[]).filter(x=>x.binder_id===binderId&&+x.page===p).length;
+        const n=cardsOnPage(p).filter(c=>!c.stack_of).length+(V14.artPieces||[]).filter(x=>x.binder_id===binderId&&+x.page===p).length;
         el.innerHTML='<strong>Página '+p+'</strong>';
         el.appendChild(miniPageV22(p,binderId));
         const foot=document.createElement('div');foot.className='v22-page-foot';
@@ -5319,7 +5511,7 @@
     setTimeout(enhanceSelectionTrayV1493,0);
   }
   function nextPositionForBinderV1494(binder){
-    const used=new Set(V14.allCards.filter(x=>x.binder_id===binder.id).map(x=>(+x.binder_page||1)+':'+(+x.binder_slot||1)));
+    const used=new Set(V14.allCards.filter(x=>x.binder_id===binder.id&&!x.stack_of).map(x=>(+x.binder_page||1)+':'+(+x.binder_slot||1)));
     const pages=Math.max(1,+binder.pages||1);
     for(let page=1;page<=pages;page++)for(let slot=1;slot<=9;slot++)if(!used.has(page+':'+slot))return{page,slot};
     return{page:pages+1,slot:1};
@@ -6194,7 +6386,7 @@
     const popup=frame.contentWindow;
 
     const cards=V14.allCards
-      .filter(card=>card.binder_id===binder.id)
+      .filter(card=>card.binder_id===binder.id&&!card.stack_of)
       .sort((a,b)=>(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1));
     const pageCount=Math.max(1,+binder.pages||1,Math.ceil(cards.length/9));
     const byPosition=new Map(cards.map(card=>[(+card.binder_page||1)+':'+(+card.binder_slot||1),card]));

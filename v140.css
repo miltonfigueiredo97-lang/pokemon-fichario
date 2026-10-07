@@ -2363,3 +2363,26 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 .v26-act-share.on span{color:#8ff0b0}
 .v26-act-share .action-btn{flex:none;white-space:nowrap}
 @media(max-width:520px){.v26-act-share{flex-direction:column;align-items:stretch}}
+
+/* Master Set: pocket layout choice */
+.v27-layout{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;padding:0;border:0}
+.v27-layout legend{grid-column:1/-1;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.v27-layout label{display:flex;gap:9px;align-items:flex-start;padding:10px;border:1px solid var(--line2);border-radius:12px;cursor:pointer}
+.v27-layout label:has(input:checked){border-color:var(--accent);background:rgba(255,90,61,.08)}
+.v27-layout input{width:16px!important;height:16px;margin:2px 0 0;flex:none;accent-color:var(--accent)}
+.v27-layout strong{display:block;font-size:13px}
+.v27-layout small{display:block;margin-top:2px;font-size:11.5px;line-height:1.35;color:var(--muted)}
+@media(max-width:620px){.v27-layout{grid-template-columns:1fr}}
+.v27-add-master{margin-top:8px}
+/* Variants grouped in one pocket */
+.v27-stack-badge{position:absolute;left:6px;bottom:6px;z-index:4;padding:2px 6px;border-radius:999px;background:rgba(10,12,16,.82);border:1px solid rgba(255,255,255,.25);color:#e8e8e8;font:800 10px/1.3 system-ui,sans-serif;pointer-events:auto}
+.v27-stack-badge.some{border-color:#ffc52e;color:#ffd970}
+.v27-stack-badge.all{border-color:#32d7a0;color:#7ff0c8}
+.v27-stack-panel{display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid var(--line2);border-radius:12px;background:rgba(255,255,255,.03)}
+.v27-stack-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.v27-stack-head strong{font-size:13px}.v27-stack-head small{color:var(--muted);font-size:11.5px}
+.v27-stack-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;font-size:12.5px}
+.v27-stack-row em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.v27-stack-row small{color:var(--muted);font-variant-numeric:tabular-nums}
+.v27-stack-row button{min-width:92px;padding:5px 9px;border-radius:9px;border:1px solid var(--line2);background:var(--panel3);color:var(--text);font-weight:800;font-size:11.5px;cursor:pointer}
+.v27-stack-row button.on{border-color:#32d7a0;color:#7ff0c8;background:rgba(50,215,160,.1)}
