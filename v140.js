@@ -6842,12 +6842,10 @@
     fitLayers();
   }
 
-  // Foil strength is fixed (tuned by hand).
-  const foilIntensity=()=>1.15;
-
-  // The foil a printing really has, by card id (table pokemon_card_foils,
-  // shared by every account): curated promos and special cards, plus what
-  // anyone picks in "Foil desta carta". Missing -> the rarity rules.
+  // Foil of a printing: the account's own choice (pokemon_card_foil_choices,
+  // only theirs), else the curated table (pokemon_card_foils: promos of
+  // pokemon-cards-css + cards checked by eye, read-only), else the rarity
+  // rules. Intensity is per card too (100 % = the tuned default).
   const FOIL_STYLES_V28={
     none:{label:'Sem foil',fx:{rarity:'common'}},
     holo:{label:'Holo na arte',fx:{rarity:'rare holo'}},
@@ -6864,52 +6862,86 @@
     amazing:{label:'Incrível',fx:{rarity:'amazing rare'}},
     shiny:{label:'Shiny / brilhante',fx:{rarity:'rare shiny'}}
   };
-  const foilCacheV28=new Map();
-  async function knownFoilV28(apiId){
-    if(!apiId)return '';
-    if(foilCacheV28.has(apiId))return foilCacheV28.get(apiId);
-    let style='';
-    try{
-      const {data}=await db.from('pokemon_card_foils').select('style').eq('api_id',apiId).maybeSingle();
-      style=data?.style&&FOIL_STYLES_V28[data.style]?data.style:'';
-    }catch{}
-    foilCacheV28.set(apiId,style);
-    return style;
+  const BASE_FOIL_STRENGTH=1.15;
+  const curatedFoilV29=new Map(),choiceFoilV29=new Map();
+  let shownFoilV29={apiId:'',intensity:100};
+  const foilIntensity=()=>BASE_FOIL_STRENGTH*(shownFoilV29.intensity/100);
+  async function loadFoilV29(apiId){
+    if(!apiId)return {curated:'',choice:null};
+    const jobs=[];
+    if(!curatedFoilV29.has(apiId))jobs.push(db.from('pokemon_card_foils').select('style').eq('api_id',apiId).maybeSingle()
+      .then(({data})=>curatedFoilV29.set(apiId,data?.style&&FOIL_STYLES_V28[data.style]?data.style:''),()=>curatedFoilV29.set(apiId,'')));
+    if(!choiceFoilV29.has(apiId)&&typeof currentUser!=='undefined'&&currentUser)
+      jobs.push(db.from('pokemon_card_foil_choices').select('style,intensity').eq('user_id',currentUser.id).eq('api_id',apiId).maybeSingle()
+        .then(({data})=>choiceFoilV29.set(apiId,data||null),()=>choiceFoilV29.set(apiId,null)));
+    await Promise.all(jobs);
+    return {curated:curatedFoilV29.get(apiId)||'',choice:choiceFoilV29.get(apiId)||null};
   }
+  async function knownFoilV28(apiId){
+    const {curated,choice}=await loadFoilV29(apiId);
+    shownFoilV29={apiId,intensity:Number.isFinite(+choice?.intensity)&&choice?.intensity!=null?+choice.intensity:100,curated};
+    const style=choice?.style&&FOIL_STYLES_V28[choice.style]?choice.style:curated;
+    return style||'';
+  }
+  // "✦" in the viewer controls opens a small panel: foil + intensity.
   function ensureFoilSelectV28(){
     const controls=document.querySelector('#cardDialog .viewer-controls');
     if(!controls)return null;
     controls.querySelector('.pfx-intensity')?.remove();
-    let label=controls.querySelector('.pfx-foil-pick');
-    if(!label){
-      label=document.createElement('label');
-      label.className='pfx-foil-pick';
-      label.title='Foil desta carta: vale para esta carta em todos os fichários';
-      label.innerHTML='<span>✦</span><select aria-label="Foil desta carta"><option value="">Automático</option>'+
-        Object.entries(FOIL_STYLES_V28).map(([k,v])=>'<option value="'+k+'">'+v.label+'</option>').join('')+'</select>';
-      for(const ev of ['pointerdown','pointermove','wheel','touchstart'])label.addEventListener(ev,e=>e.stopPropagation(),{passive:true});
-      label.querySelector('select').addEventListener('change',e=>saveFoilV28(e.target.value));
-      controls.appendChild(label);
+    controls.querySelector('.pfx-foil-pick')?.remove();
+    let btn=controls.querySelector('.pfx-foil-btn');
+    if(!btn){
+      btn=document.createElement('button');
+      btn.type='button';btn.className='pfx-foil-btn';btn.textContent='✦';
+      btn.title='Foil e intensidade desta carta';btn.setAttribute('aria-label','Foil e intensidade desta carta');
+      controls.appendChild(btn);
+      const pop=document.createElement('div');
+      pop.className='pfx-foil-pop hidden';
+      pop.innerHTML='<label><span>Foil desta carta</span><select aria-label="Foil desta carta"></select></label>'+
+        '<label><span>Intensidade <b>100%</b></span><input type="range" min="0" max="200" step="5" aria-label="Intensidade do brilho"></label>'+
+        '<small>Só na sua conta.</small>';
+      (controls.closest('.card-showcase')||controls.parentElement).appendChild(pop);
+      for(const el of [btn,pop])for(const ev of ['pointerdown','pointermove','wheel','touchstart','click'])el.addEventListener(ev,e=>e.stopPropagation(),{passive:ev!=='click'});
+      btn.addEventListener('click',()=>{pop.classList.toggle('hidden');btn.classList.toggle('active',!pop.classList.contains('hidden'))});
+      const sel=pop.querySelector('select'),range=pop.querySelector('input'),out=pop.querySelector('b');
+      sel.addEventListener('change',()=>saveFoilV28({style:sel.value||null}));
+      let timer=0;
+      range.addEventListener('input',()=>{
+        shownFoilV29.intensity=+range.value;out.textContent=range.value+'%';
+        clearTimeout(timer);timer=setTimeout(()=>saveFoilV28({intensity:+range.value},true),450);
+      });
+      byIdF('cardDialog')?.addEventListener('close',()=>{pop.classList.add('hidden');btn.classList.remove('active')});
     }
-    return label.querySelector('select');
+    return btn;
   }
   function syncFoilSelectV28(apiId,style){
-    const sel=ensureFoilSelectV28();if(!sel)return;
-    sel.dataset.apiId=apiId||'';
-    sel.disabled=!apiId;
-    sel.value=style||'';
+    ensureFoilSelectV28();
+    const pop=document.querySelector('#cardDialog .pfx-foil-pop');if(!pop)return;
+    const sel=pop.querySelector('select'),range=pop.querySelector('input'),out=pop.querySelector('b');
+    const curated=shownFoilV29.curated;
+    sel.innerHTML='<option value="">Automático'+(curated?' ('+FOIL_STYLES_V28[curated].label+')':'')+'</option>'+
+      Object.entries(FOIL_STYLES_V28).map(([k,v])=>'<option value="'+k+'">'+v.label+'</option>').join('');
+    const choice=choiceFoilV29.get(apiId);
+    sel.value=choice?.style||'';
+    sel.disabled=range.disabled=!apiId;
+    range.value=String(shownFoilV29.intensity);out.textContent=shownFoilV29.intensity+'%';
+    pop.dataset.apiId=apiId||'';
   }
-  async function saveFoilV28(style){
-    const sel=ensureFoilSelectV28();
-    const apiId=sel?.dataset.apiId||'';
+  async function saveFoilV28(patch,quiet){
+    const pop=document.querySelector('#cardDialog .pfx-foil-pop');
+    const apiId=pop?.dataset.apiId||'';
     if(!apiId||typeof currentUser==='undefined'||!currentUser)return;
+    const prev=choiceFoilV29.get(apiId)||{};
+    const next={style:prev.style??null,intensity:prev.intensity??null,...patch};
+    if(next.intensity===100)next.intensity=null;
     let error;
-    if(style)({error}=await db.from('pokemon_card_foils').upsert({api_id:apiId,style,source:'user',updated_by:currentUser.id,updated_at:new Date().toISOString()},{onConflict:'api_id'}));
-    else ({error}=await db.from('pokemon_card_foils').delete().eq('api_id',apiId));
+    if(!next.style&&next.intensity==null)({error}=await db.from('pokemon_card_foil_choices').delete().eq('user_id',currentUser.id).eq('api_id',apiId));
+    else ({error}=await db.from('pokemon_card_foil_choices').upsert({user_id:currentUser.id,api_id:apiId,style:next.style,intensity:next.intensity,updated_at:new Date().toISOString()},{onConflict:'user_id,api_id'}));
     if(error){console.warn('[Foil]',error);return toast('Não consegui salvar o foil desta carta.')}
-    foilCacheV28.set(apiId,style||'');
+    choiceFoilV29.set(apiId,next.style||next.intensity!=null?next:null);
+    if(!('style' in patch))return;
     applyCard();
-    toast(style?'Foil salvo: '+FOIL_STYLES_V28[style].label+'.':'Foil automático para esta carta.');
+    if(!quiet)toast(next.style?'Foil desta carta: '+FOIL_STYLES_V28[next.style].label+'.':'Foil automático para esta carta.');
   }
 
   // Light from the rotation set by the viewer (rotateX / rotateY).
