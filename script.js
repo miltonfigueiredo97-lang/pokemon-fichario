@@ -1412,10 +1412,30 @@ function renderFriends(){
   if(!acc.length)f.innerHTML='<p class="muted">Adicione amigos para compartilhar seus fichários.</p>';
   acc.forEach(x=>{
     const id=x.requester_id===currentUser.id?x.addressee_id:x.requester_id,p=profilesById.get(id);
-    f.appendChild(socialItem(p,[
+    const item=socialItem(p,[
       {label:"Ver fichários",kind:"primary",action:()=>viewFriendBinders(p)},
       {label:"Remover",kind:"danger",action:()=>removeFriendship(x.id)}
-    ]));
+    ]);
+    item.dataset.friendId=id;
+    f.appendChild(item);
+  });
+  if(acc.length)loadFriendReaderBadges();
+}
+// Under each friend: is their price reader on, reading, or stopped with cards
+// waiting. Clicking it opens the reader panel with the full activity.
+async function loadFriendReaderBadges(){
+  const{data,error}=await db.rpc("pokemon_reader_activity");
+  if(error||!Array.isArray(data))return;
+  data.filter(a=>!a.is_me).forEach(a=>{
+    const item=document.querySelector(`#friendsList .social-item[data-friend-id="${a.user_id}"] .v1451-social-copy`);
+    if(!item)return;
+    let b=item.querySelector(".v26-friend-reader");
+    if(!b){b=document.createElement("button");b.type="button";b.className="v26-friend-reader";b.title="Ver o que o leitor está fazendo";b.onclick=()=>window.PB14?.openReaderDialog?.();item.appendChild(b)}
+    const on=a.readers_online>0;
+    const st=on&&a.processing>0?["busy",`Leitor lendo ${a.processing} carta(s) · ${a.pending} na fila`]:
+      on?["idle",a.pending?`Leitor ligado · ${a.pending} na fila`:"Leitor ligado · fila vazia"]:
+      a.pending?["stuck",`Leitor desligado · ${a.pending} carta(s) paradas na fila`]:["off","Leitor desligado"];
+    b.dataset.state=st[0];b.textContent=st[1];
   });
 }
 async function searchFriends(){
@@ -1468,9 +1488,12 @@ async function removeFriendship(id){
   if(error)return toast("Não consegui remover.");
   await loadFriendships();
 }
+// On a phone the friend viewer shows one sheet at a time, big, and the arrows
+// (or a swipe) turn one page.
+function friendSinglePage(){return window.matchMedia("(max-width:820px)").matches}
 function friendBinderAnchor(page,pages){
   page=Math.min(Math.max(1,+page||1),Math.max(1,+pages||1));
-  if(page<=1)return 1;
+  if(page<=1||friendSinglePage())return page;
   return page%2===0?page:page-1;
 }
 function friendBinderLastAnchor(pages){
@@ -1551,7 +1574,7 @@ function renderFriendBinder(){
   const pages=friendViewerPageCount();
   friendViewer.page=friendBinderAnchor(friendViewer.page,pages);
   const p=friendViewer.page;
-  const second=p>=2&&p+1<=pages?p+1:null;
+  const second=!friendSinglePage()&&p>=2&&p+1<=pages?p+1:null;
   spread.className="v1451-friend-spread"+(second?" double":"");
   spread.innerHTML=(list&&!list.length)
     ?'<p class="v25-friend-empty">Nenhuma carta corresponde ao filtro.</p>'
@@ -1613,6 +1636,15 @@ function fitFriendSpread(){
   const stage=s?.parentElement;
   if(!s||!stage||!s.isConnected||!stage.clientWidth)return;
   const n=Math.max(1,s.querySelectorAll(".v1451-friend-page").length),gap=18;
+  if(friendSinglePage()){
+    // Phone: the sheet takes the whole width (the arrows float over its
+    // edges) and the summary scrolls below it.
+    const h=Math.max(200,Math.floor(Math.min(stage.clientWidth/FRIEND_PAGE_RATIO,window.innerHeight*0.82)));
+    s.classList.remove("v1451-stacked");
+    s.style.setProperty("--fp-h",h+"px");
+    s.style.setProperty("--fp-w",Math.floor(h*FRIEND_PAGE_RATIO)+"px");
+    return;
+  }
   const arrows=[...stage.querySelectorAll(".v25-side-nav")].reduce((w,b)=>w+b.offsetWidth,0)+24;
   const W=stage.clientWidth-arrows,H=stage.clientHeight;
   const sideH=Math.min(H,(W-gap*(n-1))/n/FRIEND_PAGE_RATIO);
@@ -1623,7 +1655,28 @@ function fitFriendSpread(){
   s.style.setProperty("--fp-h",h+"px");
   s.style.setProperty("--fp-w",Math.floor(h*FRIEND_PAGE_RATIO)+"px");
 }
-window.addEventListener("resize",()=>{if($("friendBinderDialog")?.open)fitFriendSpread()});
+let friendWasSingle=null;
+window.addEventListener("resize",()=>{
+  if(!$("friendBinderDialog")?.open)return;
+  const single=friendSinglePage();
+  if(friendWasSingle!==null&&single!==friendWasSingle){friendWasSingle=single;renderFriendBinder();return}
+  friendWasSingle=single;fitFriendSpread();
+});
+// Swipe left/right on the sheet turns the page (phone).
+(function friendSwipe(){
+  let x0=null,y0=null;
+  document.addEventListener("touchstart",e=>{
+    if(!e.target.closest?.("#friendBinderDialog .v25-friend-stage")||e.touches.length!==1){x0=null;return}
+    x0=e.touches[0].clientX;y0=e.touches[0].clientY;
+  },{passive:true});
+  document.addEventListener("touchend",e=>{
+    if(x0===null)return;
+    const t=e.changedTouches[0],dx=t.clientX-x0,dy=t.clientY-y0;x0=null;
+    if(Math.abs(dx)<50||Math.abs(dx)<Math.abs(dy)*1.5)return;
+    const b=$(dx<0?"friendBinderNext":"friendBinderPrev");
+    if(b&&!b.disabled)b.click();
+  },{passive:true});
+})();
 // The first measure can run before the full-screen dialog has its size: refit
 // whenever the stage (sheets + arrows) changes size.
 if(window.ResizeObserver){
@@ -1705,7 +1758,7 @@ async function viewFriendBinders(p){
 }
 function viewFriendBinder(p){return viewFriendBinders(p)}
 function setup3d(){const el=$("card3d");el.addEventListener("pointermove",e=>{if(el.classList.contains("flipped"))return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.querySelector(".card-3d-inner").style.transform=`rotateY(${x*18}deg) rotateX(${-y*18}deg)`});el.addEventListener("pointerleave",()=>{if(!el.classList.contains("flipped"))el.querySelector(".card-3d-inner").style.transform="rotateY(0) rotateX(0)"});el.addEventListener("dblclick",()=>el.classList.toggle("flipped"))}
-function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=openFriendsPanel;$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("friendSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchFriends()}});$("friendBinderSelect").onchange=e=>loadFriendBinderSelection(e.target.value,true);$("friendBinderPrev").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;friendViewer.page=friendViewer.page<=2?1:Math.max(2,friendViewer.page-2);renderFriendBinder()};$("friendBinderNext").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;const last=friendBinderLastAnchor(friendViewerPageCount());friendViewer.page=friendViewer.page<=1?Math.min(last,2):Math.min(last,friendViewer.page+2);renderFriendBinder()};$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
+function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=openFriendsPanel;$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("friendSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchFriends()}});$("friendBinderSelect").onchange=e=>loadFriendBinderSelection(e.target.value,true);$("friendBinderPrev").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;friendViewer.page=friendSinglePage()?Math.max(1,friendViewer.page-1):friendViewer.page<=2?1:Math.max(2,friendViewer.page-2);renderFriendBinder()};$("friendBinderNext").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;const last=friendBinderLastAnchor(friendViewerPageCount());friendViewer.page=friendSinglePage()?Math.min(last,friendViewer.page+1):friendViewer.page<=1?Math.min(last,2):Math.min(last,friendViewer.page+2);renderFriendBinder()};$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
 // A new build must not reload the page under an open dialog (unsaved card
 // edits, Master Set builder...). Wait until every dialog is closed.
 function whenNoDialogOpen(fn){

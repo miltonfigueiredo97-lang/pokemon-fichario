@@ -3659,6 +3659,7 @@
         <button class="icon-only" type="button" data-v23-close aria-label="Fechar">×</button>
       </header>
       <p class="v23-reader-state" id="v23ReaderState">Verificando…</p>
+      <section class="v26-activity" aria-live="polite"><div class="v26-activity-head"><strong>O que cada leitor está fazendo</strong><small id="v26ActivityAt"></small></div><div id="v26ReaderActivity"><p class="muted">Carregando…</p></div></section>
       <p class="muted v23-reader-intro">O leitor roda num PC com Windows e busca os preços da Liga/MYP para as cartas na fila. Instale uma vez em cada PC: ele liga sozinho com o Windows e volta sozinho se fechar.</p>
       <div class="v23-reader-steps" id="v23ReaderSteps">
         <div class="v23-reader-step" id="v23ReaderStep1">
@@ -3730,6 +3731,62 @@
     const st=await readerStatusV23();
     renderReaderStateV23(st);
     renderReaderStepsV23(st);
+    watchReaderActivityV26(d);
+  }
+  // Live activity per account (yours and your friends'): PCs online, cards
+  // being read now, queue size and how many were read in the last hour.
+  function agoV26(iso){
+    if(!iso)return 'nunca';
+    const s=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));
+    if(s<60)return 'agora';
+    if(s<3600)return 'há '+Math.round(s/60)+' min';
+    if(s<86400)return 'há '+Math.round(s/3600)+' h';
+    return 'há '+Math.round(s/86400)+' dia(s)';
+  }
+  function readerActivityRowV26(a){
+    const online=a.readers_online>0,reading=Array.isArray(a.reading)?a.reading:[];
+    let state,cls;
+    if(online&&a.processing>0){state='Lendo agora';cls='busy'}
+    else if(online&&a.pending>0){state='Ligado · pegando a próxima carta';cls='busy'}
+    else if(online){state='Ligado · sem nada na fila';cls='idle'}
+    else if(a.pending>0){state='Desligado · cartas paradas na fila';cls='stuck'}
+    else{state='Desligado';cls='off'}
+    const name=a.is_me?'Você':'@'+(a.username||'amigo');
+    const pcs=(a.pcs||[]).map(p=>'<li class="'+(p.online?'on':'')+'"><b>'+esc(p.reader||'PC')+'</b><span>'+(p.online?'ligado':'visto '+agoV26(p.last_seen))+(p.version?' · v'+esc(p.version):'')+'</span></li>').join('');
+    return '<article class="v26-act v26-act-'+cls+'">'+
+      '<header><i></i><strong>'+esc(name)+'</strong><span>'+esc(state)+'</span></header>'+
+      '<div class="v26-act-nums">'+
+        '<div><strong>'+a.pending+'</strong><small>na fila</small></div>'+
+        '<div><strong>'+a.processing+'</strong><small>lendo agora</small></div>'+
+        '<div><strong>'+a.done_hour+'</strong><small>lidas na última hora</small></div>'+
+      '</div>'+
+      (reading.length?'<p class="v26-act-reading">Lendo: '+reading.map(esc).join(', ')+'</p>':'')+
+      (a.waiting_retry>0?'<p class="v26-act-note">'+a.waiting_retry+' carta(s) esperando para tentar de novo.</p>':'')+
+      '<p class="v26-act-note">Último preço lido: '+esc(agoV26(a.last_done_at))+'</p>'+
+      (pcs?'<ul class="v26-act-pcs">'+pcs+'</ul>':'<p class="v26-act-note">Nenhum PC com leitor instalado nesta conta.</p>')+
+    '</article>';
+  }
+  async function loadReaderActivityV26(){
+    const box=byId('v26ReaderActivity');if(!box)return;
+    try{
+      const {data,error}=await db.rpc('pokemon_reader_activity');
+      if(error)throw error;
+      box.innerHTML=(data||[]).length?(data||[]).map(readerActivityRowV26).join(''):'<p class="muted">Entre na sua conta para ver os leitores.</p>';
+      const at=byId('v26ActivityAt');if(at)at.textContent='atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    }catch(e){
+      console.error('[Leitor] atividade',e);
+      if(!box.querySelector('.v26-act'))box.innerHTML='<p class="muted">Não consegui ler a atividade agora.</p>';
+    }
+  }
+  let readerActivityTimerV26=null;
+  V14.openReaderDialog=()=>openReaderDialogV23();
+  function watchReaderActivityV26(d){
+    loadReaderActivityV26();
+    clearInterval(readerActivityTimerV26);
+    readerActivityTimerV26=setInterval(()=>{
+      if(!d.open){clearInterval(readerActivityTimerV26);return}
+      if(!document.hidden)loadReaderActivityV26();
+    },5000);
   }
   let readerConnectingV23=false;
   async function connectReaderV23(){
