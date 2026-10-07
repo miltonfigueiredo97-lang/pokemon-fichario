@@ -2288,3 +2288,6 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 #friendBinderDialog .v25-side-nav:disabled{opacity:.22;cursor:default}
 #friendBinderDialog .v1451-friend-nav strong{font-size:12px}
 @media(max-width:820px){#friendBinderDialog .v25-friend-stage{gap:4px}#friendBinderDialog .v25-side-nav{width:44px;height:44px;font-size:28px}}
+/* V25.6 · arrows hug the sheets: the spread takes only the sheets' size */
+#friendBinderDialog .v25-friend-stage{justify-content:center}
+#friendBinderDialog .v25-friend-stage .v1451-friend-spread{flex:0 0 auto;width:auto;height:auto}

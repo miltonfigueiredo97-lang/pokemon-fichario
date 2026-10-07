@@ -1607,9 +1607,13 @@ function installFriendViewerTools(){
 const FRIEND_PAGE_RATIO=0.735;
 function fitFriendSpread(){
   const s=$("friendBinderSpread");
-  if(!s||!s.isConnected||!s.clientWidth)return;
+  // Sized from the stage (sheets + the two side arrows), so the arrows sit
+  // right next to the sheets whatever their size.
+  const stage=s?.parentElement;
+  if(!s||!stage||!s.isConnected||!stage.clientWidth)return;
   const n=Math.max(1,s.querySelectorAll(".v1451-friend-page").length),gap=18;
-  const W=s.clientWidth,H=s.clientHeight;
+  const arrows=[...stage.querySelectorAll(".v25-side-nav")].reduce((w,b)=>w+b.offsetWidth,0)+24;
+  const W=stage.clientWidth-arrows,H=stage.clientHeight;
   const sideH=Math.min(H,(W-gap*(n-1))/n/FRIEND_PAGE_RATIO);
   const stackH=Math.min((H-gap*(n-1))/n,W/FRIEND_PAGE_RATIO);
   const stacked=n>1&&stackH>sideH*1.15;
