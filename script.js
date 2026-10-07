@@ -1476,12 +1476,49 @@ function friendBinderAnchor(page,pages){
 function friendBinderLastAnchor(pages){
   return friendBinderAnchor(Math.max(1,+pages||1),pages);
 }
+// Friend binder viewer: same tools as the own binder (values on the cards,
+// price mode, status filter, search, sort) plus a summary sidebar.
+function friendUi(){
+  if(!friendViewer.ui)friendViewer.ui={mode:currentPriceMode(),status:"all",showValues:true,sort:"manual_asc",query:""};
+  return friendViewer.ui;
+}
+function friendCurrentBinder(){return friendViewer.binders.find(b=>String(b.id)===String(friendViewer.binderId))||null}
+// The physical binder (pages, pockets, art) when nothing reorders or hides
+// cards; otherwise a list laid out 9 per page, like the own binder.
+function friendIsPhysical(){const u=friendUi();return u.sort==="manual_asc"&&!u.query.trim()&&u.status==="all"}
+function friendNumberValue(v){const m=String(v||"").match(/\d+/);return m?Number(m[0]):999999}
+function friendViewList(){
+  const u=friendUi(),q=norm(u.query||"");
+  let arr=friendViewer.cards.slice();
+  if(u.status!=="all")arr=arr.filter(c=>(c.collection_status||"owned")===u.status);
+  if(q)arr=arr.filter(c=>norm([c.name,c.number,c.set_name,c.rarity].filter(Boolean).join(" ")).includes(q));
+  const mode=u.sort,dir=mode.endsWith("_desc")?-1:1,base=mode.replace(/_(asc|desc)$/,"");
+  const txt=(a,b)=>String(a||"").localeCompare(String(b||""),"pt-BR",{sensitivity:"base"});
+  arr.sort((a,b)=>{
+    let r=0;
+    if(base==="manual")r=(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
+    else if(base==="name")r=txt(a.name,b.name)||friendNumberValue(a.number)-friendNumberValue(b.number);
+    else if(base==="type")r=txt(a.card_type,b.card_type)||txt(a.name,b.name);
+    else if(base==="rarity")r=txt(a.rarity,b.rarity)||txt(a.name,b.name);
+    else if(base==="number")r=txt(a.set_name,b.set_name)||friendNumberValue(a.number)-friendNumberValue(b.number);
+    else if(base==="price")r=priceModeValue(a,u.mode)-priceModeValue(b,u.mode)||txt(a.name,b.name);
+    return r*dir;
+  });
+  return arr;
+}
+function friendViewerPageCount(){
+  const b=friendCurrentBinder();
+  if(!b)return 1;
+  return friendIsPhysical()?Math.max(1,+b.pages||1):Math.max(1,Math.ceil(friendViewList().length/9));
+}
 function friendCardHtml(card){
-  const img=cardImage(card);
-  const status=STATUS[card.collection_status||"owned"]||"";
-  return '<div class="v1451-friend-card" title="'+esc([card.name,card.set_name,card.number].filter(Boolean).join(" · "))+'">'+
+  const u=friendUi(),img=cardImage(card),st=card.collection_status||"owned";
+  const status=STATUS[st]||"",q=Math.max(0,+card.quantity||0),v=priceModeValue(card,u.mode);
+  return '<div class="v1451-friend-card status-'+esc(st)+'" title="'+esc([card.name,card.set_name,card.number].filter(Boolean).join(" · "))+'">'+
     (img?'<img src="'+esc(img)+'" alt="'+esc(card.name||"Carta")+'" loading="lazy">':'<span>'+esc(card.name||"Carta")+'</span>')+
     '<b>'+esc(status)+'</b>'+
+    (st==="owned"&&q>1?'<i class="v25-friend-qty">x'+q+'</i>':'')+
+    (u.showValues&&v>0?'<em class="v25-friend-value">'+(q>1?q+'x ':'')+esc(money(v))+'</em>':'')+
     '</div>';
 }
 // A piece of binder art in a friend's pocket, with the owner's framing.
@@ -1492,31 +1529,78 @@ function friendArtHtml(art,piece){
   if(!crop||!url)return"";
   return '<div class="v21-friend-art" title="'+esc(art.title||"Arte")+'"><img src="'+esc(url)+'" alt="" loading="lazy" style="width:'+crop.width+';height:'+crop.height+';left:'+crop.left+';top:'+crop.top+';object-position:'+crop.objectPosition+'"></div>';
 }
-function friendPageHtml(page){
+function friendPageHtml(page,list){
   let html='<section class="v1451-friend-page" data-page="'+page+'"><span class="v1451-friend-page-number">Página '+page+'</span><div class="v1451-friend-pockets">';
   for(let slot=1;slot<=9;slot++){
-    const card=friendViewer.cards.find(c=>+(c.binder_page||1)===+page&&+(c.binder_slot||0)===slot);
-    const piece=card?null:(friendViewer.pieces||[]).find(p=>+p.page===+page&&+p.slot===slot);
-    const art=piece?(friendViewer.art||[]).find(a=>a.id===piece.art_id):null;
+    let card=null,art=null,piece=null;
+    if(list){card=list[(page-1)*9+slot-1]||null}
+    else{
+      card=friendViewer.cards.find(c=>+(c.binder_page||1)===+page&&+(c.binder_slot||0)===slot);
+      piece=card?null:(friendViewer.pieces||[]).find(p=>+p.page===+page&&+p.slot===slot);
+      art=piece?(friendViewer.art||[]).find(a=>a.id===piece.art_id):null;
+    }
     html+='<div class="v1451-friend-pocket'+(art?' v21-friend-art-pocket':'')+'">'+(card?friendCardHtml(card):art?friendArtHtml(art,piece):'')+'</div>';
   }
   return html+'</div></section>';
 }
 function renderFriendBinder(){
-  const binder=friendViewer.binders.find(b=>String(b.id)===String(friendViewer.binderId));
+  const binder=friendCurrentBinder();
   const spread=$("friendBinderSpread"),label=$("friendBinderPageLabel");
   if(!spread||!binder)return;
-  const pages=Math.max(1,+binder.pages||1);
+  const physical=friendIsPhysical(),list=physical?null:friendViewList();
+  const pages=friendViewerPageCount();
   friendViewer.page=friendBinderAnchor(friendViewer.page,pages);
   const p=friendViewer.page;
   const second=p>=2&&p+1<=pages?p+1:null;
   spread.className="v1451-friend-spread"+(second?" double":"");
-  spread.innerHTML=friendPageHtml(p)+(second?friendPageHtml(second):"");
+  spread.innerHTML=(list&&!list.length)
+    ?'<p class="v25-friend-empty">Nenhuma carta corresponde ao filtro.</p>'
+    :friendPageHtml(p,list)+(second?friendPageHtml(second,list):"");
   label.textContent=second?`Páginas ${p}–${second} · ${pages} páginas`:`Página ${p} · ${pages} páginas`;
-  $("friendBinderMeta").textContent=[binder.binder_kind==="set"?"Master Set":"Fichário",binder.set_name,binder.set_language].filter(Boolean).join(" · ");
+  $("friendBinderMeta").textContent=[binder.binder_kind==="set"?"Master Set":"Fichário",binder.set_name,binder.set_language,physical?"":`${list.length} carta(s) no filtro`].filter(Boolean).join(" · ");
   $("friendBinderPrev").disabled=p<=1;
   $("friendBinderNext").disabled=p>=friendBinderLastAnchor(pages);
+  renderFriendAside();
   requestAnimationFrame(fitFriendSpread);
+}
+// Sidebar like the own "Resumo": completion, status counters that filter,
+// values on/off, price mode and the binder's total value (owned x quantity).
+function renderFriendAside(){
+  const box=$("friendBinderAside");
+  if(!box)return;
+  const u=friendUi(),cards=friendViewer.cards||[];
+  const counts={owned:0,wanted:0,ordered:0,missing:0};
+  cards.forEach(c=>{const s=c.collection_status||"owned";counts[s]=(counts[s]||0)+1});
+  const total=cards.length,pct=total?Math.round(counts.owned/total*100):0;
+  const ownedValue=cards.filter(c=>(c.collection_status||"owned")==="owned").reduce((s,c)=>s+priceModeValue(c,u.mode)*Math.max(+c.quantity||1,1),0);
+  const wantedValue=cards.filter(c=>c.collection_status==="wanted").reduce((s,c)=>s+priceModeValue(c,u.mode),0);
+  const stat=(key,label,n)=>'<button type="button" class="v25-fstat'+(key!=="all"?' status-'+key:'')+(u.status===key?' active':'')+'" data-fstatus="'+key+'"><strong>'+n+'</strong><span>'+label+'</span></button>';
+  box.innerHTML=
+    '<section class="v25-faside-card"><div class="v25-fprogress-top"><strong>'+pct+'%</strong><span>COMPLETO</span></div><div class="v25-fprogress"><i style="width:'+pct+'%"></i></div><p>'+counts.owned+' de '+total+' marcadas como Tenho</p></section>'+
+    '<section class="v25-fstats">'+stat("all","TOTAL",total)+stat("owned","TENHO",counts.owned)+stat("wanted","QUERO",counts.wanted)+stat("ordered","PEDIDO",counts.ordered)+stat("missing","NÃO TENHO",counts.missing)+'</section>'+
+    '<section class="v25-faside-card">'+
+      '<label class="v25-ftoggle"><span>Mostrar valores</span><input type="checkbox" id="friendShowValues"'+(u.showValues?' checked':'')+'></label>'+
+      '<label class="v25-fmode"><span>Valor usado no fichário</span><select id="friendPriceMode"><option value="min"'+(u.mode==="min"?' selected':'')+'>Mínimo</option><option value="avg"'+(u.mode==="avg"?' selected':'')+'>Médio</option><option value="max"'+(u.mode==="max"?' selected':'')+'>Máximo</option></select></label>'+
+      '<div class="v25-fvalue"><span>Valor '+esc(priceModeLabel(u.mode))+' das cartas que tem</span><strong>'+esc(money(ownedValue))+'</strong></div>'+
+      (counts.wanted?'<div class="v25-fvalue small"><span>Valor '+esc(priceModeLabel(u.mode))+' da lista Quero</span><strong>'+esc(money(wantedValue))+'</strong></div>':'')+
+    '</section>';
+}
+function installFriendViewerTools(){
+  const aside=$("friendBinderAside");
+  if(!aside||aside.dataset.ready)return;
+  aside.dataset.ready="1";
+  aside.addEventListener("click",e=>{
+    const b=e.target.closest("[data-fstatus]");
+    if(!b)return;
+    friendUi().status=b.dataset.fstatus;friendViewer.page=1;renderFriendBinder();
+  });
+  aside.addEventListener("change",e=>{
+    if(e.target.id==="friendShowValues"){friendUi().showValues=e.target.checked;renderFriendBinder()}
+    if(e.target.id==="friendPriceMode"){friendUi().mode=e.target.value;renderFriendBinder()}
+  });
+  $("friendBinderSort")?.addEventListener("change",e=>{friendUi().sort=e.target.value;friendViewer.page=1;renderFriendBinder()});
+  let t=null;
+  $("friendBinderSearch")?.addEventListener("input",e=>{clearTimeout(t);t=setTimeout(()=>{friendUi().query=e.target.value;friendViewer.page=1;renderFriendBinder()},180)});
 }
 // Full-screen viewer: both sheets are sized to fit the free space whole (side
 // by side; one above the other on a portrait phone), never cropped/scrolled.
@@ -1548,7 +1632,7 @@ async function loadFriendBinderSelection(id,resetPage=true){
   $("friendBinderSelect").value=String(binder.id);
   $("friendBinderStatus").textContent="Carregando fichário…";
   const{data,error}=await db.from("pokemon_cards")
-    .select("id,name,set_name,number,image_url,market_image_pt,market_image_en,collection_status,binder_page,binder_slot,quantity")
+    .select("id,name,set_name,set_id,number,rarity,card_type,finish,condition,image_url,market_image_pt,market_image_en,collection_status,binder_page,binder_slot,quantity,price_min,price_avg,price_max")
     .eq("user_id",friendViewer.profile.user_id)
     .eq("binder_id",binder.id)
     .order("binder_page")
@@ -1573,7 +1657,10 @@ async function loadFriendBinderSelection(id,resetPage=true){
 }
 async function viewFriendBinders(p){
   if(!p)return;
-  friendViewer={profile:p,binders:[],binderId:null,cards:[],art:[],pieces:[],page:1};
+  friendViewer={profile:p,binders:[],binderId:null,cards:[],art:[],pieces:[],page:1,ui:{mode:currentPriceMode(),status:"all",showValues:true,sort:"manual_asc",query:""}};
+  installFriendViewerTools();
+  if($("friendBinderSort"))$("friendBinderSort").value="manual_asc";
+  if($("friendBinderSearch"))$("friendBinderSearch").value="";
   $("friendBinderTitle").textContent=`@${p.username||"usuário"}`;
   $("friendBinderStatus").textContent="Carregando fichários…";
   $("friendBinderMeta").textContent="";
@@ -1606,7 +1693,7 @@ async function viewFriendBinders(p){
 }
 function viewFriendBinder(p){return viewFriendBinders(p)}
 function setup3d(){const el=$("card3d");el.addEventListener("pointermove",e=>{if(el.classList.contains("flipped"))return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.querySelector(".card-3d-inner").style.transform=`rotateY(${x*18}deg) rotateX(${-y*18}deg)`});el.addEventListener("pointerleave",()=>{if(!el.classList.contains("flipped"))el.querySelector(".card-3d-inner").style.transform="rotateY(0) rotateX(0)"});el.addEventListener("dblclick",()=>el.classList.toggle("flipped"))}
-function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=openFriendsPanel;$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("friendSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchFriends()}});$("friendBinderSelect").onchange=e=>loadFriendBinderSelection(e.target.value,true);$("friendBinderPrev").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;friendViewer.page=friendViewer.page<=2?1:Math.max(2,friendViewer.page-2);renderFriendBinder()};$("friendBinderNext").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;const last=friendBinderLastAnchor(b.pages);friendViewer.page=friendViewer.page<=1?Math.min(last,2):Math.min(last,friendViewer.page+2);renderFriendBinder()};$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
+function bindEvents(){$("tabLogin").onclick=()=>setAuthMode("login");$("tabSignup").onclick=()=>setAuthMode("signup");$("authForm").onsubmit=handleAuth;$("btnLogout").onclick=()=>db.auth.signOut();$("btnOpenAdd").onclick=()=>openAddForPosition(currentPage);$("btnMobileScan").onclick=()=>openAddForPosition(currentPage);$("prevPage").onclick=()=>goToPage(currentPage-1);$("nextPage").onclick=()=>goToPage(currentPage+1);$("btnPages").onclick=()=>{renderPagesGrid();openDialog("pagesDialog")};$("btnAddPage").onclick=addPage;$("btnAddPageModal").onclick=addPage;$("btnBackground").onclick=()=>openDialog("appearanceDialog");$("btnSummarySettings").onclick=()=>openDialog("appearanceDialog");$("btnSaveAppearance").onclick=saveAppearance;document.querySelectorAll(".theme-swatch").forEach(b=>b.onclick=()=>{document.querySelectorAll(".theme-swatch").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("binderStage").className=`binder-stage theme-${b.dataset.theme}`});$("showValues").onchange=async e=>{await updateSettings({show_values:e.target.checked},true);renderAll()};$("priceMode").onchange=async e=>{const mode=normalizedPriceMode(e.target.value);await updateSettings({display_price_mode:mode,total_price_mode:mode},true);renderBinder();renderSummary()};document.querySelectorAll("[data-status-filter]").forEach(b=>b.onclick=()=>setStatusFilter(b.dataset.statusFilter));$("btnExport").onclick=exportCSV;$("btnPrint").onclick=()=>window.print();$("btnSearchCards").onclick=()=>searchCards();$("searchName").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(catalogSearchTimer);searchCards()}});["searchName","searchNumber"].forEach(id=>$(id).addEventListener("input",()=>queueLiveCatalogSearch()));$("searchLanguage").addEventListener("change",()=>queueLiveCatalogSearch(80));$("resultRarityFilter").onchange=renderCatalog;$("btnClearSelection").onclick=()=>{catalogSelection.clear();renderCatalog();updateSelectionTray()};$("btnAddSelected").onclick=addSelectedCards;$("btnUsePhotoHints").onclick=usePhotoHints;$("cardPhoto").onchange=()=>{$("ocrStatus").textContent="Foto pronta. Toque em Ler foto."};document.querySelectorAll("[data-card-status]").forEach(b=>b.onclick=()=>setSelectedStatus(b.dataset.cardStatus));$("btnSaveCard").onclick=saveSelectedCard;$("btnDeleteSelected").onclick=deleteSelectedCard;$("btnFriends").onclick=$("btnMobileFriends").onclick=$("btnMobileProfile").onclick=openFriendsPanel;$("btnSaveProfile").onclick=saveProfile;$("btnSearchFriends").onclick=searchFriends;$("friendSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchFriends()}});$("friendBinderSelect").onchange=e=>loadFriendBinderSelection(e.target.value,true);$("friendBinderPrev").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;friendViewer.page=friendViewer.page<=2?1:Math.max(2,friendViewer.page-2);renderFriendBinder()};$("friendBinderNext").onclick=()=>{const b=friendViewer.binders.find(x=>String(x.id)===String(friendViewer.binderId));if(!b)return;const last=friendBinderLastAnchor(friendViewerPageCount());friendViewer.page=friendViewer.page<=1?Math.min(last,2):Math.min(last,friendViewer.page+2);renderFriendBinder()};$("btnMobileSummary").onclick=()=>$("summaryPanel").classList.add("mobile-open");$("btnCloseSummary").onclick=()=>$("summaryPanel").classList.remove("mobile-open");document.addEventListener("click",e=>{const c=e.target.closest("[data-close]");if(c)closeDialog(c.dataset.close);if(!e.target.closest("#cardContextMenu"))hideContext()});$("cardContextMenu").addEventListener("click",e=>{const b=e.target.closest("[data-ctx]");if(b)contextAction(b.dataset.ctx)});setup3d()}
 // A new build must not reload the page under an open dialog (unsaved card
 // edits, Master Set builder...). Wait until every dialog is closed.
 function whenNoDialogOpen(fn){

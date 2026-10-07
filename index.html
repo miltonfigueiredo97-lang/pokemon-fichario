@@ -9,15 +9,15 @@
   <title>Pokémon Binder BR</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=25.3">
-  <link rel="stylesheet" href="v8.css?v=25.3">
-  <link rel="stylesheet" href="v11fix.css?v=25.3">
-  <link rel="stylesheet" href="v12.css?v=25.3">
-  <link rel="stylesheet" href="v122.css?v=25.3">
-  <link rel="stylesheet" href="v140.css?v=25.3">
-  <link rel="stylesheet" href="fx/pokemon-cards.css?v=25.3">
+  <link rel="stylesheet" href="style.css?v=25.4">
+  <link rel="stylesheet" href="v8.css?v=25.4">
+  <link rel="stylesheet" href="v11fix.css?v=25.4">
+  <link rel="stylesheet" href="v12.css?v=25.4">
+  <link rel="stylesheet" href="v122.css?v=25.4">
+  <link rel="stylesheet" href="v140.css?v=25.4">
+  <link rel="stylesheet" href="fx/pokemon-cards.css?v=25.4">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>window.POKEMON_BINDER_BUILD='V25.3';
+  <script>window.POKEMON_BINDER_BUILD='V25.4';
     // Static hosting (GitHub Pages): the light endpoints run on Supabase.
     window.PF_API_BASE='https://ryylegveltrypqclimqo.supabase.co/functions/v1/api/';
     // Saved cards and server answers still carry "/api/..." image links: point
@@ -122,7 +122,7 @@
 
       <aside class="summary-panel" id="summaryPanel">
         <div class="summary-head">
-          <div><p class="kicker">Coleção</p><h2 class="summary-title-row">Resumo <span id="appBuildVersion" class="app-build-version" title="Versão do app">v25.3</span></h2></div>
+          <div><p class="kicker">Coleção</p><h2 class="summary-title-row">Resumo <span id="appBuildVersion" class="app-build-version" title="Versão do app">v25.4</span></h2></div>
           <button id="btnCloseSummary" class="icon-only mobile-only" type="button">×</button>
         </div>
         <section class="progress-card">
@@ -305,8 +305,23 @@
         <div><p class="kicker">Fichários de amigo</p><h2 id="friendBinderTitle">@usuário</h2><p id="friendBinderStatus" class="muted compact-copy">Somente leitura</p></div>
         <button class="icon-only" data-close="friendBinderDialog" type="button">×</button>
       </div>
-      <div class="v1451-friend-toolbar">
+      <div class="v1451-friend-toolbar v25-friend-toolbar">
         <select id="friendBinderSelect" aria-label="Fichário do amigo"></select>
+        <label class="v25-friend-search" title="Pesquisar dentro deste fichário"><span>⌕</span><input id="friendBinderSearch" type="search" autocomplete="off" placeholder="Buscar carta…"></label>
+        <select id="friendBinderSort" aria-label="Ordenação">
+          <option value="manual_asc">Ordem do fichário · 0 → X</option>
+          <option value="manual_desc">Ordem do fichário · X → 0</option>
+          <option value="name_asc">Alfabética · A → Z</option>
+          <option value="name_desc">Alfabética · Z → A</option>
+          <option value="type_asc">Tipo · A → Z</option>
+          <option value="type_desc">Tipo · Z → A</option>
+          <option value="rarity_asc">Raridade · A → Z</option>
+          <option value="rarity_desc">Raridade · Z → A</option>
+          <option value="number_asc">Número da coleção · 0 → X</option>
+          <option value="number_desc">Número da coleção · X → 0</option>
+          <option value="price_asc">Preço · menor → maior</option>
+          <option value="price_desc">Preço · maior → menor</option>
+        </select>
         <span id="friendBinderMeta"></span>
         <div class="v1451-friend-nav">
           <button id="friendBinderPrev" type="button" aria-label="Páginas anteriores">‹</button>
@@ -314,18 +329,21 @@
           <button id="friendBinderNext" type="button" aria-label="Próximas páginas">›</button>
         </div>
       </div>
-      <div id="friendBinderSpread" class="v1451-friend-spread"></div>
+      <div class="v25-friend-body">
+        <div id="friendBinderSpread" class="v1451-friend-spread"></div>
+        <aside id="friendBinderAside" class="v25-friend-aside" aria-label="Resumo do fichário do amigo"></aside>
+      </div>
       <p class="v1451-readonly-note">Você pode navegar pelos fichários, mas somente o dono pode editar, mover, adicionar ou remover cartas.</p>
     </div>
   </dialog>
 
   <div id="cardContextMenu" class="context-menu hidden"><button data-ctx="view">Detalhes da carta</button><button data-ctx="owned" title="Você tem esta carta (aparece colorida)">Marcar como Tenho</button><button data-ctx="wanted" title="Você quer esta carta e ainda não tem (aparece em preto e branco)">Marcar como Quero</button><button data-ctx="ordered" title="Você já comprou e está esperando chegar (borda azul)">Marcar como Pedido (a caminho)</button><button data-ctx="move">Mover para...</button><hr><button data-ctx="delete" class="danger-text">Remover carta</button></div>
   <div id="toast" class="toast"></div>
-  <script src="script.js?v=25.3"></script>
-  <script src="v8.js?v=25.3"></script>
-  <script src="v11fix.js?v=25.3"></script>
-  <script src="v12.js?v=25.3"></script>
-  <script src="v122.js?v=25.3"></script>
-  <script src="v140.js?v=25.3"></script>
+  <script src="script.js?v=25.4"></script>
+  <script src="v8.js?v=25.4"></script>
+  <script src="v11fix.js?v=25.4"></script>
+  <script src="v12.js?v=25.4"></script>
+  <script src="v122.js?v=25.4"></script>
+  <script src="v140.js?v=25.4"></script>
 </body>
 </html>
