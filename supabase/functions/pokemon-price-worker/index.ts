@@ -922,7 +922,17 @@ async function processCard(db: any, card: any) {
       return await requeue(db, card, 6 * 3600, "budget_wait", "budget:limite mensal gratuito atingido");
     }
 
-    // Blocked, timeout or engine failure: transient.
+    // MYP rate limit (HTTP 429): the card is fine, MYP asked to slow down.
+    // Wait longer and do not count it as an attempt, so a big import never
+    // ends up with cards dropped from the queue as "unavailable".
+    if (error === "myp_blocked") {
+      const waitS = Math.min(3600, 600 * Math.max(1, Math.floor(attempts / 2)));
+      return await requeue(db, card, waitS, "retry_wait", "myp:" + error + (message ? ":" + message : ""), {
+        price_attempts: Math.max(0, attempts - 1),
+      });
+    }
+
+    // Timeout or engine failure: transient.
     if (attempts >= MAX_ATTEMPTS) {
       return await finishNoQuote(db, card, "myp:indisponivel:" + error + (message ? ":" + message : ""));
     }
