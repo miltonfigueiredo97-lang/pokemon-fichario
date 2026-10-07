@@ -1623,6 +1623,13 @@ function fitFriendSpread(){
   s.style.setProperty("--fp-w",Math.floor(h*FRIEND_PAGE_RATIO)+"px");
 }
 window.addEventListener("resize",()=>{if($("friendBinderDialog")?.open)fitFriendSpread()});
+// The first measure can run before the full-screen dialog has its size: refit
+// whenever the stage (sheets + arrows) changes size.
+if(window.ResizeObserver){
+  const stageObserver=new ResizeObserver(()=>fitFriendSpread());
+  const watchStage=()=>{const st=document.querySelector("#friendBinderDialog .v25-friend-stage");if(st)stageObserver.observe(st);else setTimeout(watchStage,500)};
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",watchStage);else watchStage();
+}
 document.addEventListener("keydown",e=>{
   if(!$("friendBinderDialog")?.open||e.target?.closest?.("input,select,textarea"))return;
   if(e.key==="ArrowLeft"&&!$("friendBinderPrev").disabled){e.preventDefault();$("friendBinderPrev").click()}
