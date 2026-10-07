@@ -3744,11 +3744,12 @@
     return 'há '+Math.round(s/86400)+' dia(s)';
   }
   function readerActivityRowV26(a){
-    const online=a.readers_online>0,reading=Array.isArray(a.reading)?a.reading:[];
+    const own=a.readers_online>0,helped=!own&&a.helpers_online>0,online=own||helped;
+    const reading=Array.isArray(a.reading)?a.reading:[];
     let state,cls;
-    if(online&&a.processing>0){state='Lendo agora';cls='busy'}
-    else if(online&&a.pending>0){state='Ligado · pegando a próxima carta';cls='busy'}
-    else if(online){state='Ligado · sem nada na fila';cls='idle'}
+    if(online&&a.processing>0){state=helped?'Lendo pelo leitor de amigo':'Lendo agora';cls='busy'}
+    else if(online&&a.pending>0){state=helped?'Leitor de amigo pegando a próxima carta':'Ligado · pegando a próxima carta';cls='busy'}
+    else if(online){state=helped?'Leitor de amigo ligado · fila vazia':'Ligado · sem nada na fila';cls='idle'}
     else if(a.pending>0){state='Desligado · cartas paradas na fila';cls='stuck'}
     else{state='Desligado';cls='off'}
     const name=a.is_me?'Você':'@'+(a.username||'amigo');
@@ -3764,6 +3765,8 @@
       (a.waiting_retry>0?'<p class="v26-act-note">'+a.waiting_retry+' carta(s) esperando para tentar de novo.</p>':'')+
       '<p class="v26-act-note">Último preço lido: '+esc(agoV26(a.last_done_at))+'</p>'+
       (pcs?'<ul class="v26-act-pcs">'+pcs+'</ul>':'<p class="v26-act-note">Nenhum PC com leitor instalado nesta conta.</p>')+
+      (a.is_me?'':'<div class="v26-act-share'+(a.helped_by_me?' on':'')+'"><span>'+(a.helped_by_me?'Seu leitor também lê as cartas de '+esc(name)+' (as suas vêm primeiro).':'Seu leitor não lê as cartas de '+esc(name)+'.')+'</span>'+
+        '<button type="button" class="action-btn'+(a.helped_by_me?'':' primary')+'" data-v26-share="'+esc(a.user_id)+'" data-on="'+(a.helped_by_me?'0':'1')+'">'+(a.helped_by_me?'Parar de ler':'Ler com meu leitor')+'</button></div>')+
     '</article>';
   }
   async function loadReaderActivityV26(){
@@ -3779,6 +3782,18 @@
     }
   }
   let readerActivityTimerV26=null;
+  document.addEventListener('click',async e=>{
+    const b=e.target.closest?.('[data-v26-share]');
+    if(!b)return;
+    b.disabled=true;
+    const on=b.dataset.on==='1';
+    try{
+      const {error}=await db.rpc('pokemon_set_reader_share',{p_friend:b.dataset.v26Share,p_on:on});
+      if(error)throw error;
+      toast(on?'Pronto: seu leitor vai ler as cartas desse amigo depois das suas.':'Seu leitor parou de ler as cartas desse amigo.');
+    }catch(err){console.error('[Leitor] compartilhar',err);toast('Não consegui mudar agora.')}
+    await loadReaderActivityV26();
+  });
   V14.openReaderDialog=()=>openReaderDialogV23();
   function watchReaderActivityV26(d){
     loadReaderActivityV26();

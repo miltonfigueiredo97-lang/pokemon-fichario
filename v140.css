@@ -2358,3 +2358,8 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
   #friendBinderDialog .v25-fstat span{font-size:10px}
   #friendBinderDialog .v25-faside-card p,#friendBinderDialog .v25-ftoggle,#friendBinderDialog .v25-fmode{font-size:13px}
 }
+.v26-act-share{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid var(--line2)}
+.v26-act-share span{font-size:12px;color:var(--muted)}
+.v26-act-share.on span{color:#8ff0b0}
+.v26-act-share .action-btn{flex:none;white-space:nowrap}
+@media(max-width:520px){.v26-act-share{flex-direction:column;align-items:stretch}}

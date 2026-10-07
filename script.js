@@ -1431,9 +1431,9 @@ async function loadFriendReaderBadges(){
     if(!item)return;
     let b=item.querySelector(".v26-friend-reader");
     if(!b){b=document.createElement("button");b.type="button";b.className="v26-friend-reader";b.title="Ver o que o leitor está fazendo";b.onclick=()=>window.PB14?.openReaderDialog?.();item.appendChild(b)}
-    const on=a.readers_online>0;
-    const st=on&&a.processing>0?["busy",`Leitor lendo ${a.processing} carta(s) · ${a.pending} na fila`]:
-      on?["idle",a.pending?`Leitor ligado · ${a.pending} na fila`:"Leitor ligado · fila vazia"]:
+    const on=a.readers_online>0||a.helpers_online>0,who=a.readers_online>0?"Leitor":a.helped_by_me?"Seu leitor":"Leitor de amigo";
+    const st=on&&a.processing>0?["busy",`${who} lendo ${a.processing} carta(s) · ${a.pending} na fila`]:
+      on?["idle",a.pending?`${who} ligado · ${a.pending} na fila`:`${who} ligado · fila vazia`]:
       a.pending?["stuck",`Leitor desligado · ${a.pending} carta(s) paradas na fila`]:["off","Leitor desligado"];
     b.dataset.state=st[0];b.textContent=st[1];
   });
