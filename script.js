@@ -1561,6 +1561,7 @@ function renderFriendBinder(){
   $("friendBinderPrev").disabled=p<=1;
   $("friendBinderNext").disabled=p>=friendBinderLastAnchor(pages);
   renderFriendAside();
+  fitFriendSpread();
   requestAnimationFrame(fitFriendSpread);
 }
 // Sidebar like the own "Resumo": completion, status counters that filter,
