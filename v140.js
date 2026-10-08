@@ -178,7 +178,8 @@
   function rarityFilterTagsV1603(card){
     const tags=new Map();
     const add=(key,label)=>{if(key&&label)tags.set(key,label)};
-    const rarity=String(card?.rarity||'').trim();
+    const rawRarity=String(card?.rarity||'').trim();
+    const rarity=/^(none|null|undefined|-)$/i.test(rawRarity)?'':rawRarity;
     const finish=String(card?.finish||'').trim();
     if(rarity)add('rarity:'+nrm(rarity),rarity);
     if(finish)add('finish:'+nrm(finish),finish);
