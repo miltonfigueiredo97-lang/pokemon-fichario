@@ -812,8 +812,26 @@ function classic30ScanUrl(apiId){
   const code="pokemon_30cc_"+num.padStart(3,"0")+"_"+total;
   return"https://img.mypcards.com/img/2/2980/"+code+"/"+code+"_en.jpg";
 }
+// MYP has the scan of every Celebrations Classic Collection reprint (with the
+// 25th-anniversary stamp), named by the original number padded to three
+// digits (114/114 -> pokemon_ccc_114/114). Exceptions: the promo Pikachu has
+// no total and MYP files M Rayquaza-EX 76/108 as 061/108.
+function classic25ScanUrl(apiId){
+  const local=String(apiId||"").match(/^cel25cc-(CC\d{3})$/)?.[1];
+  const orig=local&&SPECIAL_ORIGINAL_NUMBERS.cel25cc[local];
+  if(!orig)return"";
+  const [num,total]=orig.split("/");
+  const code=local==="CC024"?"pokemon_ccc_061/108":"pokemon_ccc_"+num.padStart(3,"0")+(total?"/"+total:"");
+  return"https://img.mypcards.com/img/2/1608/"+code+"/"+code+"_en.jpg";
+}
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
+  const classic25=classic25ScanUrl(card.apiId);
+  if(classic25){
+    card.imageUrl=classic25;
+    card.imageFallbackSource="MYP Cards · Coleção Clássica";
+    return card;
+  }
   const classicOriginal=CLASSIC_ORIGINAL_IDS[card.apiId];
   if(classicOriginal){
     try{

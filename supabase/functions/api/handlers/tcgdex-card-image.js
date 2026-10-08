@@ -19,6 +19,15 @@ const TCGDEX='https://api.tcgdex.net/v2';
 // its TCGplayer link points at the yellow Celebrations card of the same
 // Pokémon (CC021 Zekrom -> 010/025). The reprint looks like the original
 // print, so its scan is used.
+// MYP code of each reprint (number padded to 3 digits; MYP files M Rayquaza-EX
+// 76/108 as 061/108).
+const CLASSIC_MYP_CODES={
+  'cel25cc-CC001':'002/102','cel25cc-CC002':'004/102','cel25cc-CC003':'015/102','cel25cc-CC004':'073/102','cel25cc-CC005':'008/82',
+  'cel25cc-CC006':'015/82','cel25cc-CC007':'015/132','cel25cc-CC008':'024','cel25cc-CC009':'020/111','cel25cc-CC010':'066/64',
+  'cel25cc-CC011':'009/95','cel25cc-CC012':'086/109','cel25cc-CC013':'088/92','cel25cc-CC014':'093/101','cel25cc-CC015':'017/17',
+  'cel25cc-CC016':'015/106','cel25cc-CC017':'109/111','cel25cc-CC018':'145/147','cel25cc-CC019':'107/123','cel25cc-CC020':'113/114',
+  'cel25cc-CC021':'114/114','cel25cc-CC022':'054/99','cel25cc-CC023':'097/146','cel25cc-CC024':'061/108','cel25cc-CC025':'060/145'
+};
 const CLASSIC_ORIGINALS={
   'cel25cc-CC001':'base1-2','cel25cc-CC002':'base1-4','cel25cc-CC003':'base1-15','cel25cc-CC004':'base1-73','cel25cc-CC005':'base5-8',
   'cel25cc-CC006':'base5-15','cel25cc-CC007':'gym2-15','cel25cc-CC008':'basep-24','cel25cc-CC009':'neo1-20','cel25cc-CC010':'neo3-66',
@@ -68,6 +77,19 @@ module.exports=async function handler(req,res){
 
   const langs=[requestedLang==='pt-br'?'pt':requestedLang,'en'].filter((v,i,a)=>v&&a.indexOf(v)===i);
 
+  // Classic Collection: MYP's scan of the reprint itself (25th stamp) first.
+  const classicNumber=CLASSIC_MYP_CODES[id];
+  if(classicNumber){
+    const code='pokemon_ccc_'+classicNumber;
+    const image=await fetchImage('https://img.mypcards.com/img/2/1608/'+code+'/'+code+'_en.jpg');
+    if(image){
+      res.setHeader('Content-Type',image.type);
+      res.setHeader('Content-Length',String(image.bytes.length));
+      res.setHeader('Cache-Control','public, s-maxage=604800, stale-while-revalidate=2592000');
+      res.setHeader('X-Card-Image-Source','MYP Cards classic collection');
+      return res.status(200).send(image.bytes);
+    }
+  }
   const original=CLASSIC_ORIGINALS[id];
   if(original){
     for(const lang of langs){
