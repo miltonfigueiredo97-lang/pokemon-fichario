@@ -6852,6 +6852,86 @@
     setTimeout(positionUnifiedTopbar,60);
   }
 
+  // ---------------------------------------------------------------- V31
+  // A friend's card, right click (or long press) -> "Copiar para…" one of
+  // your binders. Into the Lista de Desejos it goes as "Quero"; into any other
+  // binder as "Tenho". It takes the first free pocket (a new page if full).
+  function firstFreePocketV31(binder){
+    const used=new Set(V14.allCards.filter(c=>c.binder_id===binder.id&&c.binder_slot!=null).map(c=>(+c.binder_page||1)+':'+(+c.binder_slot)));
+    const pages=Math.max(1,+binder.pages||1);
+    for(let page=1;page<=pages;page++)for(let slot=1;slot<=9;slot++){
+      if(!used.has(page+':'+slot)&&!artPieceAt(binder.id,page,slot))return{page,slot};
+    }
+    return{page:pages+1,slot:1};
+  }
+  async function copyFriendCardV31(card,binderId){
+    if(!card||!currentUser)return;
+    let binder=binderId==='wishlist'?(wishlistBinder()||await ensureWishlistBinder()):V14.binders.find(b=>b.id===binderId);
+    if(!binder)return toast('Fichário não encontrado.');
+    const wishlist=binder.binder_kind==='wishlist';
+    if(wishlist&&wishlistCardMatch(card))return toast('Essa carta já está na sua Lista de Desejos.');
+    const pos=firstFreePocketV31(binder);
+    if(pos.page>(+binder.pages||1)){
+      const {error}=await db.from('pokemon_binders').update({pages:pos.page,updated_at:new Date().toISOString()}).eq('id',binder.id).eq('user_id',currentUser.id);
+      if(error)return toast('Não consegui ampliar o fichário.');
+      binder.pages=pos.page;
+    }
+    const payload={...card};
+    for(const k of ['id','created_at','updated_at','user_id','stack_of','price_batch_id','price_batch_started_at','price_processing_at'])delete payload[k];
+    for(const k of Object.keys(payload))if(k.startsWith('_'))delete payload[k];
+    Object.assign(payload,{
+      user_id:currentUser.id,binder_id:binder.id,binder_page:pos.page,binder_slot:pos.slot,
+      collection_status:wishlist?'wanted':'owned',quantity:wishlist?0:1,is_favorite:false,myp_link_tried:[]
+    });
+    const hasPrice=Number(card.price_min||card.price_avg||card.price_max||0)>0;
+    payload.price_pending=!hasPrice;
+    payload.price_requested_at=new Date().toISOString();
+    payload.price_next_retry_at=hasPrice?null:payload.price_requested_at;
+    payload.price_attempts=0;payload.price_priority=hasPrice?0:5000;
+    payload.price_progress=hasPrice?100:0;payload.price_progress_stage=hasPrice?'complete':'queued';
+    const {data,error}=await db.from('pokemon_cards').insert(payload).select('*').single();
+    if(error){console.error('[Copiar carta]',error);return toast('Não consegui copiar a carta: '+(error.message||'erro'))}
+    V14.allCards.push(data);
+    collection=physicalCollection();
+    renderAll();
+    if(payload.price_pending)kickPriceWorkerNow();
+    toast('Copiada para “'+(binder.name||'Lista de Desejos')+'” como '+(wishlist?'Quero':'Tenho')+' · página '+pos.page+', bolso '+pos.slot+'.');
+  }
+  function friendCardMenuV31(card,x,y){
+    let m=byId('v31FriendMenu');
+    if(!m){
+      m=document.createElement('div');
+      m.id='v31FriendMenu';
+      m.className='v31-friend-menu';
+      m.setAttribute('role','menu');
+      document.addEventListener('pointerdown',e=>{if(!e.target.closest?.('#v31FriendMenu'))m.classList.add('hidden')},true);
+      document.addEventListener('keydown',e=>{if(e.key==='Escape')m.classList.add('hidden')});
+    }
+    // Inside the open dialog so it is not hidden behind its top layer.
+    const host=byId('friendCardDialog')?.open?byId('friendCardDialog'):byId('friendBinderDialog')||document.body;
+    if(m.parentNode!==host)host.appendChild(m);
+    const own=V14.binders.filter(b=>b.binder_kind!=='wishlist');
+    m.innerHTML='<p>Copiar “'+esc(card.name||'carta')+'” para…</p>'+
+      '<button type="button" role="menuitem" data-v31-to="wishlist">♡ Lista de Desejos <small>como Quero</small></button>'+
+      own.map(b=>'<button type="button" role="menuitem" data-v31-to="'+esc(b.id)+'">'+esc(b.name||'Fichário')+' <small>como Tenho</small></button>').join('');
+    m.querySelectorAll('[data-v31-to]').forEach(btn=>btn.onclick=async()=>{
+      m.classList.add('hidden');
+      await copyFriendCardV31(card,btn.dataset.v31To);
+    });
+    m.classList.remove('hidden');
+    const w=m.offsetWidth||220,h=m.offsetHeight||200;
+    m.style.left=Math.max(8,Math.min(x,innerWidth-w-8))+'px';
+    m.style.top=Math.max(8,Math.min(y,innerHeight-h-8))+'px';
+  }
+  document.addEventListener('contextmenu',e=>{
+    const el=e.target.closest?.('#friendBinderDialog [data-fcard]');
+    if(!el)return;
+    const card=(typeof friendViewer!=='undefined'?friendViewer.cards:[]).find(c=>String(c.id)===String(el.dataset.fcard));
+    if(!card)return;
+    e.preventDefault();e.stopPropagation();
+    friendCardMenuV31(card,e.clientX,e.clientY);
+  },true);
+
   patchFunctions();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootV14);
   else bootV14();
