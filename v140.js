@@ -87,7 +87,7 @@
   function binderViewScope(){
     return ['all','owned','missing'].includes(V14.viewScope)?V14.viewScope:'all';
   }
-  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!V14.binderSearchQuery&&!(V14.rarityFilters?.size)}
+  function canMove(){return !isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!V14.binderSearchQuery&&!(V14.rarityFilters?.size)&&!pocketViewVirtualV28()}
   function binderForCard(card){return V14.binders.find(b=>b.id===card?.binder_id)||null}
   function currentBinderPages(){
     const b=activeBinder();
@@ -221,6 +221,121 @@
     const clear=byId('v1603RarityClear');
     if(clear)clear.disabled=!V14.rarityFilters.size;
   }
+  // ---------------------------------------------------------------- V28
+  // Pocket view of a Master Set: one pocket per variant or one per card
+  // (variants of a card together). Only a view: when it differs from how the
+  // binder was built (stack_of rows = built "per card"), the binder is shown
+  // as an ordered list, like a sort, and nothing moves in the database.
+  function physicalPocketLayoutV28(binder){
+    return binder&&V14.allCards.some(c=>c.binder_id===binder.id&&c.stack_of)?'card':'variant';
+  }
+  function variantKeyV28(c){
+    const lang=nrm(c.language_code||'');
+    return c.api_id?[c.api_id,lang].join('|'):[lang,nrm(c.set_id||c.set_name||''),nrm(c.number||''),nrm(c.name||'')].join('|');
+  }
+  // Whether the binder has variants that one view or the other would group.
+  function hasVariantsV28(binder){
+    if(!binder||isGeneral()||isWishlistBinder())return false;
+    if(physicalPocketLayoutV28(binder)==='card')return true;
+    const seen=new Set();
+    for(const c of V14.allCards){
+      if(c.binder_id!==binder.id)continue;
+      const k=variantKeyV28(c);
+      if(seen.has(k))return true;
+      seen.add(k);
+    }
+    return false;
+  }
+  function pocketViewV28(binder=activeBinder()){
+    if(!binder)return 'variant';
+    return binder.pocket_view==='card'||binder.pocket_view==='variant'?binder.pocket_view:physicalPocketLayoutV28(binder);
+  }
+  function pocketViewVirtualV28(){
+    const b=activeBinder();
+    if(!b||isGeneral()||isWishlistBinder())return false;
+    return pocketViewV28(b)!==physicalPocketLayoutV28(b);
+  }
+  // Cards of the active binder as the pockets of the chosen view.
+  function pocketViewCardsV28(physical){
+    const roots=physical.filter(c=>!c.stack_of);
+    if(!pocketViewVirtualV28()){V14.virtualStacksV28=null;return roots}
+    const byPos=(a,b)=>(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
+    const out=[];
+    if(pocketViewV28()==='variant'){
+      // Built per card, shown per variant: each variant in its own pocket,
+      // right after the card it was stacked with.
+      V14.virtualStacksV28=null;
+      for(const root of roots.slice().sort(byPos)){
+        out.push({...root,_noStack:true,_vpos:out.length});
+        for(const child of physical.filter(c=>c.stack_of===root.id))out.push({...child,_noStack:true,_vpos:out.length});
+      }
+      return out;
+    }
+    // Built per variant, shown per card: the variants of a card share one
+    // pocket, showing an owned one when there is one.
+    const groups=new Map(),order=[];
+    for(const c of roots.slice().sort(byPos)){
+      const k=variantKeyV28(c);
+      if(!groups.has(k)){groups.set(k,[]);order.push(k)}
+      groups.get(k).push(c);
+    }
+    V14.virtualStacksV28=new Map();
+    for(const k of order){
+      const rows=groups.get(k);
+      const ownedIx=rows.findIndex(r=>(r.collection_status||'owned')==='owned');
+      if(ownedIx>0)rows.unshift(rows.splice(ownedIx,1)[0]);
+      const head=rows[0];
+      if(rows.length>1)V14.virtualStacksV28.set(head.id,rows.map(r=>r.id));
+      out.push({...head,_vpos:out.length});
+    }
+    return out;
+  }
+  async function setPocketViewV28(view){
+    const b=activeBinder();if(!b)return;
+    const before=b.pocket_view;
+    b.pocket_view=view===physicalPocketLayoutV28(b)?null:view;
+    currentPage=1;
+    renderAll();renderPagesGrid();
+    const {error}=await db.from('pokemon_binders').update({pocket_view:b.pocket_view,updated_at:new Date().toISOString()}).eq('id',b.id).eq('user_id',currentUser.id);
+    if(error){
+      console.error('[Bolsos]',error);
+      b.pocket_view=before;renderAll();renderPagesGrid();
+      toast('Não consegui salvar a visualização.');
+    }
+  }
+  function renderPocketViewUIV28(){
+    const list=document.querySelector('#summaryPanel .status-filter-list');
+    if(!list)return;
+    let box=byId('v28PocketView');
+    if(!box){
+      box=document.createElement('div');
+      box.id='v28PocketView';
+      box.className='v28-pocket-view';
+      box.innerHTML='<span>Bolsos no fichário</span><div role="group" aria-label="Bolsos no fichário">'+
+        '<button type="button" data-v28-view="variant" title="Normal, Holo, Reverse… cada variante no seu bolso">Um por variante</button>'+
+        '<button type="button" data-v28-view="card" title="As variantes da mesma carta juntas num bolso só">Um por carta</button></div>'+
+        '<small id="v28PocketHint"></small>';
+      const anchor=document.querySelector('#summaryPanel .v14-binder-view-scope')||list;
+      anchor.parentElement.insertBefore(box,anchor);
+      box.addEventListener('click',e=>{
+        const b=e.target.closest('[data-v28-view]');
+        if(b&&!b.classList.contains('active'))setPocketViewV28(b.dataset.v28View);
+      });
+    }
+    const binder=activeBinder();
+    const show=hasVariantsV28(binder);
+    box.classList.toggle('hidden',!show);
+    if(!show)return;
+    const view=pocketViewV28(binder);
+    box.querySelectorAll('[data-v28-view]').forEach(b=>{
+      const on=b.dataset.v28View===view;
+      b.classList.toggle('active',on);
+      b.setAttribute('aria-pressed',on?'true':'false');
+    });
+    const hint=byId('v28PocketHint');
+    if(hint)hint.textContent=pocketViewVirtualV28()?'Só visualização: para arrastar cartas, volte para “'+(physicalPocketLayoutV28(binder)==='card'?'Um por carta':'Um por variante')+'”.':'';
+  }
+
   function ensureRarityFilterUIV1603(){
     if(byId('v1603RarityFilter'))return;
     const list=document.querySelector('#summaryPanel .status-filter-list');
@@ -242,7 +357,7 @@
 
   function orderedViewCards(){
     const physical=physicalCollection();
-    let arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(physical.filter(c=>!c.stack_of))];
+    let arr=isGeneral()?viewScopedCards(groupedVirtualCards(physical)):[...viewScopedCards(pocketViewCardsV28(physical))];
     if(typeof activeStatusFilter!=='undefined'&&activeStatusFilter!=='all'){
       arr=arr.filter(c=>(c.collection_status||'owned')===activeStatusFilter);
     }
@@ -258,6 +373,7 @@
           (+a.binder_page||1)-(+b.binder_page||1)||
           (+a.binder_slot||1)-(+b.binder_slot||1);
       }
+      if(a._vpos!=null&&b._vpos!=null)return a._vpos-b._vpos;
       return (+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
     };
     arr.sort((a,b)=>{
@@ -1904,6 +2020,9 @@
   // Variants grouped in one pocket.
   function stackOfV27(card){
     if(!card?.id)return card?[card]:[];
+    if(card._noStack)return [card];
+    const virtual=V14.virtualStacksV28?.get(card.id);
+    if(virtual&&pocketViewVirtualV28())return virtual.map(id=>V14.allCards.find(x=>x.id===id)).filter(Boolean);
     const root=card.stack_of?V14.allCards.find(x=>x.id===card.stack_of)||card:card;
     return [root,...V14.allCards.filter(x=>x.stack_of===root.id)];
   }
@@ -2332,7 +2451,7 @@
 
   function customViewPages(){
     const visible=Math.max(1,Math.ceil(orderedViewCards().length/9));
-    if(!isGeneral()&&!V14.binderSearchQuery&&binderViewScope()==='all'&&!V14.favoritesOnly){
+    if(!isGeneral()&&!V14.binderSearchQuery&&binderViewScope()==='all'&&!V14.favoritesOnly&&!pocketViewVirtualV28()){
       return Math.max(currentBinderPages(),visible);
     }
     return visible;
@@ -2983,7 +3102,7 @@
   }
 
   function renderBinderV14(){
-    const physicalManual=!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size);
+    const physicalManual=!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size)&&!pocketViewVirtualV28();
 
     if(physicalManual){
       const pages=Math.max(1,currentBinderPages());
@@ -3321,7 +3440,7 @@
     },{passive:true});
   }
   function renderPagesGridV14(){
-    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly){
+    if(!V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!pocketViewVirtualV28()){
       renderPhysicalPagesGridV22();
       return;
     }
@@ -3371,6 +3490,7 @@
     if(byId('totalValue'))byId('totalValue').textContent=money(value);
     renderUnpricedAuditV1466();
     renderRarityFilterV1603();
+    renderPocketViewUIV28();
   }
 
   function setStatusFilterV14(status){
