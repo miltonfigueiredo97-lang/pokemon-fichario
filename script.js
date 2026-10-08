@@ -78,6 +78,15 @@ const SPECIAL_ORIGINAL_NUMBERS={
     '026':'114/264','027':'123/172','028':'138/202','029':'149/147','030':'203/193'
   }
 };
+// Celebrations Classic Collection reprint -> original print (same look; TCGdex
+// has no scan of the reprint and links it to the wrong TCGplayer product).
+const CLASSIC_ORIGINAL_IDS={
+  'cel25cc-CC001':'base1-2','cel25cc-CC002':'base1-4','cel25cc-CC003':'base1-15','cel25cc-CC004':'base1-73','cel25cc-CC005':'base5-8',
+  'cel25cc-CC006':'base5-15','cel25cc-CC007':'gym2-15','cel25cc-CC008':'basep-24','cel25cc-CC009':'neo1-20','cel25cc-CC010':'neo3-66',
+  'cel25cc-CC011':'ex4-9','cel25cc-CC012':'ex7-86','cel25cc-CC013':'ex12-88','cel25cc-CC014':'ex15-93','cel25cc-CC015':'pop5-17',
+  'cel25cc-CC016':'dp4-15','cel25cc-CC017':'pl2-109','cel25cc-CC018':'pl3-145','cel25cc-CC019':'hgss1-107','cel25cc-CC020':'bw1-113',
+  'cel25cc-CC021':'bw1-114','cel25cc-CC022':'bw4-54','cel25cc-CC023':'xy1-97','cel25cc-CC024':'xy6-76','cel25cc-CC025':'sm2-60'
+};
 function specialPrintedNumber(setId,localId){
   const set=String(setId||''),local=String(localId||'').trim();
   const digits=String(local).match(/(\d+)/)?.[1]||'';
@@ -805,6 +814,18 @@ function classic30ScanUrl(apiId){
 }
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
+  const classicOriginal=CLASSIC_ORIGINAL_IDS[card.apiId];
+  if(classicOriginal){
+    try{
+      const r=await fetch(`${TCGDEX_BASE}/en/cards/${encodeURIComponent(classicOriginal)}`,{cache:"force-cache"});
+      const raw=r.ok?String((await r.json())?.image||""):"";
+      if(raw){
+        card.imageUrl=raw+"/high.webp";
+        card.imageFallbackSource="TCGdex · impressão original "+classicOriginal;
+        return card;
+      }
+    }catch(e){console.warn("Classic original image",card.apiId,e)}
+  }
   const classic30=classic30ScanUrl(card.apiId);
   if(classic30){
     card.imageUrl=classic30;
@@ -1315,7 +1336,7 @@ function rarityMatches(c,rar){
   return c.rarity===rar;
 }
 function populateRarityFilter(){const sel=$("resultRarityFilter"),current=sel.value;const rs=[...new Set(catalogResults.map(c=>c.rarity).filter(Boolean))];if(catalogResults.some(isPromoCard)&&!rs.includes("Promo"))rs.push("Promo");rs.sort();sel.innerHTML='<option value="all">Todas as raridades</option>'+rs.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join("");if(rs.includes(current))sel.value=current}
-function renderCatalog(){const g=$("resultsList"),rar=$("resultRarityFilter").value;g.innerHTML="";catalogResults.filter(c=>rarityMatches(c,rar)).forEach(c=>{const key=cardKey(c),sel=catalogSelection.has(key),el=document.createElement("button");el.type="button";el.className="catalog-card"+(sel?" selected":"");const img=cardImage(c),p=c.market?.avg||c.market?.min||0,native=c.nativeName&&norm(c.nativeName)!==norm(c.name)?`<small class="catalog-native">${esc(c.nativeName)}</small>`:"",setLabel=c.setTitle&&norm(c.setTitle)!==norm(c.setName)?`${c.setName||"-"} · ${c.setTitle}`:(c.setName||"-");el.innerHTML=`<span class="catalog-check">✓</span>${img?`<img src="${esc(img)}" loading="lazy">`:""}<h3>${esc(c.name)}</h3>${native}<p>${esc(setLabel)} · ${esc(c.number||"-")}</p><div class="catalog-tags"><span>${esc(c.language||"-")}</span>${c.languageCode==="pt-br"?'<span class="br">PT-BR</span>':""}${c.source==="Pokémon Japão Oficial"?'<span>JP oficial</span>':""}${c.rarity?`<span>${esc(c.rarity)}</span>`:""}${p?`<span class="br">${money(p)}</span>`:""}</div>`;el.onclick=()=>toggleCatalogCard(c);g.appendChild(el)})}
+function renderCatalog(){const g=$("resultsList"),rar=$("resultRarityFilter").value;g.innerHTML="";catalogResults.filter(c=>rarityMatches(c,rar)).forEach(c=>{const key=cardKey(c),sel=catalogSelection.has(key),el=document.createElement("button");el.type="button";el.className="catalog-card"+(sel?" selected":"");const img=cardImage(c),p=c.market?.avg||c.market?.min||0,native=c.nativeName&&norm(c.nativeName)!==norm(c.name)?`<small class="catalog-native">${esc(c.nativeName)}</small>`:"",setLabel=c.setTitle&&norm(c.setTitle)!==norm(c.setName)?`${c.setName||"-"} · ${c.setTitle}`:(c.setName||"-");el.innerHTML=`<span class="catalog-check">✓</span>${img?`<img src="${esc(img)}" loading="lazy">`:""}<h3>${esc(c.name)}</h3>${native}<p>${esc(setLabel)} · ${c.originalNumber?`${esc(c.originalNumber)} (${esc(c.number||"-")})`:esc(c.number||"-")}</p><div class="catalog-tags"><span>${esc(c.language||"-")}</span>${c.languageCode==="pt-br"?'<span class="br">PT-BR</span>':""}${c.source==="Pokémon Japão Oficial"?'<span>JP oficial</span>':""}${c.rarity?`<span>${esc(c.rarity)}</span>`:""}${p?`<span class="br">${money(p)}</span>`:""}</div>`;el.onclick=()=>toggleCatalogCard(c);g.appendChild(el)})}
 function toggleCatalogCard(c){const k=cardKey(c);catalogSelection.has(k)?catalogSelection.delete(k):catalogSelection.set(k,c);renderCatalog();updateSelectionTray()}
 function updateSelectionTray(){const n=catalogSelection.size;$("selectedCount").textContent=`${n} carta${n===1?"":"s"} escolhida${n===1?"":"s"}`;$("btnAddSelected").disabled=!n}
 async function findMarket(c){if(c.market&&(c.market.min||c.market.avg||c.market.max))return c.market;const m=await searchMypCards(c.namePt||c.name,c.number,c.setId||c.setName);if(m.cards.length){const r=rank(m.cards,{name:c.namePt||c.name,number:c.number,setHint:c.setId||c.setName,language:"pt-br"});if(r[0]?.market)return r[0].market}return{source:"MYP Cards",needsToken:m.needsToken,min:0,avg:0,max:0,link:""}}

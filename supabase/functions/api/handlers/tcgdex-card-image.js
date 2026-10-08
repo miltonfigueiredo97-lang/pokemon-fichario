@@ -15,6 +15,17 @@ const fetch = (...a) => globalThis.__imageAwareFetch(...a);
 
 const MAX_BYTES=7*1024*1024;
 const TCGDEX='https://api.tcgdex.net/v2';
+// Celebrations Classic Collection reprints: TCGdex has no scan for them and
+// its TCGplayer link points at the yellow Celebrations card of the same
+// Pokémon (CC021 Zekrom -> 010/025). The reprint looks like the original
+// print, so its scan is used.
+const CLASSIC_ORIGINALS={
+  'cel25cc-CC001':'base1-2','cel25cc-CC002':'base1-4','cel25cc-CC003':'base1-15','cel25cc-CC004':'base1-73','cel25cc-CC005':'base5-8',
+  'cel25cc-CC006':'base5-15','cel25cc-CC007':'gym2-15','cel25cc-CC008':'basep-24','cel25cc-CC009':'neo1-20','cel25cc-CC010':'neo3-66',
+  'cel25cc-CC011':'ex4-9','cel25cc-CC012':'ex7-86','cel25cc-CC013':'ex12-88','cel25cc-CC014':'ex15-93','cel25cc-CC015':'pop5-17',
+  'cel25cc-CC016':'dp4-15','cel25cc-CC017':'pl2-109','cel25cc-CC018':'pl3-145','cel25cc-CC019':'hgss1-107','cel25cc-CC020':'bw1-113',
+  'cel25cc-CC021':'bw1-114','cel25cc-CC022':'bw4-54','cel25cc-CC023':'xy1-97','cel25cc-CC024':'xy6-76','cel25cc-CC025':'sm2-60'
+};
 
 function pickTcgplayerId(card){
   const ids=[];
@@ -57,6 +68,31 @@ module.exports=async function handler(req,res){
 
   const langs=[requestedLang==='pt-br'?'pt':requestedLang,'en'].filter((v,i,a)=>v&&a.indexOf(v)===i);
 
+  const original=CLASSIC_ORIGINALS[id];
+  if(original){
+    for(const lang of langs){
+      try{
+        const r=await fetch(TCGDEX+'/'+encodeURIComponent(lang)+'/cards/'+encodeURIComponent(original),{
+          headers:{accept:'application/json','user-agent':'PokemonBinderBR/14.41'}
+        });
+        if(!r.ok)continue;
+        const raw=String((await r.json())?.image||'').trim();
+        if(!raw)continue;
+        for(const url of [raw+'/high.webp',raw+'/high.png',raw+'/low.webp']){
+          const image=await fetchImage(url);
+          if(!image)continue;
+          res.setHeader('Content-Type',image.type);
+          res.setHeader('Content-Length',String(image.bytes.length));
+          res.setHeader('Cache-Control','public, s-maxage=604800, stale-while-revalidate=2592000');
+          res.setHeader('X-Card-Image-Source','TCGdex original print '+original);
+          return res.status(200).send(image.bytes);
+        }
+      }catch(error){
+        console.warn('[tcgdex-card-image] original',original,error?.message||error);
+      }
+    }
+  }
+
   for(const lang of langs){
     try{
       const r=await fetch(TCGDEX+'/'+encodeURIComponent(lang)+'/cards/'+encodeURIComponent(id),{
@@ -79,7 +115,7 @@ module.exports=async function handler(req,res){
         return res.status(200).send(image.bytes);
       }
 
-      const productId=pickTcgplayerId(card);
+      const productId=original?null:pickTcgplayerId(card);
       if(productId){
         const url='https://tcgplayer-cdn.tcgplayer.com/product/'+encodeURIComponent(String(productId))+'_in_1000x1000.jpg';
         const image=await fetchImage(url);
