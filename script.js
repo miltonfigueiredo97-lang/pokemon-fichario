@@ -1547,10 +1547,15 @@ function friendUi(){
   if(!friendViewer.ui)friendViewer.ui={mode:currentPriceMode(),status:"all",showValues:true,sort:"manual_asc",query:""};
   return friendViewer.ui;
 }
-function friendCurrentBinder(){return friendViewer.binders.find(b=>String(b.id)===String(friendViewer.binderId))||null}
+const FRIEND_ALL="__all";
+function friendIsAll(){return friendViewer.binderId===FRIEND_ALL}
+function friendCurrentBinder(){
+  if(friendIsAll())return{id:FRIEND_ALL,name:"Geral",binder_kind:"all",pages:1};
+  return friendViewer.binders.find(b=>String(b.id)===String(friendViewer.binderId))||null;
+}
 // The physical binder (pages, pockets, art) when nothing reorders or hides
 // cards; otherwise a list laid out 9 per page, like the own binder.
-function friendIsPhysical(){const u=friendUi();return u.sort==="manual_asc"&&!u.query.trim()&&u.status==="all"}
+function friendIsPhysical(){const u=friendUi();return !friendIsAll()&&u.sort==="manual_asc"&&!u.query.trim()&&u.status==="all"}
 function friendNumberValue(v){const m=String(v||"").match(/\d+/);return m?Number(m[0]):999999}
 function friendViewList(){
   const u=friendUi(),q=norm(u.query||"");
@@ -1561,7 +1566,7 @@ function friendViewList(){
   const txt=(a,b)=>String(a||"").localeCompare(String(b||""),"pt-BR",{sensitivity:"base"});
   arr.sort((a,b)=>{
     let r=0;
-    if(base==="manual")r=(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
+    if(base==="manual")r=(+a._binderOrder||0)-(+b._binderOrder||0)||(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
     else if(base==="name")r=txt(a.name,b.name)||friendNumberValue(a.number)-friendNumberValue(b.number);
     else if(base==="type")r=txt(a.card_type,b.card_type)||txt(a.name,b.name);
     else if(base==="rarity")r=txt(a.rarity,b.rarity)||txt(a.name,b.name);
@@ -1579,7 +1584,7 @@ function friendViewerPageCount(){
 function friendCardHtml(card){
   const u=friendUi(),img=cardImage(card),st=card.collection_status||"owned";
   const status=STATUS[st]||"",q=Math.max(0,+card.quantity||0),v=priceModeValue(card,u.mode);
-  return '<div class="v1451-friend-card status-'+esc(st)+'" title="'+esc([card.name,card.set_name,card.number].filter(Boolean).join(" · "))+'">'+
+  return '<div class="v1451-friend-card status-'+esc(st)+'" data-fcard="'+esc(card.id)+'" role="button" tabindex="0" title="'+esc([card.name,card.set_name,card.number].filter(Boolean).join(" · "))+' · clique para ver em 3D">'+
     (img?'<img src="'+esc(img)+'" alt="'+esc(card.name||"Carta")+'" loading="lazy">':'<span>'+esc(card.name||"Carta")+'</span>')+
     '<b>'+esc(status)+'</b>'+
     (st==="owned"&&q>1?'<i class="v25-friend-qty">x'+q+'</i>':'')+
@@ -1622,7 +1627,7 @@ function renderFriendBinder(){
     ?'<p class="v25-friend-empty">Nenhuma carta corresponde ao filtro.</p>'
     :friendPageHtml(p,list)+(second?friendPageHtml(second,list):"");
   label.textContent=second?`Páginas ${p}–${second} · ${pages} páginas`:`Página ${p} · ${pages} páginas`;
-  $("friendBinderMeta").textContent=[binder.binder_kind==="set"?"Master Set":"Fichário",binder.set_name,binder.set_language,physical?"":`${list.length} carta(s) no filtro`].filter(Boolean).join(" · ");
+  $("friendBinderMeta").textContent=[binder.binder_kind==="set"?"Master Set":binder.binder_kind==="all"?"Geral · todos os fichários":"Fichário",binder.set_name,binder.set_language,physical?"":`${list.length} carta(s) no filtro`].filter(Boolean).join(" · ");
   $("friendBinderPrev").disabled=p<=1;
   $("friendBinderNext").disabled=p>=friendBinderLastAnchor(pages);
   renderFriendAside();
@@ -1651,10 +1656,65 @@ function renderFriendAside(){
       (counts.wanted?'<div class="v25-fvalue small"><span>Valor '+esc(priceModeLabel(u.mode))+' da lista Quero</span><strong>'+esc(money(wantedValue))+'</strong></div>':'')+
     '</section>';
 }
+// A friend's card in the 3D viewer (the same one as your own cards: drag to
+// turn, foil, zoom) with its values beside it. The viewer is borrowed from the
+// card dialog while this one is open and given back on close.
+function ensureFriendCardDialog(){
+  let d=$("friendCardDialog");
+  if(d)return d;
+  d=document.createElement("dialog");
+  d.id="friendCardDialog";
+  d.className="sheet-dialog v26-fcard-dialog";
+  d.innerHTML='<div class="v26-fcard-shell"><button class="icon-only v26-fcard-close" type="button" data-close="friendCardDialog" aria-label="Fechar">×</button><div class="v26-fcard-stage"></div><aside class="v26-fcard-info"></aside></div>';
+  document.body.appendChild(d);
+  d.addEventListener("click",e=>{if(e.target===d)closeDialog("friendCardDialog")});
+  d.addEventListener("close",()=>{
+    const sc=d.querySelector(".card-showcase"),home=friendCardDialogHome;
+    if(sc&&home?.parent){home.parent.insertBefore(sc,home.next&&home.next.parentNode===home.parent?home.next:null)}
+    friendCardDialogHome=null;
+  });
+  return d;
+}
+let friendCardDialogHome=null;
+function friendCardInfoHtml(card){
+  const u=friendUi(),st=card.collection_status||"owned",q=Math.max(0,+card.quantity||0);
+  const vals={min:+card.price_min||0,avg:+card.price_avg||0,max:+card.price_max||0};
+  const cell=(k,label)=>'<div class="'+(u.mode===k?'active':'')+'"><span>'+label+'</span><strong>'+(vals[k]>0?esc(money(vals[k])):'—')+'</strong></div>';
+  const unit=priceModeValue(card,u.mode);
+  const binder=friendViewer.binders.find(b=>String(b.id)===String(card.binder_id));
+  const chip=t=>t?'<span>'+esc(t)+'</span>':'';
+  return '<p class="kicker">Carta de @'+esc(friendViewer.profile?.username||"amigo")+'</p>'+
+    '<h2>'+esc(card.name||"Carta")+'</h2>'+
+    '<p class="muted">'+esc([card.set_name,card.number].filter(Boolean).join(" · "))+'</p>'+
+    '<div class="v26-fcard-chips"><span class="st status-'+esc(st)+'">'+esc(STATUS[st]||st)+'</span>'+
+      (st==="owned"&&q>1?'<span>'+q+' cópias</span>':'')+chip(card.rarity)+chip(card.finish)+chip(card.condition)+(friendIsAll()&&binder?chip("📁 "+(binder.name||"Fichário")):"")+'</div>'+
+    '<div class="v26-fcard-prices"><p>Valores (MYP)</p><div>'+cell("min","Mínimo")+cell("avg","Médio")+cell("max","Máximo")+'</div>'+
+      (st==="owned"&&q>1&&unit>0?'<small>'+q+' cópias · '+esc(money(unit*q))+' no valor '+esc(priceModeLabel(u.mode).toLowerCase())+'</small>':'')+
+      (!(vals.min||vals.avg||vals.max)?'<small>Ainda sem cotação.</small>':'')+'</div>'+
+    '<p class="v26-fcard-help">Arraste a carta para girar · roda ou pinça para zoom · toque duas vezes para virar</p>';
+}
+function openFriendCard3D(id){
+  const card=friendViewer.cards.find(c=>String(c.id)===String(id));
+  const sc=document.querySelector("#cardDialog .card-showcase")||document.querySelector("#friendCardDialog .card-showcase");
+  if(!card||!sc)return;
+  const d=ensureFriendCardDialog();
+  if(!friendCardDialogHome&&sc.closest("#cardDialog"))friendCardDialogHome={parent:sc.parentNode,next:sc.nextSibling};
+  d.querySelector(".v26-fcard-stage").appendChild(sc);
+  const el=$("card3d"),img=$("card3dImage");
+  el?.classList.remove("flipped");
+  sc.querySelector('[data-viewer="reset"]')?.click();
+  if(img){img.src=cardImage(card)||"";img.alt=card.name||"Carta"}
+  d.querySelector(".v26-fcard-info").innerHTML=friendCardInfoHtml(card);
+  if(!d.open)openDialog("friendCardDialog");
+  window.PB_friendCard3D?.(card);
+}
 function installFriendViewerTools(){
   const aside=$("friendBinderAside");
   if(!aside||aside.dataset.ready)return;
   aside.dataset.ready="1";
+  const spread=$("friendBinderSpread");
+  spread?.addEventListener("click",e=>{const c=e.target.closest("[data-fcard]");if(c)openFriendCard3D(c.dataset.fcard)});
+  spread?.addEventListener("keydown",e=>{const c=e.target.closest?.("[data-fcard]");if(c&&(e.key==="Enter"||e.key===" ")){e.preventDefault();openFriendCard3D(c.dataset.fcard)}});
   aside.addEventListener("click",e=>{
     const b=e.target.closest("[data-fstatus]");
     if(!b)return;
@@ -1731,7 +1791,35 @@ document.addEventListener("keydown",e=>{
   if(e.key==="ArrowLeft"&&!$("friendBinderPrev").disabled){e.preventDefault();$("friendBinderPrev").click()}
   if(e.key==="ArrowRight"&&!$("friendBinderNext").disabled){e.preventDefault();$("friendBinderNext").click()}
 });
+const FRIEND_CARD_COLUMNS="id,binder_id,stack_of,api_id,language_code,notes,name,set_name,set_id,number,rarity,card_type,finish,condition,image_url,market_image_pt,market_image_en,collection_status,binder_page,binder_slot,quantity,price_min,price_avg,price_max";
+// "Geral": the cards of every binder of the friend, in binder order.
+async function loadFriendAllCards(resetPage){
+  friendViewer.binderId=FRIEND_ALL;
+  if(resetPage)friendViewer.page=1;
+  $("friendBinderSelect").value=FRIEND_ALL;
+  $("friendBinderStatus").textContent="Carregando todas as cartas…";
+  const ids=friendViewer.binders.map(b=>b.id),order=new Map(ids.map((id,i)=>[String(id),i]));
+  const rows=[];
+  for(let from=0;ids.length;from+=1000){
+    const{data,error}=await db.from("pokemon_cards").select(FRIEND_CARD_COLUMNS)
+      .eq("user_id",friendViewer.profile.user_id).in("binder_id",ids)
+      .order("binder_id").order("binder_page").order("binder_slot").range(from,from+999);
+    if(error){
+      console.error("[Amigos geral]",error);
+      $("friendBinderStatus").textContent="Não consegui carregar todas as cartas.";
+      break;
+    }
+    rows.push(...(data||[]));
+    if(!data||data.length<1000)break;
+  }
+  // Variants stacked in one pocket are cards of their own here.
+  friendViewer.cards=rows.map(c=>({...c,_binderOrder:order.get(String(c.binder_id))??999}));
+  friendViewer.art=[];friendViewer.pieces=[];
+  if(rows.length||!ids.length)$("friendBinderStatus").textContent=`${rows.length} cartas em ${ids.length} fichário(s) · somente leitura`;
+  renderFriendBinder();
+}
 async function loadFriendBinderSelection(id,resetPage=true){
+  if(String(id)===FRIEND_ALL)return loadFriendAllCards(resetPage);
   const binder=friendViewer.binders.find(b=>String(b.id)===String(id));
   if(!binder)return;
   friendViewer.binderId=binder.id;
@@ -1739,7 +1827,7 @@ async function loadFriendBinderSelection(id,resetPage=true){
   $("friendBinderSelect").value=String(binder.id);
   $("friendBinderStatus").textContent="Carregando fichário…";
   const{data,error}=await db.from("pokemon_cards")
-    .select("id,name,set_name,set_id,number,rarity,card_type,finish,condition,image_url,market_image_pt,market_image_en,collection_status,binder_page,binder_slot,quantity,price_min,price_avg,price_max")
+    .select(FRIEND_CARD_COLUMNS)
     .eq("user_id",friendViewer.profile.user_id)
     .eq("binder_id",binder.id)
     .order("binder_page")
@@ -1792,7 +1880,8 @@ async function viewFriendBinders(p){
       :"Nenhum fichário disponível.";
   }else{
     sel.disabled=false;
-    sel.innerHTML=friendViewer.binders.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name||"Fichário")+'</option>').join("");
+    sel.innerHTML='<option value="'+FRIEND_ALL+'">Geral · todas as cartas</option>'+
+      friendViewer.binders.map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name||"Fichário")+'</option>').join("");
   }
   closeDialog("friendsDialog");
   openDialog("friendBinderDialog");

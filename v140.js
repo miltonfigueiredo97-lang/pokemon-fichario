@@ -6934,7 +6934,7 @@
     el.style.setProperty('--seedy',String(Math.random()));
     el.style.setProperty('--cosmosbg',Math.floor(Math.random()*734)+'px '+Math.floor(Math.random()*1280)+'px');
     const c=current?.card||{},v=current?.view||{};
-    const finish=byIdF('cardFinish')?.value||v.finish||'';
+    const finish=current?.external?String(v.finish||c.finish||''):(byIdF('cardFinish')?.value||v.finish||'');
     const apiId=c.apiId||c.api_id||'';
     const token=apiId+'|'+finish;
     el.dataset.pfxToken=token;
@@ -7069,7 +7069,7 @@
   let cur={x:50,y:50,o:0},raf=0;
   function tick(){
     raf=0;
-    if(!byIdF('cardDialog')?.open)return;
+    if(!byIdF('cardDialog')?.open&&!byIdF('friendCardDialog')?.open)return;
     const el=byIdF('card3d');
     const t=String(el?.querySelector('.card-3d-inner')?.style.transform||'');
     const rx=Number(t.match(/rotateX\((-?[\d.]+)deg\)/)?.[1]||0);
@@ -7099,6 +7099,12 @@
     new MutationObserver(()=>{if(dlg.open)setTimeout(start,30)}).observe(dlg,{attributes:true,attributeFilter:['open']});
     document.addEventListener('load',e=>{if(e.target?.id==='card3dImage')fitLayers()},true);
   }
+  // A friend's card shown in the borrowed viewer (friend binder).
+  window.PB_friendCard3D=card=>{
+    current={card:card||{},view:{finish:card?.finish||''},external:true};
+    applyCard();
+    if(!raf)raf=requestAnimationFrame(tick);
+  };
   hookInspector();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
 })();
