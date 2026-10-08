@@ -68,14 +68,12 @@ module.exports=async function handler(req,res){
   const classicNumber=CLASSIC_MYP_CODES[id];
   if(classicNumber){
     const code='pokemon_ccc_'+classicNumber;
-    const image=await fetchImage('https://img.mypcards.com/img/2/1608/'+code+'/'+code+'_en.jpg');
-    if(image){
-      res.setHeader('Content-Type',image.type);
-      res.setHeader('Content-Length',String(image.bytes.length));
-      res.setHeader('Cache-Control','public, s-maxage=604800, stale-while-revalidate=2592000');
-      res.setHeader('X-Card-Image-Source','MYP Cards classic collection');
-      return res.status(200).send(image.bytes);
-    }
+    // MYP's CDN refuses server requests, so the browser is sent straight there
+    // (every one of the 25 scans was checked to exist).
+    res.setHeader('Location','https://img.mypcards.com/img/2/1608/'+code+'/'+code+'_en.jpg');
+    res.setHeader('Cache-Control','public, max-age=86400');
+    res.setHeader('X-Card-Image-Source','MYP Cards classic collection');
+    return res.status(302).end();
   }
   const original=CLASSIC_ORIGINALS[id];
   if(original){
