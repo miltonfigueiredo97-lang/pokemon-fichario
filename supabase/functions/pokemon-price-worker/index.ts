@@ -32,6 +32,8 @@ const APP_SET_CODES: Record<string, string> = { cel25cc: "ccc", cel25: "clb", "3
 // code + exact name identify the card there, not the number.
 const CLASSIC_CODES = new Set(["30cc", "ccc"]);
 const MAX_ATTEMPTS = 10;
+// Pause of every MYP read after MYP rate-limits one.
+const MYP_PAUSE_MS = 15 * 60 * 1000;
 const RETRY_DELAYS_S = [20, 60, 180, 600];
 // Shared secret for /api/price-engine, read once per run from the database
 // (function pokemon_price_engine_secret, service_role only).
@@ -949,6 +951,9 @@ async function processCard(db: any, card: any) {
     // Wait longer and do not count it as an attempt, so a big import never
     // ends up with cards dropped from the queue as "unavailable".
     if (error === "myp_blocked") {
+      // Every read pauses, not only this card's: the others kept hitting MYP
+      // and turned a short 429 into Cloudflare's 1015 ban of the PC's IP.
+      await db.from("price_worker_state").upsert({ key: "myp_pause", until: new Date(Date.now() + MYP_PAUSE_MS).toISOString(), detail: String(message || error).slice(0, 200), updated_at: new Date().toISOString() });
       const waitS = Math.min(3600, 600 * Math.max(1, Math.floor(attempts / 2)));
       return await requeue(db, card, waitS, "retry_wait", "myp:" + error + (message ? ":" + message : ""), {
         price_attempts: Math.max(0, attempts - 1),
@@ -984,7 +989,9 @@ Deno.serve(async (req: Request) => {
   // Reads happen on the user's PCs: with none online, cards wait in the queue.
   DB = db;
   try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
-  if (!(await readerOnline())) return json({ ok: true, build: "20.0", skipped: "no_reader_online" });
+  if (!(await readerOnline())) return json({ ok: true, build: "20.1", skipped: "no_reader_online" });
+  const { data: pause } = await db.from("price_worker_state").select("until").eq("key", "myp_pause").maybeSingle();
+  if (pause?.until && Date.parse(pause.until) > Date.now()) return json({ ok: true, build: "20.1", skipped: "myp_pause", until: pause.until });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -1005,5 +1012,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "20.0", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "20.1", claimed, states, elapsedMs: Date.now() - started });
 });
