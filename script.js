@@ -812,24 +812,27 @@ function classic30ScanUrl(apiId){
   const code="pokemon_30cc_"+num.padStart(3,"0")+"_"+total;
   return"https://img.mypcards.com/img/2/2980/"+code+"/"+code+"_en.jpg";
 }
-// MYP has the scan of every Celebrations Classic Collection reprint (with the
-// 25th-anniversary stamp), named by the original number padded to three
-// digits (114/114 -> pokemon_ccc_114/114). Exceptions: the promo Pikachu has
-// no total and MYP files M Rayquaza-EX 76/108 as 061/108.
-function classic25ScanUrl(apiId){
+// The official card database (pokemon.com) has every Celebrations Classic
+// Collection reprint in each language, 25th stamp included, named by the
+// printed number: CEL25C_PT-BR_114_A. Numbers printed on more than one reprint
+// (15/102, 15/82, 15/132, 15/106) are A1, A2... in collection order.
+function classic25ScanUrl(apiId,lang){
   const local=String(apiId||"").match(/^cel25cc-(CC\d{3})$/)?.[1];
-  const orig=local&&SPECIAL_ORIGINAL_NUMBERS.cel25cc[local];
+  const table=SPECIAL_ORIGINAL_NUMBERS.cel25cc;
+  const orig=local&&table[local];
   if(!orig)return"";
-  const [num,total]=orig.split("/");
-  const code=local==="CC024"?"pokemon_ccc_061/108":"pokemon_ccc_"+num.padStart(3,"0")+(total?"/"+total:"");
-  return"https://img.mypcards.com/img/2/1608/"+code+"/"+code+"_en.jpg";
+  const num=orig.split("/")[0];
+  const same=Object.keys(table).sort().filter(k=>table[k].split("/")[0]===num);
+  const suffix=same.length>1?"A"+(same.indexOf(local)+1):"A";
+  const pt=/^pt/i.test(String(lang||""));
+  return"https://assets.pokemon.com/assets/"+(pt?"cms2-pt-br":"cms2")+"/img/cards/web/CEL25C/CEL25C_"+(pt?"PT-BR":"EN")+"_"+num+"_"+suffix+".png";
 }
 async function hydrateMissingCatalogImage(card,lang){
   if(!card||cardImage(card))return card;
-  const classic25=classic25ScanUrl(card.apiId);
+  const classic25=classic25ScanUrl(card.apiId,lang||card.languageCode);
   if(classic25){
     card.imageUrl=classic25;
-    card.imageFallbackSource="MYP Cards · Coleção Clássica";
+    card.imageFallbackSource="Pokémon oficial · Coleção Clássica";
     return card;
   }
   const classicOriginal=CLASSIC_ORIGINAL_IDS[card.apiId];
