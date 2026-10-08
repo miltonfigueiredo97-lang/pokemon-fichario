@@ -77,13 +77,16 @@ async function fetchImage(url){
   if(!type.startsWith('image/'))return null;
   const bytes=Buffer.from(await r.arrayBuffer());
   if(!bytes.length||bytes.length>MAX_BYTES)return null;
-  return{bytes,type};
+  return{bytes,type,url:r.url||url};
 }
 
 module.exports=async function handler(req,res){
   const id=String(req.query?.id||'').trim();
   const requestedLang=String(req.query?.lang||'en').trim().toLowerCase();
   if(!id)return res.status(400).json({ok:false,error:'id_required'});
+  // ?resolve=1: answer the image's final address as JSON, so the app can save
+  // it on the card and stop calling this function for every image it shows.
+  const resolveOnly=String(req.query?.resolve||'')==='1';
 
   const langs=[requestedLang==='pt-br'?'pt':requestedLang,'en'].filter((v,i,a)=>v&&a.indexOf(v)===i);
 
@@ -97,6 +100,7 @@ module.exports=async function handler(req,res){
       res.setHeader('Content-Length',String(image.bytes.length));
       res.setHeader('Cache-Control','public, max-age=86400');
       res.setHeader('X-Card-Image-Source','Pokemon official classic collection');
+      if(resolveOnly)return res.status(200).json({ok:true,url:image.url});
       return res.status(200).send(image.bytes);
     }
   }
@@ -117,7 +121,8 @@ module.exports=async function handler(req,res){
           res.setHeader('Content-Length',String(image.bytes.length));
           res.setHeader('Cache-Control','public, s-maxage=604800, stale-while-revalidate=2592000');
           res.setHeader('X-Card-Image-Source','TCGdex original print '+original);
-          return res.status(200).send(image.bytes);
+          if(resolveOnly)return res.status(200).json({ok:true,url:image.url});
+      return res.status(200).send(image.bytes);
         }
       }catch(error){
         console.warn('[tcgdex-card-image] original',original,error?.message||error);
@@ -144,7 +149,8 @@ module.exports=async function handler(req,res){
         res.setHeader('Content-Length',String(image.bytes.length));
         res.setHeader('Cache-Control','public, s-maxage=604800, stale-while-revalidate=2592000');
         res.setHeader('X-Card-Image-Source','TCGdex '+lang);
-        return res.status(200).send(image.bytes);
+        if(resolveOnly)return res.status(200).json({ok:true,url:image.url});
+      return res.status(200).send(image.bytes);
       }
 
       const productId=original?null:pickTcgplayerId(card);
@@ -157,7 +163,8 @@ module.exports=async function handler(req,res){
           res.setHeader('Cache-Control','public, s-maxage=604800, stale-while-revalidate=2592000');
           res.setHeader('X-Card-Image-Source','TCGplayer exact print');
           res.setHeader('X-TCGplayer-Product',String(productId));
-          return res.status(200).send(image.bytes);
+          if(resolveOnly)return res.status(200).json({ok:true,url:image.url});
+      return res.status(200).send(image.bytes);
         }
       }
     }catch(error){

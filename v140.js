@@ -2272,12 +2272,42 @@
     if(show)toast('Fichário atualizado.');
   }
 
+  // Cards whose image is the /api/tcgdex-card-image resolver cost one function
+  // call per image shown (a friend's binder page took seconds). Once per
+  // session, in the background, each is resolved to the image's own address
+  // and saved on the card (only the owner can, so each account fixes its own).
+  async function resolveApiImagesV29(){
+    if(V14.apiImagesRunV29||!currentUser)return;
+    V14.apiImagesRunV29=true;
+    const todo=V14.allCards.filter(c=>/tcgdex-card-image\?/.test(String(c.image_url||''))).slice(0,600);
+    const base=window.PF_API_BASE||'/api/';
+    let fixed=0;
+    const one=async card=>{
+      try{
+        const q=String(card.image_url).split('?')[1]||'';
+        const r=await fetch(base+'tcgdex-card-image?'+q+'&resolve=1');
+        const j=r.ok?await r.json():null;
+        const url=String(j?.url||'');
+        if(!/^https:\/\//.test(url)||/tcgdex-card-image/.test(url))return;
+        const {error}=await db.from('pokemon_cards').update({image_url:url}).eq('id',card.id).eq('user_id',currentUser.id);
+        if(!error){card.image_url=url;fixed++}
+      }catch{}
+    };
+    for(let i=0;i<todo.length;i+=4){
+      if(!currentUser)break;
+      await Promise.all(todo.slice(i,i+4).map(one));
+    }
+    if(fixed)console.info('[Imagens] '+fixed+' endereço(s) de imagem salvos direto na carta.');
+  }
+  V14.resolveApiImagesV29=resolveApiImagesV29;
+
   async function loadCardsOnceV14(){
     if(!currentUser)return;
     await loadBinders();
     const {data,error}=await db.from('pokemon_cards').select('*').eq('user_id',currentUser.id).order('binder_page').order('binder_slot');
     if(error){console.error(error);toast('Erro ao carregar cartas.');return}
     V14.allCards=data||[];
+    setTimeout(()=>resolveApiImagesV29().catch(()=>{}),8000);
     // Binder art (images spread over pockets). A missing table just means no art.
     const [art,pieces]=await Promise.all([
       db.from('pokemon_binder_art').select('*').eq('user_id',currentUser.id),
