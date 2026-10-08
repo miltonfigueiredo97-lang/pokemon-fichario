@@ -2505,3 +2505,7 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
 #friendBinderDialog .v1451-friend-card.status-missing img{filter:grayscale(1) brightness(.48)}
 #friendBinderDialog.v28-color .v1451-friend-card.status-missing img,#friendBinderDialog.v28-color .v1451-friend-card.status-wanted img{filter:none}
 #friendBinderDialog.v28-hide-badges .v1451-friend-card>b{display:none}
+/* Add-card search: the text boxes were shorter than their 16px text, so the
+   bottom of the letters was cut ("jolteon" read "iolteon"). */
+#addDialog #searchName{height:auto!important;min-height:28px;line-height:1.45!important;padding:3px 0!important}
+#addDialog select,#addDialog input:not([type=checkbox]):not([type=radio]):not([type=file]):not(#searchName){line-height:1.3!important;padding-top:8px!important;padding-bottom:8px!important}

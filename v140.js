@@ -693,8 +693,12 @@
   }
 
   function physicalManualViewV14(){
-    return !V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size);
+    return !V14.binderSearchQuery&&!isGeneral()&&activeSort()==='manual_asc'&&binderViewScope()==='all'&&!V14.favoritesOnly&&!(V14.rarityFilters?.size)&&!pocketViewVirtualV28();
   }
+  // Pages of what is on screen: the binder itself, or the ordered view
+  // (sort, filters, search, the other pocket view). Both are shown and
+  // browsed as spreads.
+  function viewPagesV30(){return physicalManualViewV14()?currentBinderPages():customViewPages()}
   // Desktop shows two pages side by side (2-3, 4-5…), so navigation moves by
   // spreads. Phones (≤820px, see prepareSpreadV1433) show ONE page: every page
   // is its own stop, otherwise the right-hand pages (3, 5, 7…) were skipped.
@@ -723,8 +727,7 @@
   window.binderSessionTargetV14=binderSessionTargetV14;
 
   function goToBinderSessionV14(dir){
-    if(!physicalManualViewV14())return goToPage(currentPage+(dir>0?1:-1));
-    const target=binderSessionTargetV14(currentPage,dir,currentBinderPages());
+    const target=binderSessionTargetV14(currentPage,dir,viewPagesV30());
     if(target===currentPage)return;
     try{window.cancelBinderPageFlipV14?.({suppress:true})}catch{}
     currentPage=target;
@@ -767,8 +770,8 @@
     ['v1443AddPageLeft','v1443AddPageRight'].forEach(id=>{
       const b=byId(id);if(b)b.disabled=disableAdd;
     });
-    if(physicalManualViewV14()){
-      const pages=currentBinderPages(),last=binderLastSessionAnchorV14(pages);
+    {
+      const pages=viewPagesV30(),last=binderLastSessionAnchorV14(pages);
       const prev=byId('prevPage'),next=byId('nextPage');
       if(prev)prev.disabled=currentPage<=1;
       if(next)next.disabled=currentPage>=last;
@@ -1154,12 +1157,14 @@
     if(!series||!sets)return;
     if(!force&&series.options.length>1)return;
     const lang=catalogLangV1450();
-    const oldSeries=force?'':series.value;
+    // A language change keeps the chosen generation and collection when they
+    // exist in the new language (the ids are shared), instead of clearing them.
+    const oldSeries=series.value,oldSet=sets.value;
     series.disabled=true;
     series.innerHTML='<option value="">Carregando gerações…</option>';
     if(force){
       sets.disabled=true;
-      sets.innerHTML='<option value="">Coleção — escolha a geração</option>';
+      sets.innerHTML='<option value="">Carregando coleções…</option>';
     }
     try{
       const list=[...(await fetchSeries(lang))];
@@ -1178,7 +1183,12 @@
       if(oldSeries&&[...series.options].some(o=>o.value===oldSeries)){
         series.value=oldSeries;
         await loadCatalogCollectionsV1450(false);
+        if(oldSet&&[...sets.options].some(o=>o.value===oldSet))sets.value=oldSet;
+      }else if(force){
+        sets.disabled=true;
+        sets.innerHTML='<option value="">Coleção — escolha a geração</option>';
       }
+      if(force&&(oldSeries||oldSet)&&typeof searchCards==='function')searchCards({live:false});
     }catch(e){
       console.error('[Catálogo gerações]',e);
       series.innerHTML='<option value="">Geração indisponível</option>';
@@ -3158,12 +3168,27 @@
       return;
     }
 
-    // Virtual/filtered views remain one sheet so their ordering is unambiguous.
-    resetSpreadV1433();
-    const g=byId('binderSheet');if(!g)return;
+    // Ordered views (sort, filters, search, the other pocket view) are laid
+    // out page after page and shown as spreads, like the binder itself.
     const cards=orderedViewCards(),pages=customViewPages();
-    currentPage=Math.min(Math.max(1,currentPage),pages);
-    const slice=cards.slice((currentPage-1)*9,currentPage*9);
+    currentPage=binderSessionAnchorV14(currentPage,pages);
+    const spread=prepareSpreadV1433(pages);
+    if(!spread.leftSheet)return;
+    renderOrderedPageV30(spread.leftSheet,cards,currentPage);
+    if(spread.double)renderOrderedPageV30(spread.rightSheet,cards,currentPage+1);
+    const rightLabel=document.querySelector('.v1433-secondary-sheet .v1433-sheet-page-label');
+    if(rightLabel)rightLabel.textContent='Página '+(currentPage+1);
+    byId('pageLabel').textContent=spread.double
+      ? 'Páginas '+currentPage+'–'+(currentPage+1)+' · '+currentPage+'/'+pages
+      : 'Página '+currentPage+' · '+currentPage+'/'+pages;
+    byId('prevPage').disabled=currentPage<=1;
+    byId('nextPage').disabled=currentPage>=binderLastSessionAnchorV14(pages);
+    syncTopbarNavigation();
+    requestAnimationFrame(positionUnifiedTopbar);
+  }
+  function renderOrderedPageV30(g,cards,page){
+    g.dataset.page=String(page);
+    const slice=cards.slice((page-1)*9,page*9);
     g.innerHTML='';
     for(let slot=0;slot<9;slot++){
       const pocket=document.createElement('div');
@@ -3177,7 +3202,7 @@
         add.textContent='＋';
         add.title='Adicionar carta neste fichário';
         add.setAttribute('aria-label','Adicionar carta neste fichário');
-        add.onclick=()=>openAddForPosition(currentPage);
+        add.onclick=()=>openAddForPosition(page);
         pocket.appendChild(add);
       }else{
         const empty=document.createElement('div');
@@ -3186,11 +3211,6 @@
       }
       g.appendChild(pocket);
     }
-    byId('pageLabel').textContent='Página '+currentPage+' · '+currentPage+'/'+pages;
-    byId('prevPage').disabled=currentPage<=1;
-    byId('nextPage').disabled=currentPage>=pages;
-    syncTopbarNavigation();
-    requestAnimationFrame(positionUnifiedTopbar);
   }
 
   // Reorder pages: each thumbnail gets ◀ ▶ (works on phones) and can be
@@ -7137,4 +7157,43 @@
   };
   hookInspector();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
+})();
+
+// Catalog rarity filter across languages: the same rarity is named "Rara
+// Dupla" in Portuguese and "Double rare" in English, so after a language
+// change the chosen one is found again by its meaning instead of resetting.
+(function keepRarityAcrossLanguagesV30(){
+  const canon=r=>{
+    let s=' '+String(r||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' ';
+    for(const [a,b] of [
+      [' ilustracao rara especial ',' special illustration rare '],[' ilustracao rara ',' illustration rare '],
+      [' rara dupla ',' double rare '],[' ultra rara ',' ultra rare '],[' hiper rara ',' hyper rare '],
+      [' rara secreta ',' secret rare '],[' rare secreta ',' secret rare '],[' rare secret ',' secret rare '],
+      [' ace spec raro ',' ace spec rare '],[' rara holo vmax ',' holo rare vmax '],[' rara holo vstar ',' holo rare vstar '],
+      [' rara holo v ',' holo rare v '],[' rare holo v ',' holo rare v '],[' rara holo ',' rare holo '],[' holo rare ',' rare holo '],
+      [' rara radiante ',' radiant rare '],[' rara brilhante ',' shiny rare '],[' rara incrivel ',' amazing rare '],
+      [' incomum ',' uncommon '],[' comum ',' common '],[' rara ',' rare ']
+    ])if(s===a)s=b;
+    return s.trim();
+  };
+  let wanted='all';
+  const hook=()=>{
+    if(typeof window.populateRarityFilter!=='function'){setTimeout(hook,400);return}
+    if(window.populateRarityFilter.__v30)return;
+    const orig=window.populateRarityFilter;
+    const wrapped=function(){
+      const sel=document.getElementById('resultRarityFilter');
+      if(sel&&sel.value&&sel.value!=='all')wanted=sel.value;
+      const r=orig.apply(this,arguments);
+      if(sel&&wanted!=='all'&&sel.value==='all'){
+        const hit=[...sel.options].find(o=>o.value!=='all'&&canon(o.value)===canon(wanted));
+        if(hit){sel.value=hit.value;wanted=hit.value;try{renderCatalog()}catch{}}
+      }
+      return r;
+    };
+    wrapped.__v30=true;
+    window.populateRarityFilter=wrapped;
+    document.addEventListener('change',e=>{if(e.target?.id==='resultRarityFilter')wanted=e.target.value||'all'},true);
+  };
+  hook();
 })();
