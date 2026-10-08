@@ -1545,7 +1545,73 @@ function friendBinderLastAnchor(pages){
 // price mode, status filter, search, sort) plus a summary sidebar.
 function friendUi(){
   if(!friendViewer.ui)friendViewer.ui={mode:currentPriceMode(),status:"all",showValues:true,sort:"manual_asc",query:""};
-  return friendViewer.ui;
+  const u=friendViewer.ui;
+  // Same options as the own "Resumo"; the visual ones start as yours.
+  if(!u.valueScope)u.valueScope="all";
+  if(!u.viewScope)u.viewScope="all";
+  if(u.badges===undefined)u.badges=settings?.show_status_badges!==false;
+  if(u.gray===undefined)u.gray=settings?.grayscale_missing!==false;
+  if(!(u.rarity instanceof Set))u.rarity=new Set();
+  if(u.pocket===undefined)u.pocket=null;
+  return u;
+}
+// Rarity / finish tags of a card, as in the own filter.
+function friendRarityTags(c){
+  const tags=new Map(),r=String(c?.rarity||"").trim(),f=String(c?.finish||"").trim();
+  if(r&&!/^(none|null|undefined|-)$/i.test(r))tags.set("r:"+norm(r),r);
+  if(f)tags.set("f:"+norm(f),f);
+  const nf=norm(f);
+  if(nf==="normal"||nf==="non holo")tags.set("g:nonholo","Non-Holo / Normal");
+  if((nf.includes("holo")||nf.includes("foil")||norm(r).includes("holo"))&&!nf.includes("reverse"))tags.set("g:holo","Holo / Foil");
+  if(nf.includes("reverse"))tags.set("g:reverse","Reverse Holo");
+  return tags;
+}
+// Pockets of a Master Set: one per variant or one per card (variants of a card
+// together). Only a view; the binder keeps the layout it was built with.
+function friendPhysicalLayout(){return (friendViewer.cards||[]).some(c=>c.stack_of)?"card":"variant"}
+function friendVariantKey(c){return c.api_id?c.api_id+"|"+norm(c.language_code||""):[norm(c.language_code||""),norm(c.set_id||c.set_name||""),norm(c.number||""),norm(c.name||"")].join("|")}
+function friendHasVariants(){
+  if(friendPhysicalLayout()==="card")return true;
+  const seen=new Set();
+  for(const c of friendViewer.cards||[]){const k=friendVariantKey(c);if(seen.has(k))return true;seen.add(k)}
+  return false;
+}
+function friendPocketView(){const u=friendUi();return u.pocket||friendPhysicalLayout()}
+function friendPocketVirtual(){return friendPocketView()!==friendPhysicalLayout()}
+// The cards as the pockets of the chosen view; groups: pocket card id -> rows.
+// match: status filter; a pocket of several variants shows one that matches.
+function friendPocketCards(match=()=>true){
+  const all=friendViewer.cards||[],roots=all.filter(c=>!c.stack_of);
+  const pos=(a,b)=>(+a._binderOrder||0)-(+b._binderOrder||0)||(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
+  friendViewer.groups=new Map();
+  if(friendPocketView()==="variant"){
+    if(friendPhysicalLayout()==="variant")return all.slice();
+    const out=[];
+    for(const r of roots.slice().sort(pos)){out.push({...r,_vpos:out.length});for(const ch of all.filter(c=>c.stack_of===r.id))out.push({...ch,_vpos:out.length})}
+    return out;
+  }
+  if(friendPhysicalLayout()==="card"){
+    const out=[];
+    for(const r of roots){
+      const rows=[r,...all.filter(c=>c.stack_of===r.id)],head=rows.find(match);
+      if(!head)continue;
+      if(rows.length>1)friendViewer.groups.set(head.id,rows);
+      out.push(head===r?r:{...head,binder_page:r.binder_page,binder_slot:r.binder_slot,_binderOrder:r._binderOrder});
+    }
+    return out;
+  }
+  const groups=new Map(),order=[];
+  for(const c of roots.slice().sort(pos)){const k=friendVariantKey(c);if(!groups.has(k)){groups.set(k,[]);order.push(k)}groups.get(k).push(c)}
+  const out=[];
+  for(const k of order){
+    const rows=groups.get(k),ix=rows.findIndex(r=>(r.collection_status||"owned")==="owned");
+    if(ix>0)rows.unshift(rows.splice(ix,1)[0]);
+    const head=rows.find(match);
+    if(!head)continue;
+    if(rows.length>1)friendViewer.groups.set(head.id,rows);
+    out.push({...head,_vpos:out.length});
+  }
+  return out;
 }
 const FRIEND_ALL="__all";
 function friendIsAll(){return friendViewer.binderId===FRIEND_ALL}
@@ -1555,18 +1621,22 @@ function friendCurrentBinder(){
 }
 // The physical binder (pages, pockets, art) when nothing reorders or hides
 // cards; otherwise a list laid out 9 per page, like the own binder.
-function friendIsPhysical(){const u=friendUi();return !friendIsAll()&&u.sort==="manual_asc"&&!u.query.trim()&&u.status==="all"}
+function friendIsPhysical(){const u=friendUi();return !friendIsAll()&&u.sort==="manual_asc"&&!u.query.trim()&&u.status==="all"&&u.viewScope==="all"&&!u.rarity.size&&!friendPocketVirtual()}
 function friendNumberValue(v){const m=String(v||"").match(/\d+/);return m?Number(m[0]):999999}
 function friendViewList(){
   const u=friendUi(),q=norm(u.query||"");
-  let arr=friendViewer.cards.slice();
+  const stOf=c=>c.collection_status||"owned";
+  let arr=friendPocketCards(c=>(u.viewScope!=="owned"||stOf(c)==="owned")&&(u.viewScope!=="missing"||stOf(c)!=="owned")&&(u.status==="all"||stOf(c)===u.status));
+  if(u.viewScope==="owned")arr=arr.filter(c=>(c.collection_status||"owned")==="owned");
+  if(u.viewScope==="missing")arr=arr.filter(c=>(c.collection_status||"owned")!=="owned");
   if(u.status!=="all")arr=arr.filter(c=>(c.collection_status||"owned")===u.status);
+  if(u.rarity.size)arr=arr.filter(c=>{const t=friendRarityTags(c);for(const k of u.rarity)if(t.has(k))return true;return false});
   if(q)arr=arr.filter(c=>norm([c.name,c.number,c.set_name,c.rarity].filter(Boolean).join(" ")).includes(q));
   const mode=u.sort,dir=mode.endsWith("_desc")?-1:1,base=mode.replace(/_(asc|desc)$/,"");
   const txt=(a,b)=>String(a||"").localeCompare(String(b||""),"pt-BR",{sensitivity:"base"});
   arr.sort((a,b)=>{
     let r=0;
-    if(base==="manual")r=(+a._binderOrder||0)-(+b._binderOrder||0)||(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
+    if(base==="manual")r=(a._vpos!=null&&b._vpos!=null)?a._vpos-b._vpos:(+a._binderOrder||0)-(+b._binderOrder||0)||(+a.binder_page||1)-(+b.binder_page||1)||(+a.binder_slot||1)-(+b.binder_slot||1);
     else if(base==="name")r=txt(a.name,b.name)||friendNumberValue(a.number)-friendNumberValue(b.number);
     else if(base==="type")r=txt(a.card_type,b.card_type)||txt(a.name,b.name);
     else if(base==="rarity")r=txt(a.rarity,b.rarity)||txt(a.name,b.name);
@@ -1581,12 +1651,21 @@ function friendViewerPageCount(){
   if(!b)return 1;
   return friendIsPhysical()?Math.max(1,+b.pages||1):Math.max(1,Math.ceil(friendViewList().length/9));
 }
+function friendStackBadge(card){
+  let rows=friendViewer.groups?.get(card.id);
+  // Physical "per card" binder: the pocket's own variants.
+  if(!rows&&friendPocketView()==="card"&&friendPhysicalLayout()==="card"){const kids=(friendViewer.cards||[]).filter(c=>c.stack_of===card.id);if(kids.length)rows=[card,...kids]}
+  if(!rows||rows.length<2)return"";
+  const owned=rows.filter(r=>(r.collection_status||"owned")==="owned").length;
+  return '<i class="v28-fstack'+(owned===rows.length?' all':owned?' some':'')+'" title="'+esc(rows.map(r=>(r.notes||r.finish||"Normal")+": "+(STATUS[r.collection_status||"owned"]||"")).join("\n"))+'">'+owned+'/'+rows.length+'</i>';
+}
 function friendCardHtml(card){
   const u=friendUi(),img=cardImage(card),st=card.collection_status||"owned";
   const status=STATUS[st]||"",q=Math.max(0,+card.quantity||0),v=priceModeValue(card,u.mode);
   return '<div class="v1451-friend-card status-'+esc(st)+'" data-fcard="'+esc(card.id)+'" role="button" tabindex="0" title="'+esc([card.name,card.set_name,card.number].filter(Boolean).join(" · "))+' · clique para ver em 3D">'+
     (img?'<img src="'+esc(img)+'" alt="'+esc(card.name||"Carta")+'" loading="lazy">':'<span>'+esc(card.name||"Carta")+'</span>')+
     '<b>'+esc(status)+'</b>'+
+    friendStackBadge(card)+
     (st==="owned"&&q>1?'<i class="v25-friend-qty">x'+q+'</i>':'')+
     (u.showValues&&v>0?'<em class="v25-friend-value">'+(q>1?q+'x ':'')+esc(money(v))+'</em>':'')+
     '</div>';
@@ -1634,8 +1713,8 @@ function renderFriendBinder(){
   fitFriendSpread();
   requestAnimationFrame(fitFriendSpread);
 }
-// Sidebar like the own "Resumo": completion, status counters that filter,
-// values on/off, price mode and the binder's total value (owned x quantity).
+// Sidebar organised like the own "Resumo": completion, status counters that
+// filter, values, card visuals and filters (show, rarity/finish, pockets).
 function renderFriendAside(){
   const box=$("friendBinderAside");
   if(!box)return;
@@ -1643,18 +1722,42 @@ function renderFriendAside(){
   const counts={owned:0,wanted:0,ordered:0,missing:0};
   cards.forEach(c=>{const s=c.collection_status||"owned";counts[s]=(counts[s]||0)+1});
   const total=cards.length,pct=total?Math.round(counts.owned/total*100):0;
-  const ownedValue=cards.filter(c=>(c.collection_status||"owned")==="owned").reduce((s,c)=>s+priceModeValue(c,u.mode)*Math.max(+c.quantity||1,1),0);
-  const wantedValue=cards.filter(c=>c.collection_status==="wanted").reduce((s,c)=>s+priceModeValue(c,u.mode),0);
+  const isOwned=c=>(c.collection_status||"owned")==="owned";
+  const valued=u.valueScope==="owned"?cards.filter(isOwned):u.valueScope==="missing"?cards.filter(c=>!isOwned(c)):cards;
+  const value=valued.reduce((s,c)=>s+priceModeValue(c,u.mode)*(isOwned(c)?Math.max(+c.quantity||1,1):1),0);
+  const scopeLabel={all:"todas as cartas",owned:"as que tem",missing:"as que não tem"}[u.valueScope];
   const stat=(key,label,n)=>'<button type="button" class="v25-fstat'+(key!=="all"?' status-'+key:'')+(u.status===key?' active':'')+'" data-fstatus="'+key+'"><strong>'+n+'</strong><span>'+label+'</span></button>';
+  const opt=(v,cur,label)=>'<option value="'+v+'"'+(v===cur?' selected':'')+'>'+label+'</option>';
+  const toggle=(id,label,on)=>'<label class="v28-ftoggle"><span>'+label+'</span><input type="checkbox" id="'+id+'"'+(on?' checked':'')+'><i></i></label>';
+  const tags=new Map();
+  cards.forEach(c=>friendRarityTags(c).forEach((label,key)=>tags.set(key,label)));
+  for(const k of [...u.rarity])if(!tags.has(k))u.rarity.delete(k);
+  const rarityRows=[...tags.entries()].sort((a,b)=>a[1].localeCompare(b[1],"pt-BR",{sensitivity:"base"}))
+    .map(([k,l])=>'<label><input type="checkbox" data-frarity="'+esc(k)+'"'+(u.rarity.has(k)?' checked':'')+'><span>'+esc(l)+'</span></label>').join("");
+  const pocket=friendHasVariants()?'<div class="v28-fpocket"><span>Bolsos no fichário</span><div role="group">'+
+      '<button type="button" data-fpocket="variant" class="'+(friendPocketView()==="variant"?'active':'')+'">Um por variante</button>'+
+      '<button type="button" data-fpocket="card" class="'+(friendPocketView()==="card"?'active':'')+'">Um por carta</button></div></div>':'';
   box.innerHTML=
     '<section class="v25-faside-card"><div class="v25-fprogress-top"><strong>'+pct+'%</strong><span>COMPLETO</span></div><div class="v25-fprogress"><i style="width:'+pct+'%"></i></div><p>'+counts.owned+' de '+total+' marcadas como Tenho</p></section>'+
     '<section class="v25-fstats">'+stat("all","TOTAL",total)+stat("owned","TENHO",counts.owned)+stat("wanted","QUERO",counts.wanted)+stat("ordered","PEDIDO",counts.ordered)+stat("missing","NÃO TENHO",counts.missing)+'</section>'+
-    '<section class="v25-faside-card">'+
-      '<label class="v25-ftoggle"><span>Mostrar valores</span><input type="checkbox" id="friendShowValues"'+(u.showValues?' checked':'')+'></label>'+
-      '<label class="v25-fmode"><span>Valor usado no fichário</span><select id="friendPriceMode"><option value="min"'+(u.mode==="min"?' selected':'')+'>Mínimo</option><option value="avg"'+(u.mode==="avg"?' selected':'')+'>Médio</option><option value="max"'+(u.mode==="max"?' selected':'')+'>Máximo</option></select></label>'+
-      '<div class="v25-fvalue"><span>Valor '+esc(priceModeLabel(u.mode))+' das cartas que tem</span><strong>'+esc(money(ownedValue))+'</strong></div>'+
-      (counts.wanted?'<div class="v25-fvalue small"><span>Valor '+esc(priceModeLabel(u.mode))+' da lista Quero</span><strong>'+esc(money(wantedValue))+'</strong></div>':'')+
+    '<section class="v25-faside-card"><p class="v28-ftitle">VALORES</p>'+
+      toggle("friendShowValues","Mostrar valores",u.showValues)+
+      '<label class="v25-fmode"><span>Valor usado no fichário</span><select id="friendPriceMode">'+opt("min",u.mode,"Mínimo")+opt("avg",u.mode,"Médio")+opt("max",u.mode,"Máximo")+'</select></label>'+
+      '<label class="v25-fmode"><span>Somar valor de</span><select id="friendValueScope">'+opt("all",u.valueScope,"Todas as cartas")+opt("owned",u.valueScope,"Só as que tem")+opt("missing",u.valueScope,"Só as que não tem")+'</select></label>'+
+      '<div class="v25-fvalue"><span>Valor '+esc(priceModeLabel(u.mode).toLowerCase())+' · '+scopeLabel+'</span><strong>'+esc(money(value))+'</strong></div>'+
+    '</section>'+
+    '<section class="v25-faside-card"><p class="v28-ftitle">VISUAL DAS CARTAS</p>'+
+      toggle("friendBadges","Mostrar “Tenho / Quero / Pedido”",u.badges)+
+      toggle("friendGray","P&B nas cartas “Não tenho” e “Quero”",u.gray)+
+    '</section>'+
+    '<section class="v25-faside-card"><p class="v28-ftitle">FILTRO</p>'+
+      '<label class="v25-fmode"><span>Mostrar no fichário</span><select id="friendViewScope">'+opt("all",u.viewScope,"Todas as cartas")+opt("owned",u.viewScope,"Só as que tem")+opt("missing",u.viewScope,"Só as que não tem")+'</select></label>'+
+      (rarityRows?'<details class="v28-frarity"'+(u.rarityOpen?' open':'')+'><summary><span>Raridade / acabamento</span><b>'+(u.rarity.size?u.rarity.size+' selecionada'+(u.rarity.size>1?'s':''):'Todas')+'</b></summary><div>'+rarityRows+'</div>'+(u.rarity.size?'<button type="button" data-frarity-clear>Limpar seleção</button>':'')+'</details>':'')+
+      pocket+
     '</section>';
+  const dlg=$("friendBinderDialog");
+  dlg?.classList.toggle("v28-hide-badges",!u.badges);
+  dlg?.classList.toggle("v28-color",!u.gray);
 }
 // A friend's card in the 3D viewer (the same one as your own cards: drag to
 // turn, foil, zoom) with its values beside it. The viewer is borrowed from the
@@ -1716,13 +1819,25 @@ function installFriendViewerTools(){
   spread?.addEventListener("click",e=>{const c=e.target.closest("[data-fcard]");if(c)openFriendCard3D(c.dataset.fcard)});
   spread?.addEventListener("keydown",e=>{const c=e.target.closest?.("[data-fcard]");if(c&&(e.key==="Enter"||e.key===" ")){e.preventDefault();openFriendCard3D(c.dataset.fcard)}});
   aside.addEventListener("click",e=>{
+    const u=friendUi();
     const b=e.target.closest("[data-fstatus]");
-    if(!b)return;
-    friendUi().status=b.dataset.fstatus;friendViewer.page=1;renderFriendBinder();
+    if(b){u.status=b.dataset.fstatus;friendViewer.page=1;renderFriendBinder();return}
+    const pk=e.target.closest("[data-fpocket]");
+    if(pk){u.pocket=pk.dataset.fpocket===friendPhysicalLayout()?null:pk.dataset.fpocket;friendViewer.page=1;renderFriendBinder();return}
+    if(e.target.closest("[data-frarity-clear]")){u.rarity.clear();friendViewer.page=1;renderFriendBinder()}
   });
+  aside.addEventListener("toggle",e=>{if(e.target.classList?.contains("v28-frarity"))friendUi().rarityOpen=e.target.open},true);
   aside.addEventListener("change",e=>{
-    if(e.target.id==="friendShowValues"){friendUi().showValues=e.target.checked;renderFriendBinder()}
-    if(e.target.id==="friendPriceMode"){friendUi().mode=e.target.value;renderFriendBinder()}
+    const u=friendUi(),t=e.target;
+    if(t.id==="friendShowValues")u.showValues=t.checked;
+    else if(t.id==="friendPriceMode")u.mode=t.value;
+    else if(t.id==="friendValueScope")u.valueScope=t.value;
+    else if(t.id==="friendBadges")u.badges=t.checked;
+    else if(t.id==="friendGray")u.gray=t.checked;
+    else if(t.id==="friendViewScope"){u.viewScope=t.value;friendViewer.page=1}
+    else if(t.dataset.frarity){if(t.checked)u.rarity.add(t.dataset.frarity);else u.rarity.delete(t.dataset.frarity);friendViewer.page=1}
+    else return;
+    renderFriendBinder();
   });
   $("friendBinderSort")?.addEventListener("change",e=>{friendUi().sort=e.target.value;friendViewer.page=1;renderFriendBinder()});
   let t=null;
@@ -1819,6 +1934,7 @@ async function loadFriendAllCards(resetPage){
   renderFriendBinder();
 }
 async function loadFriendBinderSelection(id,resetPage=true){
+  if(resetPage){const u=friendUi();u.rarity.clear();u.pocket=null}
   if(String(id)===FRIEND_ALL)return loadFriendAllCards(resetPage);
   const binder=friendViewer.binders.find(b=>String(b.id)===String(id));
   if(!binder)return;

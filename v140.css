@@ -2475,3 +2475,33 @@ body.v113-show-missing-color .pocket-card.status-wanted img{
   .v26-fcard-info{padding:16px 14px calc(24px + env(safe-area-inset-bottom))}
   .v26-fcard-info>.kicker{margin-right:0}
 }
+
+/* V28.1 · friend panel organised like the own "Resumo" */
+.v28-ftitle{margin:0;font-size:9px!important;font-weight:950;color:#9ea4a7!important;letter-spacing:.12em}
+.v28-ftoggle{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;font-size:12px;color:#d6d2c8;cursor:pointer}
+.v28-ftoggle input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.v28-ftoggle i{position:relative;width:36px;height:20px;border-radius:999px;background:#353b40;flex:none}
+.v28-ftoggle i::after{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;border-radius:50%;background:#fff;transition:left .18s}
+.v28-ftoggle input:checked+i{background:#2fd18b}
+.v28-ftoggle input:checked+i::after{left:19px}
+.v28-ftoggle input:focus-visible+i{outline:2px solid #ff6a3d;outline-offset:2px}
+.v28-frarity{border:1px solid rgba(255,255,255,.09);border-radius:10px;background:rgba(255,255,255,.02)}
+.v28-frarity>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer}
+.v28-frarity>summary::-webkit-details-marker{display:none}
+.v28-frarity>summary b{font-size:10px;color:#ff6a3d;background:rgba(255,106,61,.1);border:1px solid rgba(255,106,61,.25);border-radius:999px;padding:2px 7px}
+.v28-frarity>div{display:grid;gap:2px;max-height:200px;overflow:auto;padding:0 8px 8px}
+.v28-frarity label{display:flex!important;flex-direction:row!important;align-items:center;gap:9px;padding:6px;border-radius:7px;font-size:12px;font-weight:700;color:#d6d2c8;cursor:pointer}
+.v28-frarity label:hover{background:rgba(255,255,255,.04)}
+.v28-frarity input{flex:none;width:16px!important;height:16px!important;margin:0;accent-color:#ff6a3d}
+.v28-frarity>button{width:calc(100% - 16px);margin:0 8px 8px;height:30px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:transparent;color:#c1c7ca;font-size:11px;font-weight:800;cursor:pointer}
+.v28-fpocket{display:grid;gap:6px}
+.v28-fpocket>span{font-size:12px;color:#c1c7ca}
+.v28-fpocket>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:#0d1114}
+.v28-fpocket button{height:32px;border:0;border-radius:7px;background:transparent;color:#aab1b4;font-size:11px;font-weight:850;cursor:pointer}
+.v28-fpocket button.active{background:#ff6a3d;color:#160803}
+.v28-fstack{position:absolute;right:5%;top:5%;padding:1px 6px;border-radius:6px;background:rgba(0,0,0,.82);color:#fff;font-style:normal;font-size:10px;font-weight:900}
+.v28-fstack.some{color:#ffe08a}
+.v28-fstack.all{color:#8ff0b0}
+#friendBinderDialog .v1451-friend-card.status-missing img{filter:grayscale(1) brightness(.48)}
+#friendBinderDialog.v28-color .v1451-friend-card.status-missing img,#friendBinderDialog.v28-color .v1451-friend-card.status-wanted img{filter:none}
+#friendBinderDialog.v28-hide-badges .v1451-friend-card>b{display:none}
