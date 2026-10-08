@@ -89,8 +89,28 @@ function cardSetId(card: any) {
 function isPromoCard(card: any) {
   return PROMO_SET_IDS.test(cardSetId(card));
 }
-// Lookups use the number as printed: "207/225" -> "207" for promo cards.
+// Classic reprint collections print the ORIGINAL number of each card (Zekrom
+// CC021 of Celebrations Classic Collection is "114/114"), and MYP and Liga list
+// them by it. TCGdex only has its own ids (CC021, 21/25 in the app), which on
+// MYP match the Japanese 25th Anniversary promo pack (s8a-P 021/025).
+const CLASSIC_PRINTED: Record<string, string> = {
+  "cel25cc-CC001": "2/102", "cel25cc-CC002": "4/102", "cel25cc-CC003": "15/102", "cel25cc-CC004": "73/102", "cel25cc-CC005": "8/82",
+  "cel25cc-CC006": "15/82", "cel25cc-CC007": "15/132", "cel25cc-CC008": "24", "cel25cc-CC009": "20/111", "cel25cc-CC010": "66/64",
+  "cel25cc-CC011": "9/95", "cel25cc-CC012": "86/109", "cel25cc-CC013": "88/92", "cel25cc-CC014": "93/101", "cel25cc-CC015": "17/17",
+  "cel25cc-CC016": "15/106", "cel25cc-CC017": "109/111", "cel25cc-CC018": "145/147", "cel25cc-CC019": "107/123", "cel25cc-CC020": "113/114",
+  "cel25cc-CC021": "114/114", "cel25cc-CC022": "54/99", "cel25cc-CC023": "97/146", "cel25cc-CC024": "76/108", "cel25cc-CC025": "60/145",
+  "30th-c-001": "4/102", "30th-c-002": "5/109", "30th-c-003": "11/113", "30th-c-004": "11/101", "30th-c-005": "18/132",
+  "30th-c-006": "19/109", "30th-c-007": "25/111", "30th-c-008": "33/181", "30th-c-009": "41/122", "30th-c-010": "43/146",
+  "30th-c-011": "47/127", "30th-c-012": "50/185", "30th-c-013": "57/111", "30th-c-014": "58/102", "30th-c-015": "69/132",
+  "30th-c-016": "85/124", "30th-c-017": "89/149", "30th-c-018": "94/102", "30th-c-019": "99/102", "30th-c-020": "100/102",
+  "30th-c-021": "101/101", "30th-c-022": "106/106", "30th-c-023": "106/160", "30th-c-024": "106/105", "30th-c-025": "108/115",
+  "30th-c-026": "114/264", "30th-c-027": "123/172", "30th-c-028": "138/202", "30th-c-029": "149/147", "30th-c-030": "203/193",
+};
+// Lookups use the number as printed: "207/225" -> "207" for promo cards, the
+// original number for classic reprints.
 function withPrintedNumber(card: any) {
+  const classic = CLASSIC_PRINTED[String(card?.api_id || "")];
+  if (classic) return { ...card, number: classic };
   const n = String(card?.number || "");
   return isPromoCard(card) && n.includes("/") ? { ...card, number: n.split("/")[0].trim() } : card;
 }
@@ -453,7 +473,10 @@ async function catalogMatch(db: any, card: any, code: string, anchorIds: number[
   const { data } = await q;
   const tried = new Set<number>((card.myp_link_tried || []).map(Number));
   const target = nameKey(card.name);
-  const rows: CatalogRow[] = (data || []).filter((r: CatalogRow) => !tried.has(r.product_id));
+  let rows: CatalogRow[] = (data || []).filter((r: CatalogRow) => !tried.has(r.product_id));
+  // A classic reprint shares name and number with its original print (and
+  // with other reprints): only a product of the classic set itself counts.
+  if (CLASSIC_CODES.has(code)) rows = rows.filter((r) => r.set_code === code || (!r.set_code && new RegExp("\\b" + code + "\\b").test(r.info)));
   if (!rows.length) return null;
   const nameOk = (r: CatalogRow) => !target || r.name_key === target || r.name_key.startsWith(target) || target.startsWith(r.name_key);
   const lo = anchorIds.length ? Math.min(...anchorIds) - 400 : 0, hi = anchorIds.length ? Math.max(...anchorIds) + 400 : 0;
@@ -961,7 +984,7 @@ Deno.serve(async (req: Request) => {
   // Reads happen on the user's PCs: with none online, cards wait in the queue.
   DB = db;
   try { await db.rpc("engine_requests_cleanup"); } catch { /* best effort */ }
-  if (!(await readerOnline())) return json({ ok: true, build: "19.9", skipped: "no_reader_online" });
+  if (!(await readerOnline())) return json({ ok: true, build: "20.0", skipped: "no_reader_online" });
 
   const started = Date.now();
   const states: Record<string, number> = {};
@@ -982,5 +1005,5 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ ok: false, error: "worker_failed", message: String(e?.message || e), claimed, states }, 500);
   }
-  return json({ ok: true, build: "19.9", claimed, states, elapsedMs: Date.now() - started });
+  return json({ ok: true, build: "20.0", claimed, states, elapsedMs: Date.now() - started });
 });
